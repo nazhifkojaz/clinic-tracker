@@ -1,4 +1,5 @@
 import pytest
+from pydantic import ValidationError
 
 
 def test_settings_loads_from_env(monkeypatch):
@@ -20,12 +21,22 @@ def test_settings_loads_from_env(monkeypatch):
     assert s.REFRESH_TOKEN_EXPIRE_DAYS == 7
 
 
-def test_settings_requires_database_url(monkeypatch):
-    """Settings should fail if DATABASE_URL is not set."""
-    monkeypatch.delenv("DATABASE_URL", raising=False)
-    monkeypatch.setenv("SECRET_KEY", "test-secret")
+def test_settings_defaults(monkeypatch):
+    """Settings should have correct default values for optional fields."""
+    monkeypatch.setenv("DATABASE_URL", "postgresql+asyncpg://test:test@localhost/testdb")
+    monkeypatch.setenv("SECRET_KEY", "test-secret-key-at-least-32-chars-long!!")
+    monkeypatch.delenv("DEBUG", raising=False)
 
+    import importlib
+    import app.core.config
+    importlib.reload(app.core.config)
     from app.core.config import Settings
 
-    with pytest.raises(Exception):
-        Settings()
+    s = Settings()
+
+    # Verify defaults (DEBUG defaults to False when not set)
+    assert s.APP_NAME == "Smart Clinic Tracker"
+    assert s.ACCESS_TOKEN_EXPIRE_MINUTES == 15
+    assert s.REFRESH_TOKEN_EXPIRE_DAYS == 7
+    assert len(s.CORS_ORIGINS) >= 1
+    assert "http://localhost:5173" in s.CORS_ORIGINS

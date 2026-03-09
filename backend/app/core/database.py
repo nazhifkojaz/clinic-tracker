@@ -11,6 +11,7 @@ engine = create_async_engine(
     settings.DATABASE_URL,
     echo=settings.DEBUG,
     pool_pre_ping=True,
+    connect_args={"ssl": True},  # Neon requires SSL
 )
 
 async_session_maker = async_sessionmaker(

@@ -9,8 +9,7 @@ from app.core.config import settings
 from app.core.database import Base
 
 # Import all models here so Alembic can detect them
-# (Uncomment as models are created in later phases)
-# from app.models import user, department, submission, rotation, assignment
+from app.models.user import User  # noqa: F401
 
 config = context.config
 
