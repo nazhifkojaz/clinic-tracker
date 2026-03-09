@@ -8,7 +8,7 @@ from app.core.security import hash_password
 from app.models.user import User, UserRole
 
 # Default admin credentials - CHANGE IMMEDIATELY AFTER FIRST LOGIN!
-ADMIN_EMAIL = "admin@clinic.local"
+ADMIN_EMAIL = "admin@dashko.id"
 ADMIN_PASSWORD = "admin123"
 ADMIN_NAME = "System Admin"
 
