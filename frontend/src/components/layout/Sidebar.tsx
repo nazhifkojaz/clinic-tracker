@@ -5,6 +5,7 @@ import {
   FilePlus,
   Users,
   Settings,
+  Building2,
 } from "lucide-react";
 
 const navItems = {
@@ -18,6 +19,7 @@ const navItems = {
   admin: [
     { to: "/", label: "Dashboard", icon: LayoutDashboard },
     { to: "/admin/users", label: "Users", icon: Users },
+    { to: "/admin/departments", label: "Departments", icon: Building2 },
     { to: "/admin/settings", label: "Settings", icon: Settings },
   ],
 };

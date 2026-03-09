@@ -5,6 +5,7 @@ import ProtectedRoute from "@/components/layout/ProtectedRoute";
 import AppLayout from "@/components/layout/AppLayout";
 import Login from "@/pages/Login";
 import UserManagement from "@/pages/admin/UserManagement";
+import DepartmentManagement from "@/pages/admin/DepartmentManagement";
 import NotFound from "@/pages/NotFound";
 
 function App() {
@@ -31,6 +32,7 @@ function App() {
           <Route path="/cases/new" element={<div>Case Input (coming in Phase 3)</div>} />
           <Route element={<ProtectedRoute allowedRoles={["admin"]} />}>
             <Route path="/admin/users" element={<UserManagement />} />
+            <Route path="/admin/departments" element={<DepartmentManagement />} />
             <Route path="/admin/settings" element={<div>Settings (coming in Phase 2)</div>} />
           </Route>
         </Route>
