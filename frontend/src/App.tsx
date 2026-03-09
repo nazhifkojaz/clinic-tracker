@@ -1,24 +1,40 @@
+import { useEffect } from "react";
 import { Routes, Route } from "react-router-dom";
+import { useAuthStore } from "@/stores/authStore";
+import ProtectedRoute from "@/components/layout/ProtectedRoute";
+import AppLayout from "@/components/layout/AppLayout";
+import Login from "@/pages/Login";
+import UserManagement from "@/pages/admin/UserManagement";
 import NotFound from "@/pages/NotFound";
 
 function App() {
+  const { initialize, isInitialized } = useAuthStore();
+
+  useEffect(() => {
+    initialize();
+  }, [initialize]);
+
+  if (!isInitialized) {
+    return (
+      <div className="flex min-h-screen items-center justify-center">
+        <p className="text-muted-foreground">Loading...</p>
+      </div>
+    );
+  }
+
   return (
     <Routes>
-      <Route
-        path="/"
-        element={
-          <div className="flex min-h-screen items-center justify-center bg-background">
-            <div className="text-center">
-              <h1 className="text-4xl font-bold text-foreground">
-                Smart Clinic Tracker
-              </h1>
-              <p className="mt-2 text-muted-foreground">
-                Phase 0 — scaffolding complete
-              </p>
-            </div>
-          </div>
-        }
-      />
+      <Route path="/login" element={<Login />} />
+      <Route element={<ProtectedRoute />}>
+        <Route element={<AppLayout />}>
+          <Route path="/" element={<div>Dashboard (coming in Phase 5)</div>} />
+          <Route path="/cases/new" element={<div>Case Input (coming in Phase 3)</div>} />
+          <Route element={<ProtectedRoute allowedRoles={["admin"]} />}>
+            <Route path="/admin/users" element={<UserManagement />} />
+            <Route path="/admin/settings" element={<div>Settings (coming in Phase 2)</div>} />
+          </Route>
+        </Route>
+      </Route>
       <Route path="*" element={<NotFound />} />
     </Routes>
   );
