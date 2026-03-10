@@ -6,18 +6,22 @@ import {
   Users,
   Settings,
   Building2,
+  ClipboardList,
 } from "lucide-react";
 
 const navItems = {
   student: [
     { to: "/", label: "Dashboard", icon: LayoutDashboard },
     { to: "/cases/new", label: "Submit Case", icon: FilePlus },
+    { to: "/submissions", label: "My Submissions", icon: ClipboardList },
   ],
   supervisor: [
     { to: "/", label: "Dashboard", icon: LayoutDashboard },
+    { to: "/submissions", label: "Submissions", icon: ClipboardList },
   ],
   admin: [
     { to: "/", label: "Dashboard", icon: LayoutDashboard },
+    { to: "/submissions", label: "Submissions", icon: ClipboardList },
     { to: "/admin/users", label: "Users", icon: Users },
     { to: "/admin/departments", label: "Departments", icon: Building2 },
     { to: "/admin/settings", label: "Settings", icon: Settings },
