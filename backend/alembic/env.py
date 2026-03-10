@@ -10,6 +10,9 @@ from app.core.database import Base
 
 # Import all models here so Alembic can detect them
 from app.models.user import User  # noqa: F401
+from app.models.department import Department, TaskCategory  # noqa: F401
+from app.models.rotation import StudentRotation  # noqa: F401
+from app.models.submission import CaseSubmission  # noqa: F401
 
 config = context.config
 
