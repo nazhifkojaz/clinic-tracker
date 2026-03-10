@@ -7,6 +7,7 @@ import {
   Settings,
   Building2,
   ClipboardList,
+  Link2,
 } from "lucide-react";
 
 const navItems = {
@@ -24,6 +25,7 @@ const navItems = {
     { to: "/submissions", label: "Submissions", icon: ClipboardList },
     { to: "/admin/users", label: "Users", icon: Users },
     { to: "/admin/departments", label: "Departments", icon: Building2 },
+    { to: "/admin/assignments", label: "Assignments", icon: Link2 },
     { to: "/admin/settings", label: "Settings", icon: Settings },
   ],
 };

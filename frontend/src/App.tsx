@@ -8,6 +8,7 @@ import CaseInputForm from "@/pages/CaseInputForm";
 import SubmissionHistory from "@/pages/SubmissionHistory";
 import UserManagement from "@/pages/admin/UserManagement";
 import DepartmentManagement from "@/pages/admin/DepartmentManagement";
+import AssignmentManagement from "@/pages/admin/AssignmentManagement";
 import NotFound from "@/pages/NotFound";
 
 function App() {
@@ -36,6 +37,7 @@ function App() {
           <Route element={<ProtectedRoute allowedRoles={["admin"]} />}>
             <Route path="/admin/users" element={<UserManagement />} />
             <Route path="/admin/departments" element={<DepartmentManagement />} />
+            <Route path="/admin/assignments" element={<AssignmentManagement />} />
             <Route path="/admin/settings" element={<div>Settings (coming in Phase 2)</div>} />
           </Route>
         </Route>
