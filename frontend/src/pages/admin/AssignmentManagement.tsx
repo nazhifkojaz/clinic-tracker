@@ -8,7 +8,7 @@ import { departmentService } from "@/services/departments";
 import type { AssignmentWithDetails, AssignmentType } from "@/types/assignment";
 import type { User } from "@/types/user";
 import type { Department } from "@/types/department";
-import { Plus, Trash2 } from "lucide-react";
+import { Loader2, Plus, Trash2 } from "lucide-react";
 
 export default function AssignmentManagement() {
   const [assignments, setAssignments] = useState<AssignmentWithDetails[]>([]);
@@ -147,7 +147,8 @@ export default function AssignmentManagement() {
       ) : (
         <Card>
           <CardContent className="p-0">
-            <table className="w-full">
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[600px]">
               <thead>
                 <tr className="border-b text-left text-sm text-muted-foreground">
                   <th className="p-4">Supervisor</th>
@@ -200,6 +201,7 @@ export default function AssignmentManagement() {
                 )}
               </tbody>
             </table>
+            </div>
           </CardContent>
         </Card>
       )}
@@ -315,7 +317,14 @@ export default function AssignmentManagement() {
                     Cancel
                   </Button>
                   <Button type="submit" disabled={isSubmitting}>
-                    {isSubmitting ? "Creating..." : "Create"}
+                    {isSubmitting ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Creating...
+                      </>
+                    ) : (
+                      "Create"
+                    )}
                   </Button>
                 </div>
               </form>

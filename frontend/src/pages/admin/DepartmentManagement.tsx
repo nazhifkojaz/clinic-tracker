@@ -11,6 +11,7 @@ import type {
   TaskCategoryCreate,
 } from "@/types/department";
 import {
+  Loader2,
   Plus,
   Pencil,
   ChevronDown,
@@ -471,11 +472,16 @@ export default function DepartmentManagement() {
                     Cancel
                   </Button>
                   <Button type="submit" disabled={isSubmitting}>
-                    {isSubmitting
-                      ? "Saving..."
-                      : editingDepartment
-                        ? "Update"
-                        : "Create"}
+                    {isSubmitting ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Saving...
+                      </>
+                    ) : editingDepartment ? (
+                      "Update"
+                    ) : (
+                      "Create"
+                    )}
                   </Button>
                 </div>
               </form>
@@ -554,11 +560,16 @@ export default function DepartmentManagement() {
                     Cancel
                   </Button>
                   <Button type="submit" disabled={isSubmitting}>
-                    {isSubmitting
-                      ? "Saving..."
-                      : editingCategory
-                        ? "Update"
-                        : "Create"}
+                    {isSubmitting ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Saving...
+                      </>
+                    ) : editingCategory ? (
+                      "Update"
+                    ) : (
+                      "Create"
+                    )}
                   </Button>
                 </div>
               </form>

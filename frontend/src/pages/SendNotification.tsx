@@ -121,7 +121,7 @@ export default function SendNotification() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="max-w-5xl space-y-6">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold">Send Notification</h1>
@@ -353,8 +353,15 @@ export default function SendNotification() {
               >
                 Cancel
               </Button>
-              <Button onClick={handleSendConfirm}>
-                Send Now
+              <Button onClick={handleSendConfirm} disabled={isSending}>
+                {isSending ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Sending...
+                  </>
+                ) : (
+                  "Send Now"
+                )}
               </Button>
             </div>
           </div>
