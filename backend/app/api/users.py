@@ -8,6 +8,7 @@ from app.core.database import get_db
 from app.core.security import hash_password
 from app.models.user import User
 from app.schemas.user import UserCreate, UserResponse, UserUpdate
+from app.utils.audit import record_audit
 
 router = APIRouter(prefix="/api/users", tags=["users"])
 
@@ -31,7 +32,7 @@ async def list_users(
 @router.post("", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
 async def create_user(
     body: UserCreate,
-    _admin: User = Depends(require_admin),
+    admin: User = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """Create a new user (admin only)."""
@@ -52,6 +53,22 @@ async def create_user(
             status_code=status.HTTP_409_CONFLICT,
             detail="A user with this email already exists",
         )
+
+    # Audit log
+    await record_audit(
+        db,
+        user_id=admin.id,
+        action="create",
+        table_name="users",
+        record_id=user.id,
+        new_values={
+            "email": user.email,
+            "full_name": user.full_name,
+            "student_id": user.student_id,
+            "role": user.role.value,
+        },
+    )
+
     return user
 
 
@@ -59,7 +76,7 @@ async def create_user(
 async def update_user(
     user_id: str,
     body: UserUpdate,
-    _admin: User = Depends(require_admin),
+    admin: User = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """Update a user (admin only)."""
@@ -67,6 +84,14 @@ async def update_user(
     user = result.scalar_one_or_none()
     if user is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
+    # Store old values for audit
+    old_values = {
+        "email": user.email,
+        "full_name": user.full_name,
+        "student_id": user.student_id,
+        "role": user.role.value if user.role else None,
+    }
 
     update_data = body.model_dump(exclude_unset=True)
     if "password" in update_data:
@@ -84,4 +109,22 @@ async def update_user(
             status_code=status.HTTP_409_CONFLICT,
             detail="A user with this email already exists",
         )
+
+    # Audit log
+    new_values = {
+        "email": user.email,
+        "full_name": user.full_name,
+        "student_id": user.student_id,
+        "role": user.role.value if user.role else None,
+    }
+    await record_audit(
+        db,
+        user_id=admin.id,
+        action="update",
+        table_name="users",
+        record_id=user.id,
+        old_values=old_values,
+        new_values=new_values,
+    )
+
     return user

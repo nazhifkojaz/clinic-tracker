@@ -19,6 +19,7 @@ from app.schemas.department import (
     TaskCategoryResponse,
     TaskCategoryUpdate,
 )
+from app.utils.audit import record_audit
 
 router = APIRouter(prefix="/api/departments", tags=["departments"])
 
@@ -60,7 +61,7 @@ async def get_department(
 @router.post("", response_model=DepartmentResponse, status_code=status.HTTP_201_CREATED)
 async def create_department(
     body: DepartmentCreate,
-    _user: User = Depends(require_admin),
+    admin: User = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """Create a new department. Admin only."""
@@ -74,6 +75,20 @@ async def create_department(
         raise HTTPException(
             status_code=409, detail="Department with this name already exists"
         )
+
+    # Audit log
+    await record_audit(
+        db,
+        user_id=admin.id,
+        action="create",
+        table_name="departments",
+        record_id=department.id,
+        new_values={
+            "name": department.name,
+            "description": department.description,
+        },
+    )
+
     return department
 
 
@@ -81,7 +96,7 @@ async def create_department(
 async def update_department(
     department_id: UUID,
     body: DepartmentUpdate,
-    _user: User = Depends(require_admin),
+    admin: User = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """Update a department. Admin only."""
@@ -91,6 +106,13 @@ async def update_department(
     department = result.scalar_one_or_none()
     if not department:
         raise HTTPException(status_code=404, detail="Department not found")
+
+    # Store old values for audit
+    old_values = {
+        "name": department.name,
+        "description": department.description,
+        "is_active": department.is_active,
+    }
 
     for field, value in body.model_dump(exclude_unset=True).items():
         setattr(department, field, value)
@@ -103,6 +125,23 @@ async def update_department(
         raise HTTPException(
             status_code=409, detail="Department with this name already exists"
         )
+
+    # Audit log
+    new_values = {
+        "name": department.name,
+        "description": department.description,
+        "is_active": department.is_active,
+    }
+    await record_audit(
+        db,
+        user_id=admin.id,
+        action="update",
+        table_name="departments",
+        record_id=department.id,
+        old_values=old_values,
+        new_values=new_values,
+    )
+
     return department
 
 
@@ -136,7 +175,7 @@ async def list_task_categories(
 async def create_task_category(
     department_id: UUID,
     body: TaskCategoryCreate,
-    _user: User = Depends(require_admin),
+    admin: User = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """Create a task category in a department. Admin only."""
@@ -151,6 +190,21 @@ async def create_task_category(
     db.add(category)
     await db.commit()
     await db.refresh(category)
+
+    # Audit log
+    await record_audit(
+        db,
+        user_id=admin.id,
+        action="create",
+        table_name="task_categories",
+        record_id=category.id,
+        new_values={
+            "department_id": str(department_id),
+            "name": category.name,
+            "required_count": category.required_count,
+        },
+    )
+
     return category
 
 
@@ -162,7 +216,7 @@ async def update_task_category(
     department_id: UUID,
     category_id: UUID,
     body: TaskCategoryUpdate,
-    _user: User = Depends(require_admin),
+    admin: User = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """Update a task category. Admin only."""
@@ -176,9 +230,35 @@ async def update_task_category(
     if not category:
         raise HTTPException(status_code=404, detail="Task category not found")
 
+    # Store old values for audit
+    old_values = {
+        "name": category.name,
+        "required_count": category.required_count,
+        "description": category.description,
+        "is_active": category.is_active,
+    }
+
     for field, value in body.model_dump(exclude_unset=True).items():
         setattr(category, field, value)
 
     await db.commit()
     await db.refresh(category)
+
+    # Audit log
+    new_values = {
+        "name": category.name,
+        "required_count": category.required_count,
+        "description": category.description,
+        "is_active": category.is_active,
+    }
+    await record_audit(
+        db,
+        user_id=admin.id,
+        action="update",
+        table_name="task_categories",
+        record_id=category.id,
+        old_values=old_values,
+        new_values=new_values,
+    )
+
     return category

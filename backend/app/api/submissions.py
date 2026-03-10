@@ -25,6 +25,7 @@ from app.schemas.submission import (
     UploadUrlRequest,
     UploadUrlResponse,
 )
+from app.utils.audit import record_audit
 from app.utils.storage import generate_read_url, generate_upload_url
 
 router = APIRouter(prefix="/api/submissions", tags=["submissions"])
@@ -83,6 +84,22 @@ async def create_submission(
     db.add(submission)
     await db.commit()
     await db.refresh(submission)
+
+    # Audit log
+    await record_audit(
+        db,
+        user_id=user.id,
+        action="create",
+        table_name="case_submissions",
+        record_id=submission.id,
+        new_values={
+            "student_id": str(submission.student_id),
+            "department_id": str(submission.department_id),
+            "task_category_id": str(submission.task_category_id),
+            "case_count": submission.case_count,
+        },
+    )
+
     return submission
 
 
@@ -236,12 +253,35 @@ async def review_submission(
             detail=f"Submission already {submission.status.value}",
         )
 
+    # Store old values for audit
+    old_values = {
+        "status": submission.status.value,
+        "reviewed_by": None,
+        "review_notes": None,
+    }
+
     submission.status = body.status
     submission.reviewed_by = user.id
     submission.review_notes = body.review_notes
 
     await db.commit()
     await db.refresh(submission)
+
+    # Audit log
+    await record_audit(
+        db,
+        user_id=user.id,
+        action="update",
+        table_name="case_submissions",
+        record_id=submission.id,
+        old_values=old_values,
+        new_values={
+            "status": submission.status.value,
+            "reviewed_by": str(submission.reviewed_by),
+            "review_notes": submission.review_notes,
+        },
+    )
+
     return submission
 
 

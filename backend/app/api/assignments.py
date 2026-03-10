@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select, union
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import aliased
 
 from app.api.dependencies import get_current_user, require_admin, require_supervisor
 from app.core.database import get_db
@@ -16,6 +17,7 @@ from app.schemas.assignment import (
     AssignmentResponse,
     AssignmentWithDetailsResponse,
 )
+from app.utils.audit import record_audit
 
 router = APIRouter(prefix="/api/assignments", tags=["assignments"])
 
@@ -86,7 +88,7 @@ async def list_assignments(
 )
 async def create_assignment(
     body: AssignmentCreate,
-    _user: User = Depends(require_admin),
+    admin: User = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """Create a supervisor assignment. Admin only."""
@@ -162,13 +164,29 @@ async def create_assignment(
         )
 
     await db.refresh(assignment)
+
+    # Audit log
+    await record_audit(
+        db,
+        user_id=admin.id,
+        action="create",
+        table_name="supervisor_assignments",
+        record_id=assignment.id,
+        new_values={
+            "supervisor_id": str(assignment.supervisor_id),
+            "student_id": str(assignment.student_id) if assignment.student_id else None,
+            "assignment_type": assignment.assignment_type.value,
+            "department_id": str(assignment.department_id) if assignment.department_id else None,
+        },
+    )
+
     return assignment
 
 
 @router.delete("/{assignment_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_assignment(
     assignment_id: UUID,
-    _user: User = Depends(require_admin),
+    admin: User = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """Remove a supervisor assignment. Admin only."""
@@ -179,8 +197,26 @@ async def delete_assignment(
     if not assignment:
         raise HTTPException(status_code=404, detail="Assignment not found")
 
+    # Store old values for audit
+    old_values = {
+        "supervisor_id": str(assignment.supervisor_id),
+        "student_id": str(assignment.student_id) if assignment.student_id else None,
+        "assignment_type": assignment.assignment_type.value,
+        "department_id": str(assignment.department_id) if assignment.department_id else None,
+    }
+
     await db.delete(assignment)
     await db.commit()
+
+    # Audit log
+    await record_audit(
+        db,
+        user_id=admin.id,
+        action="delete",
+        table_name="supervisor_assignments",
+        record_id=assignment_id,
+        old_values=old_values,
+    )
 
 
 @router.get("/my-students", response_model=list[dict])
@@ -194,7 +230,8 @@ async def get_my_students(
     - Students with primary assignments to this supervisor
     - Students currently rotating in departments this supervisor oversees
     """
-    student_alias = User.__table__.alias("stu")
+    # Use aliased for proper ORM joins
+    student_user = aliased(User)
 
     # Get departments this supervisor oversees (department-type assignments)
     supervised_depts_result = await db.execute(
@@ -209,16 +246,16 @@ async def get_my_students(
     primary_query = (
         select(
             SupervisorAssignment.id.label("assignment_id"),
-            student_alias.c.id.label("student_id"),
-            student_alias.c.full_name.label("student_name"),
-            student_alias.c.email.label("student_email"),
-            student_alias.c.student_id.label("student_code"),
+            student_user.id.label("student_id"),
+            student_user.full_name.label("student_name"),
+            student_user.email.label("student_email"),
+            student_user.student_id.label("student_code"),
             StudentRotation.department_id.label("dept_id"),
             Department.name.label("dept_name"),
             SupervisorAssignment.assignment_type.label("assignment_type"),
         )
-        .join(student_alias, SupervisorAssignment.student_id == student_alias.c.id)
-        .outerjoin(StudentRotation, (StudentRotation.student_id == student_alias.c.id) & StudentRotation.is_current.is_(True))
+        .join(student_user, SupervisorAssignment.student_id == student_user.id)
+        .outerjoin(StudentRotation, (StudentRotation.student_id == student_user.id) & StudentRotation.is_current.is_(True))
         .outerjoin(Department, StudentRotation.department_id == Department.id)
         .where(
             SupervisorAssignment.supervisor_id == user.id,
@@ -232,16 +269,16 @@ async def get_my_students(
         dept_students_query = (
             select(
                 SupervisorAssignment.id.label("assignment_id"),
-                student_alias.c.id.label("student_id"),
-                student_alias.c.full_name.label("student_name"),
-                student_alias.c.email.label("student_email"),
-                student_alias.c.student_id.label("student_code"),
+                student_user.id.label("student_id"),
+                student_user.full_name.label("student_name"),
+                student_user.email.label("student_email"),
+                student_user.student_id.label("student_code"),
                 StudentRotation.department_id.label("dept_id"),
                 Department.name.label("dept_name"),
                 SupervisorAssignment.assignment_type.label("assignment_type"),
             )
             .join(SupervisorAssignment, SupervisorAssignment.department_id == StudentRotation.department_id)
-            .join(student_alias, StudentRotation.student_id == student_alias.c.id)
+            .join(student_user, StudentRotation.student_id == student_user.id)
             .join(Department, StudentRotation.department_id == Department.id)
             .where(
                 SupervisorAssignment.supervisor_id == user.id,
@@ -251,17 +288,22 @@ async def get_my_students(
             )
         )
 
-    # Combine queries
-    if dept_students_query:
-        combined_query = union(primary_query, dept_students_query).order_by("student_name")
+    # Combine queries using subquery for proper ordering
+    if dept_students_query is not None:
+        combined = union(primary_query, dept_students_query)
+        combined_subquery = combined.subquery()
+        final_query = (
+            select(combined_subquery)
+            .order_by(combined_subquery.c.student_name)
+        )
     else:
-        combined_query = primary_query.order_by("student_name")
+        final_query = primary_query.order_by(student_user.full_name)
 
-    result = await db.execute(combined_query)
+    result = await db.execute(final_query)
     students = []
-    seen_student_depts = set()  # Dedupe by student_id + dept_id combination
+    seen_student_depts = set()
 
-    for row in result.all():
+    for row in result:
         student_dept_key = (str(row.student_id), str(row.dept_id) if row.dept_id else "primary")
         if student_dept_key in seen_student_depts:
             continue

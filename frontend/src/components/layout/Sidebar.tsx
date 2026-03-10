@@ -8,6 +8,9 @@ import {
   Building2,
   ClipboardList,
   Link2,
+  Send,
+  Bell,
+  ScrollText,
 } from "lucide-react";
 
 const navItems = {
@@ -19,13 +22,18 @@ const navItems = {
   supervisor: [
     { to: "/", label: "Dashboard", icon: LayoutDashboard },
     { to: "/submissions", label: "Submissions", icon: ClipboardList },
+    { to: "/notifications/send", label: "Send Notification", icon: Send },
+    { to: "/notifications", label: "Notification History", icon: Bell },
   ],
   admin: [
     { to: "/", label: "Dashboard", icon: LayoutDashboard },
     { to: "/submissions", label: "Submissions", icon: ClipboardList },
+    { to: "/notifications/send", label: "Send Notification", icon: Send },
+    { to: "/notifications", label: "Notification History", icon: Bell },
     { to: "/admin/users", label: "Users", icon: Users },
     { to: "/admin/departments", label: "Departments", icon: Building2 },
     { to: "/admin/assignments", label: "Assignments", icon: Link2 },
+    { to: "/admin/audit-log", label: "Audit Log", icon: ScrollText },
     { to: "/admin/settings", label: "Settings", icon: Settings },
   ],
 };
@@ -46,6 +54,7 @@ export default function Sidebar() {
           <NavLink
             key={item.to}
             to={item.to}
+            end
             className={({ isActive }) =>
               `flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors ${
                 isActive
