@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { useAuthStore } from "@/stores/authStore";
 import { notificationService } from "@/services/notifications";
 import { assignmentService } from "@/services/assignments";
-import type { NotificationTemplate } from "@/types/notification";
+import type { NotificationTemplate, NotificationStatus } from "@/types/notification";
 import type { MyStudent } from "@/types/assignment";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -24,10 +24,7 @@ export default function SendNotification() {
   const [isLoading, setIsLoading] = useState(true);
   const [isSending, setIsSending] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
-  const [emailStatus, setEmailStatus] = useState<{
-    enabled: boolean;
-    mode: string;
-  } | null>(null);
+  const [emailStatus, setEmailStatus] = useState<NotificationStatus | null>(null);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -131,13 +128,13 @@ export default function SendNotification() {
         </div>
         {emailStatus && (
           <div className="flex items-center gap-2 text-sm">
-            {emailStatus.enabled ? (
+            {emailStatus.email_enabled ? (
               <CheckCircle2 className="h-4 w-4 text-green-500" />
             ) : (
               <AlertCircle className="h-4 w-4 text-yellow-500" />
             )}
             <span className="text-muted-foreground">
-              {emailStatus.enabled ? "Email enabled" : "Mock mode"} (
+              {emailStatus.email_enabled ? "Email enabled" : "Mock mode"} (
               {emailStatus.mode})
             </span>
           </div>
@@ -339,7 +336,7 @@ export default function SendNotification() {
             <p className="text-sm text-muted-foreground mb-4">
               You are about to send an email notification to{" "}
               <strong>{selectedStudentIds.length}</strong> student(s).
-              {emailStatus && !emailStatus.enabled && (
+              {emailStatus && !emailStatus.email_enabled && (
                 <span className="block mt-2 text-yellow-600 dark:text-yellow-400">
                   Note: Email is in mock mode. Emails will be logged but not
                   actually sent.
