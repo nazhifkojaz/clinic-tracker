@@ -1,9 +1,10 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from jose import JWTError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
+from app.core.rate_limit import limiter
 from app.core.security import (
     create_access_token,
     create_refresh_token,
@@ -17,7 +18,8 @@ router = APIRouter(prefix="/api/auth", tags=["auth"])
 
 
 @router.post("/login", response_model=TokenResponse)
-async def login(body: LoginRequest, db: AsyncSession = Depends(get_db)):
+@limiter.limit("10/minute")
+async def login(request: Request, body: LoginRequest, db: AsyncSession = Depends(get_db)):
     """Authenticate user and return access + refresh tokens."""
     result = await db.execute(select(User).where(User.email == body.email))
     user = result.scalar_one_or_none()
@@ -41,7 +43,8 @@ async def login(body: LoginRequest, db: AsyncSession = Depends(get_db)):
 
 
 @router.post("/refresh", response_model=TokenResponse)
-async def refresh_token(body: RefreshRequest, db: AsyncSession = Depends(get_db)):
+@limiter.limit("30/minute")
+async def refresh_token(request: Request, body: RefreshRequest, db: AsyncSession = Depends(get_db)):
     """Exchange refresh token for new access + refresh tokens."""
     try:
         payload = decode_token(body.refresh_token)
