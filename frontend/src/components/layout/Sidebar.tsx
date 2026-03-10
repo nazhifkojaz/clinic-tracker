@@ -11,7 +11,9 @@ import {
   Send,
   Bell,
   ScrollText,
+  X,
 } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 const navItems = {
   student: [
@@ -38,16 +40,33 @@ const navItems = {
   ],
 };
 
-export default function Sidebar() {
+interface SidebarProps {
+  open?: boolean;
+  onClose?: () => void;
+}
+
+export default function Sidebar({ open = false, onClose }: SidebarProps) {
   const { user } = useAuthStore();
   if (!user) return null;
 
   const items = navItems[user.role] || [];
 
   return (
-    <aside className="flex h-full w-60 flex-col border-r bg-card">
-      <div className="flex h-14 items-center border-b px-4">
+    <aside
+      className={cn(
+        "fixed inset-y-0 left-0 z-40 w-60 flex-col border-r bg-card transition-transform lg:static lg:translate-x-0",
+        open ? "translate-x-0" : "-translate-x-full lg:flex"
+      )}
+    >
+      <div className="flex h-14 items-center justify-between border-b px-4">
         <span className="text-lg font-semibold">Clinic Tracker</span>
+        <button
+          className="lg:hidden"
+          onClick={onClose}
+          aria-label="Close sidebar"
+        >
+          <X className="h-5 w-5" />
+        </button>
       </div>
       <nav className="flex-1 space-y-1 p-2">
         {items.map((item) => (
@@ -62,6 +81,12 @@ export default function Sidebar() {
                   : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
               }`
             }
+            onClick={() => {
+              // Close sidebar on mobile after navigation
+              if (window.innerWidth < 1024) {
+                onClose?.();
+              }
+            }}
           >
             <item.icon className="h-4 w-4" />
             {item.label}
