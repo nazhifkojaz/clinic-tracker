@@ -16,7 +16,10 @@ from app.models.rotation import StudentRotation
 from app.models.submission import CaseSubmission, SubmissionStatus
 from app.models.user import User, UserRole
 from app.schemas.submission import (
+    ReviewerInfo,
+    StudentInfo,
     SubmissionCreate,
+    SubmissionListResponse,
     SubmissionResponse,
     SubmissionReview,
     UploadUrlRequest,
@@ -83,7 +86,7 @@ async def create_submission(
     return submission
 
 
-@router.get("", response_model=list[SubmissionResponse])
+@router.get("", response_model=list[SubmissionListResponse])
 async def list_submissions(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
@@ -91,7 +94,10 @@ async def list_submissions(
     status_filter: SubmissionStatus | None = Query(None, alias="status"),
 ):
     """List submissions. Students see their own; supervisors/admins see all."""
-    query = select(CaseSubmission)
+    # Join with User to get student information
+    query = select(CaseSubmission, User).join(
+        User, CaseSubmission.student_id == User.id
+    )
 
     # Role-based filtering
     if user.role == UserRole.student:
@@ -126,7 +132,60 @@ async def list_submissions(
 
     query = query.order_by(CaseSubmission.created_at.desc())
     result = await db.execute(query)
-    return result.scalars().all()
+
+    # Collect all reviewer IDs
+    reviewer_ids: set[UUID] = set()
+    submissions_data = []
+    for row in result.all():
+        submission, student_user = row
+        submissions_data.append((submission, student_user))
+        if submission.reviewed_by:
+            reviewer_ids.add(submission.reviewed_by)
+
+    # Fetch all reviewers in one query
+    reviewers_map: dict[UUID, User] = {}
+    if reviewer_ids:
+        reviewers_result = await db.execute(
+            select(User).where(User.id.in_(list(reviewer_ids)))
+        )
+        reviewers_map = {r.id: r for r in reviewers_result.scalars().all()}
+
+    # Build response with student and reviewer info
+    submissions = []
+    for submission, student_user in submissions_data:
+        student_info = StudentInfo(
+            id=student_user.id,
+            full_name=student_user.full_name if student_user.full_name else (student_user.student_id or student_user.email),
+            student_id=student_user.student_id,
+            email=student_user.email,
+        )
+
+        reviewer_info = None
+        if submission.reviewed_by and submission.reviewed_by in reviewers_map:
+            reviewer_user = reviewers_map[submission.reviewed_by]
+            reviewer_info = ReviewerInfo(
+                id=reviewer_user.id,
+                full_name=reviewer_user.full_name if reviewer_user.full_name else reviewer_user.email,
+            )
+
+        submissions.append(SubmissionListResponse(
+            id=submission.id,
+            student_id=submission.student_id,
+            student=student_info,
+            department_id=submission.department_id,
+            task_category_id=submission.task_category_id,
+            case_count=submission.case_count,
+            proof_url=submission.proof_url,
+            notes=submission.notes,
+            status=submission.status,
+            reviewed_by=submission.reviewed_by,
+            reviewer=reviewer_info,
+            review_notes=submission.review_notes,
+            created_at=submission.created_at,
+            updated_at=submission.updated_at,
+        ))
+
+    return submissions
 
 
 @router.get("/{submission_id}", response_model=SubmissionResponse)

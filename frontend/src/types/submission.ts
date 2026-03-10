@@ -1,8 +1,21 @@
 export type SubmissionStatus = "pending" | "approved" | "rejected";
 
+export interface StudentInfo {
+  id: string;
+  full_name: string;
+  student_id: string | null;
+  email: string;
+}
+
+export interface ReviewerInfo {
+  id: string;
+  full_name: string;
+}
+
 export interface Submission {
   id: string;
   student_id: string;
+  student?: StudentInfo;
   department_id: string;
   task_category_id: string;
   case_count: number;
@@ -10,6 +23,7 @@ export interface Submission {
   notes: string | null;
   status: SubmissionStatus;
   reviewed_by: string | null;
+  reviewer?: ReviewerInfo;
   review_notes: string | null;
   created_at: string;
   updated_at: string;

@@ -14,6 +14,20 @@ class SubmissionCreate(BaseModel):
     notes: str | None = None
 
 
+class StudentInfo(BaseModel):
+    """Basic student information for submission responses."""
+    id: uuid.UUID
+    full_name: str
+    student_id: str | None
+    email: str
+
+
+class ReviewerInfo(BaseModel):
+    """Basic reviewer information for submission responses."""
+    id: uuid.UUID
+    full_name: str
+
+
 class SubmissionResponse(BaseModel):
     id: uuid.UUID
     student_id: uuid.UUID
@@ -29,6 +43,24 @@ class SubmissionResponse(BaseModel):
     updated_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class SubmissionListResponse(BaseModel):
+    """Response for submission list that includes student info."""
+    id: uuid.UUID
+    student_id: uuid.UUID
+    student: StudentInfo | None
+    department_id: uuid.UUID
+    task_category_id: uuid.UUID
+    case_count: int
+    proof_url: str
+    notes: str | None
+    status: SubmissionStatus
+    reviewed_by: uuid.UUID | None
+    reviewer: ReviewerInfo | None
+    review_notes: str | None
+    created_at: datetime
+    updated_at: datetime
 
 
 class SubmissionWithDetailsResponse(SubmissionResponse):

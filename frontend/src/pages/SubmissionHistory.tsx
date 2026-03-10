@@ -252,7 +252,15 @@ export default function SubmissionHistory() {
                 <tr key={sub.id} className="hover:bg-muted/30">
                   {!isStudent && (
                     <td className="px-4 py-3">
-                      <div className="font-medium">{sub.student_id}</div>
+                      <div className="font-medium">
+                        {sub.student?.full_name || "Unknown"}
+                        {sub.student?.student_id && (
+                          <span className="text-muted-foreground font-normal">
+                            {" "}({sub.student.student_id})
+                          </span>
+                        )}
+                      </div>
+                      <div className="text-xs text-muted-foreground">{sub.student?.email}</div>
                     </td>
                   )}
                   <td className="px-4 py-3">
@@ -342,7 +350,7 @@ export default function SubmissionHistory() {
                 <div className="rounded-md bg-muted/50 p-3">
                   <p className="text-sm font-medium">Review Information</p>
                   <p className="text-xs text-muted-foreground">
-                    Reviewed by: {selectedSubmission.reviewed_by || "Unknown"}
+                    Reviewed by: {selectedSubmission.reviewer?.full_name || "Unknown"}
                   </p>
                   {selectedSubmission.review_notes && (
                     <p className="mt-1 text-sm">{selectedSubmission.review_notes}</p>
