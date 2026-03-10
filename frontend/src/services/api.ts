@@ -1,4 +1,5 @@
 import axios from "axios";
+import { toast } from "sonner";
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
 
@@ -35,6 +36,18 @@ api.interceptors.response.use(
   (response) => response,
   async (error) => {
     const originalRequest = error.config;
+
+    // Add generic error toasts for common error codes
+    if (!error.response) {
+      // Network error (offline, DNS failure, etc.)
+      toast.error("Network error. Please check your connection.");
+    } else if (error.response.status === 500) {
+      toast.error("Server error. Please try again later.");
+    } else if (error.response.status === 403) {
+      toast.error("Access denied.");
+    }
+    // 400, 404, 422 — let the calling code handle (form validation, etc.)
+    // 401 is handled below by token refresh logic
 
     if (error.response?.status !== 401 || originalRequest._retry) {
       return Promise.reject(error);
