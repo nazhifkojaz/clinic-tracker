@@ -16,9 +16,10 @@ import ProgressGauge from "@/components/charts/ProgressGauge";
 import DepartmentBars from "@/components/charts/DepartmentBars";
 import ProgressTimeline from "@/components/charts/ProgressTimeline";
 import {
-  AlertCircle, Loader2, Users, CheckCircle, AlertTriangle, XCircle,
+  AlertCircle, Users, CheckCircle, AlertTriangle, XCircle,
   Eye, X, ChevronDown, ChevronRight, Search,
 } from "lucide-react";
+import { DashboardSkeleton } from "@/components/skeletons/DashboardSkeleton";
 
 const STATUS_STYLES: Record<string, { bg: string; text: string; label: string }> = {
   on_track: { bg: "bg-green-100", text: "text-green-700", label: "On Track" },
@@ -66,11 +67,7 @@ export default function SupervisorDashboard() {
   };
 
   if (loading) {
-    return (
-      <div className="flex items-center justify-center py-20">
-        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-      </div>
-    );
+    return <DashboardSkeleton />;
   }
 
   if (error || !data) {

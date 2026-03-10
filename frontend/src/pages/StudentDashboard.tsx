@@ -7,7 +7,8 @@ import type { StudentDashboardData, DepartmentProgress } from "@/types/dashboard
 import ProgressGauge from "@/components/charts/ProgressGauge";
 import ProgressTimeline from "@/components/charts/ProgressTimeline";
 import DepartmentBars from "@/components/charts/DepartmentBars";
-import { AlertCircle, ChevronDown, ChevronRight, Loader2 } from "lucide-react";
+import { AlertCircle, ChevronDown, ChevronRight } from "lucide-react";
+import { DashboardSkeleton } from "@/components/skeletons/DashboardSkeleton";
 
 export default function StudentDashboard() {
   const [data, setData] = useState<StudentDashboardData | null>(null);
@@ -33,11 +34,7 @@ export default function StudentDashboard() {
   }, [loadDashboard]);
 
   if (loading) {
-    return (
-      <div className="flex items-center justify-center py-20">
-        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-      </div>
-    );
+    return <DashboardSkeleton />;
   }
 
   if (error || !data) {
