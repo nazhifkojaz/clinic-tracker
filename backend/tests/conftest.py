@@ -12,9 +12,19 @@ from app.core.security import create_access_token, hash_password
 from app.main import app
 from app.models.user import User, UserRole
 
+# Use a dedicated test database URL — never the production one.
+import os
+
+TEST_DATABASE_URL = os.environ.get("TEST_DATABASE_URL")
+if not TEST_DATABASE_URL:
+    raise RuntimeError(
+        "TEST_DATABASE_URL is not set. "
+        "Set it to a local test database to avoid running tests against production."
+    )
+
 # Use NullPool to avoid connection reuse across different event loops
 test_engine = create_async_engine(
-    settings.DATABASE_URL,
+    TEST_DATABASE_URL,
     echo=False,
     poolclass=NullPool,
 )
