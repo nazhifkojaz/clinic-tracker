@@ -6,7 +6,8 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Loader2, ScrollText, ChevronDown, ChevronUp, Filter } from "lucide-react";
+import { ScrollText, ChevronDown, ChevronUp, Filter } from "lucide-react";
+import { TableSkeleton } from "@/components/skeletons/TableSkeleton";
 
 // Simple date formatting utilities
 function formatDateShort(dateStr: string): string {
@@ -316,9 +317,7 @@ export default function AuditLog() {
         </p>
 
         {isLoading ? (
-          <div className="flex items-center justify-center h-64">
-            <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-          </div>
+          <TableSkeleton rows={5} cols={5} />
         ) : entries.length === 0 ? (
           <div className="text-center py-12 text-muted-foreground">
             <ScrollText className="h-12 w-12 mx-auto mb-4 opacity-50" />
@@ -326,8 +325,8 @@ export default function AuditLog() {
           </div>
         ) : (
           <>
-            <div className="border rounded-md overflow-hidden">
-              <table className="w-full">
+            <div className="border rounded-md overflow-x-auto">
+              <table className="w-full min-w-[700px]">
                 <thead className="bg-muted">
                   <tr>
                     <th className="px-4 py-2 text-left text-sm font-medium w-[180px]">

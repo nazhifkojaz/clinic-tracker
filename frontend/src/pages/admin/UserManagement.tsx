@@ -5,7 +5,7 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { userService } from "@/services/users";
 import type { User, UserCreate, UserRole } from "@/types/user";
-import { Plus, Pencil } from "lucide-react";
+import { Loader2, Plus, Pencil } from "lucide-react";
 
 export default function UserManagement() {
   const [users, setUsers] = useState<User[]>([]);
@@ -95,7 +95,8 @@ export default function UserManagement() {
 
       <Card>
         <CardContent className="p-0">
-          <table className="w-full">
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[600px]">
             <thead>
               <tr className="border-b text-left text-sm text-muted-foreground">
                 <th className="p-4">Name</th>
@@ -129,6 +130,7 @@ export default function UserManagement() {
               ))}
             </tbody>
           </table>
+          </div>
         </CardContent>
       </Card>
 
@@ -205,7 +207,16 @@ export default function UserManagement() {
                     Cancel
                   </Button>
                   <Button type="submit" disabled={isSubmitting}>
-                    {isSubmitting ? "Saving..." : editingUser ? "Update" : "Create"}
+                    {isSubmitting ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Saving...
+                      </>
+                    ) : editingUser ? (
+                      "Update"
+                    ) : (
+                      "Create"
+                    )}
                   </Button>
                 </div>
               </form>
