@@ -5,7 +5,8 @@ import { notificationService } from "@/services/notifications";
 import type { NotificationRecord } from "@/types/notification";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Loader2, Bell, ChevronDown, ChevronUp } from "lucide-react";
+import { Bell, ChevronDown, ChevronUp } from "lucide-react";
+import { TableSkeleton } from "@/components/skeletons/TableSkeleton";
 
 interface ExpandedRow {
   [key: string]: boolean;
@@ -65,11 +66,7 @@ export default function NotificationHistory() {
   };
 
   if (isLoading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-      </div>
-    );
+    return <TableSkeleton rows={5} cols={4} />;
   }
 
   return (

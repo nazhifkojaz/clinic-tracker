@@ -15,6 +15,7 @@ import {
   ThumbsUp,
   X,
 } from "lucide-react";
+import { TableSkeleton } from "@/components/skeletons/TableSkeleton";
 
 const statusConfig: Record<
   SubmissionStatus,
@@ -212,9 +213,7 @@ export default function SubmissionHistory() {
       )}
 
       {isLoading ? (
-        <div className="flex min-h-[300px] items-center justify-center">
-          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-        </div>
+        <TableSkeleton rows={5} cols={6} />
       ) : submissions.length === 0 ? (
         <div className="flex min-h-[300px] flex-col items-center justify-center text-center">
           <FileImage className="mb-3 h-12 w-12 text-muted-foreground" />
