@@ -22,7 +22,7 @@ from app.schemas.notification import (
     NotificationTemplateResponse,
 )
 from app.utils.audit import format_template, record_audit
-from app.utils.email import is_mock_mode, send_email
+from app.utils.email import is_mock_mode, sanitize_for_email, send_email
 
 router = APIRouter(prefix="/api/notifications", tags=["notifications"])
 
@@ -189,7 +189,7 @@ async def send_notification(
             await send_email(
                 to=recipient.email,
                 subject=personalized_subject,
-                html=f"<p>{personalized_message.replace(chr(10), '<br>')}</p>",
+                html=f"<p>{sanitize_for_email(personalized_message).replace(chr(10), '<br>')}</p>",
             )
         except Exception as e:
             # Log error but don't fail the request

@@ -14,6 +14,7 @@ SETUP GUIDE FOR RESEND:
 
 5. The resend package is already in dependencies.
 """
+import html
 import logging
 
 from app.core.config import settings
@@ -36,6 +37,18 @@ if not _MOCK_MODE:
 def _is_configured() -> bool:
     """Check if Resend is properly configured."""
     return bool(settings.RESEND_API_KEY)
+
+
+def sanitize_for_email(content: str) -> str:
+    """Escape HTML entities in user-provided content to prevent injection.
+
+    Args:
+        content: User-provided text content
+
+    Returns:
+        HTML-escaped string safe for use in email bodies
+    """
+    return html.escape(content)
 
 
 async def send_email(
