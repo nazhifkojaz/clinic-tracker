@@ -10,7 +10,9 @@ from app.api.dependencies import (
     require_supervisor,
 )
 from app.core.database import get_db
+from app.models.assignment import AssignmentType, SupervisorAssignment
 from app.models.department import Department, TaskCategory
+from app.models.rotation import StudentRotation
 from app.models.submission import CaseSubmission, SubmissionStatus
 from app.models.user import User, UserRole
 from app.schemas.submission import (
@@ -94,8 +96,27 @@ async def list_submissions(
     # Role-based filtering
     if user.role == UserRole.student:
         query = query.where(CaseSubmission.student_id == user.id)
-    # Supervisors and admins see all submissions (Phase 4 will add
-    # assignment-based filtering for supervisors)
+    elif user.role == UserRole.supervisor:
+        # Supervisors see submissions from:
+        # 1. Students they are primary supervisor of
+        primary_students = select(SupervisorAssignment.student_id).where(
+            SupervisorAssignment.supervisor_id == user.id,
+            SupervisorAssignment.assignment_type == AssignmentType.primary,
+        )
+        # 2. Students currently rotating in a department they supervise
+        supervised_depts = select(SupervisorAssignment.department_id).where(
+            SupervisorAssignment.supervisor_id == user.id,
+            SupervisorAssignment.assignment_type == AssignmentType.department,
+        )
+        dept_students = select(StudentRotation.student_id).where(
+            StudentRotation.department_id.in_(supervised_depts),
+            StudentRotation.is_current.is_(True),
+        )
+        query = query.where(
+            CaseSubmission.student_id.in_(primary_students)
+            | CaseSubmission.student_id.in_(dept_students)
+        )
+    # Admins see all submissions (no filter)
 
     # Optional filters
     if department_id:
