@@ -89,6 +89,7 @@ async def db_session(_setup_database) -> AsyncGenerator[AsyncSession, None]:
 @pytest.fixture
 async def client(db_session: AsyncSession) -> AsyncGenerator[AsyncClient, None]:
     """HTTP client with DB dependency overridden."""
+
     async def override_get_db():
         yield db_session
 

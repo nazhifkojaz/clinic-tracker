@@ -44,9 +44,7 @@ async def get_upload_url(
     return UploadUrlResponse(upload_url=upload_url, object_key=object_key)
 
 
-@router.post(
-    "", response_model=SubmissionResponse, status_code=status.HTTP_201_CREATED
-)
+@router.post("", response_model=SubmissionResponse, status_code=status.HTTP_201_CREATED)
 async def create_submission(
     body: SubmissionCreate,
     user: User = Depends(require_student),
@@ -172,7 +170,9 @@ async def list_submissions(
     for submission, student_user in submissions_data:
         student_info = StudentInfo(
             id=student_user.id,
-            full_name=student_user.full_name if student_user.full_name else (student_user.student_id or student_user.email),
+            full_name=student_user.full_name
+            if student_user.full_name
+            else (student_user.student_id or student_user.email),
             student_id=student_user.student_id,
             email=student_user.email,
         )
@@ -182,25 +182,29 @@ async def list_submissions(
             reviewer_user = reviewers_map[submission.reviewed_by]
             reviewer_info = ReviewerInfo(
                 id=reviewer_user.id,
-                full_name=reviewer_user.full_name if reviewer_user.full_name else reviewer_user.email,
+                full_name=reviewer_user.full_name
+                if reviewer_user.full_name
+                else reviewer_user.email,
             )
 
-        submissions.append(SubmissionListResponse(
-            id=submission.id,
-            student_id=submission.student_id,
-            student=student_info,
-            department_id=submission.department_id,
-            task_category_id=submission.task_category_id,
-            case_count=submission.case_count,
-            proof_url=submission.proof_url,
-            notes=submission.notes,
-            status=submission.status,
-            reviewed_by=submission.reviewed_by,
-            reviewer=reviewer_info,
-            review_notes=submission.review_notes,
-            created_at=submission.created_at,
-            updated_at=submission.updated_at,
-        ))
+        submissions.append(
+            SubmissionListResponse(
+                id=submission.id,
+                student_id=submission.student_id,
+                student=student_info,
+                department_id=submission.department_id,
+                task_category_id=submission.task_category_id,
+                case_count=submission.case_count,
+                proof_url=submission.proof_url,
+                notes=submission.notes,
+                status=submission.status,
+                reviewed_by=submission.reviewed_by,
+                reviewer=reviewer_info,
+                review_notes=submission.review_notes,
+                created_at=submission.created_at,
+                updated_at=submission.updated_at,
+            )
+        )
 
     return submissions
 
@@ -236,9 +240,7 @@ async def review_submission(
     """Approve or reject a submission. Supervisor/admin only."""
     # Validate status transition
     if body.status == SubmissionStatus.pending:
-        raise HTTPException(
-            status_code=400, detail="Cannot set status back to pending"
-        )
+        raise HTTPException(status_code=400, detail="Cannot set status back to pending")
 
     result = await db.execute(
         select(CaseSubmission).where(CaseSubmission.id == submission_id)

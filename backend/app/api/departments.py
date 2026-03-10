@@ -26,6 +26,7 @@ router = APIRouter(prefix="/api/departments", tags=["departments"])
 
 # --- Department Endpoints ---
 
+
 @router.get("", response_model=list[DepartmentResponse])
 async def list_departments(
     _user: User = Depends(get_current_user),
@@ -100,9 +101,7 @@ async def update_department(
     db: AsyncSession = Depends(get_db),
 ):
     """Update a department. Admin only."""
-    result = await db.execute(
-        select(Department).where(Department.id == department_id)
-    )
+    result = await db.execute(select(Department).where(Department.id == department_id))
     department = result.scalar_one_or_none()
     if not department:
         raise HTTPException(status_code=404, detail="Department not found")
@@ -147,9 +146,8 @@ async def update_department(
 
 # --- Task Category Endpoints ---
 
-@router.get(
-    "/{department_id}/categories", response_model=list[TaskCategoryResponse]
-)
+
+@router.get("/{department_id}/categories", response_model=list[TaskCategoryResponse])
 async def list_task_categories(
     department_id: UUID,
     _user: User = Depends(get_current_user),
@@ -180,9 +178,7 @@ async def create_task_category(
 ):
     """Create a task category in a department. Admin only."""
     # Verify department exists
-    dept = await db.execute(
-        select(Department).where(Department.id == department_id)
-    )
+    dept = await db.execute(select(Department).where(Department.id == department_id))
     if not dept.scalar_one_or_none():
         raise HTTPException(status_code=404, detail="Department not found")
 

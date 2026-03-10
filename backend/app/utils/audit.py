@@ -3,8 +3,8 @@
 Call record_audit() from route handlers after state-changing operations
 to create an audit trail of who changed what, when.
 """
+
 import uuid
-from collections import defaultdict
 from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -38,11 +38,7 @@ def _sanitize_dict(d: dict | None) -> dict | None:
 
     SENSITIVE_KEYS = {"password_hash", "password"}
 
-    return {
-        k: _serialize_value(v)
-        for k, v in d.items()
-        if k not in SENSITIVE_KEYS
-    }
+    return {k: _serialize_value(v) for k, v in d.items() if k not in SENSITIVE_KEYS}
 
 
 def _serialize_dict(d: dict | None) -> dict | None:

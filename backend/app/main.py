@@ -1,5 +1,7 @@
 import logging
 
+from starlette.middleware.base import BaseHTTPMiddleware
+
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
@@ -30,6 +32,20 @@ app = FastAPI(
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
+MAX_REQUEST_SIZE = 1_048_576  # 1 MB
+
+
+class LimitRequestSizeMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        content_length = request.headers.get("content-length")
+        if content_length and int(content_length) > MAX_REQUEST_SIZE:
+            return JSONResponse(
+                status_code=413, content={"detail": "Request body too large"}
+            )
+        return await call_next(request)
+
+
+app.add_middleware(LimitRequestSizeMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.CORS_ORIGINS,
@@ -61,6 +77,7 @@ async def general_exception_handler(request: Request, exc: Exception):
             "detail": "Internal server error",
         },
     )
+
 
 # Include routers
 app.include_router(auth_router)

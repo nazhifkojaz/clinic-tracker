@@ -1,4 +1,5 @@
 """Notification Pydantic schemas."""
+
 import uuid
 from datetime import datetime
 

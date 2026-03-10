@@ -1,4 +1,5 @@
 """Update admin email to a valid domain for testing."""
+
 import asyncio
 
 from sqlalchemy import select

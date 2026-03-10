@@ -6,7 +6,7 @@ from sqlalchemy import select
 
 from app.models.assignment import AssignmentType, SupervisorAssignment
 from app.models.rotation import StudentRotation
-from app.models.submission import CaseSubmission, SubmissionStatus
+from app.models.submission import SubmissionStatus
 from app.models.user import User, UserRole
 from tests.conftest import auth_header
 from tests.factories import create_category, create_department, create_submission
@@ -51,12 +51,30 @@ async def test_student_dashboard_only_approved_count(
     cat = await create_category(db_session, dept.id, required_count=10)
 
     # Create submissions with different statuses
-    await create_submission(db_session, student_user.id, dept.id, cat.id,
-                           case_count=3, status=SubmissionStatus.approved)
-    await create_submission(db_session, student_user.id, dept.id, cat.id,
-                           case_count=5, status=SubmissionStatus.pending)
-    await create_submission(db_session, student_user.id, dept.id, cat.id,
-                           case_count=2, status=SubmissionStatus.rejected)
+    await create_submission(
+        db_session,
+        student_user.id,
+        dept.id,
+        cat.id,
+        case_count=3,
+        status=SubmissionStatus.approved,
+    )
+    await create_submission(
+        db_session,
+        student_user.id,
+        dept.id,
+        cat.id,
+        case_count=5,
+        status=SubmissionStatus.pending,
+    )
+    await create_submission(
+        db_session,
+        student_user.id,
+        dept.id,
+        cat.id,
+        case_count=2,
+        status=SubmissionStatus.rejected,
+    )
 
     response = await client.get(
         "/api/dashboard/student",
@@ -69,7 +87,9 @@ async def test_student_dashboard_only_approved_count(
 
 
 @pytest.mark.anyio
-async def test_student_dashboard_multiple_categories(client, student_user, student_token, db_session):
+async def test_student_dashboard_multiple_categories(
+    client, student_user, student_token, db_session
+):
     """Dashboard should aggregate across multiple categories correctly."""
     # Get baseline
     baseline_resp = await client.get(
@@ -81,14 +101,30 @@ async def test_student_dashboard_multiple_categories(client, student_user, stude
     baseline_required = baseline["total_required"]
 
     dept = await create_department(db_session)
-    cat1 = await create_category(db_session, dept.id, name="Category 1", required_count=20)
-    cat2 = await create_category(db_session, dept.id, name="Category 2", required_count=30)
+    cat1 = await create_category(
+        db_session, dept.id, name="Category 1", required_count=20
+    )
+    cat2 = await create_category(
+        db_session, dept.id, name="Category 2", required_count=30
+    )
 
     # Complete 10/20 of cat1 (50%) and 15/30 of cat2 (50%)
-    await create_submission(db_session, student_user.id, dept.id, cat1.id,
-                           case_count=10, status=SubmissionStatus.approved)
-    await create_submission(db_session, student_user.id, dept.id, cat2.id,
-                           case_count=15, status=SubmissionStatus.approved)
+    await create_submission(
+        db_session,
+        student_user.id,
+        dept.id,
+        cat1.id,
+        case_count=10,
+        status=SubmissionStatus.approved,
+    )
+    await create_submission(
+        db_session,
+        student_user.id,
+        dept.id,
+        cat2.id,
+        case_count=15,
+        status=SubmissionStatus.approved,
+    )
 
     response = await client.get(
         "/api/dashboard/student",
@@ -99,7 +135,11 @@ async def test_student_dashboard_multiple_categories(client, student_user, stude
     assert data["total_required"] == baseline_required + 50
     assert data["total_completed"] == baseline_completed + 25
     # Overall percentage should be (baseline_completed + 25) / (baseline_required + 50) * 100
-    expected_pct = ((baseline_completed + 25) / (baseline_required + 50) * 100) if (baseline_required + 50) > 0 else 0
+    expected_pct = (
+        ((baseline_completed + 25) / (baseline_required + 50) * 100)
+        if (baseline_required + 50) > 0
+        else 0
+    )
     assert abs(data["overall_completion_percentage"] - expected_pct) < 0.1
 
 
@@ -135,7 +175,11 @@ async def test_supervisor_dashboard_student_classification(
     )
 
     student_entry = next(
-        (s for s in response.json()["students"] if s["student_name"] == "Test Student A"),
+        (
+            s
+            for s in response.json()["students"]
+            if s["student_name"] == "Test Student A"
+        ),
         None,
     )
     assert student_entry is not None
@@ -149,7 +193,6 @@ async def test_supervisor_dashboard_classification_thresholds(
 ):
     """Supervisor dashboard should classify students at correct thresholds."""
     # Get the global total required
-    from sqlalchemy import select
     from app.models.department import TaskCategory
 
     cat_result = await db_session.execute(
@@ -192,8 +235,14 @@ async def test_supervisor_dashboard_classification_thresholds(
         dept = await create_department(db_session)
         cat = await create_category(db_session, dept.id, required_count=cases)
 
-        await create_submission(db_session, student.id, dept.id, cat.id,
-                               case_count=cases, status=SubmissionStatus.approved)
+        await create_submission(
+            db_session,
+            student.id,
+            dept.id,
+            cat.id,
+            case_count=cases,
+            status=SubmissionStatus.approved,
+        )
 
     response = await client.get(
         "/api/dashboard/supervisor",
@@ -208,7 +257,11 @@ async def test_supervisor_dashboard_classification_thresholds(
         ("On Track Student", on_track_cases, "on_track"),
     ]:
         student_entry = next(
-            (s for s in data["students"] if s["student_name"].startswith(name.split()[0])),
+            (
+                s
+                for s in data["students"]
+                if s["student_name"].startswith(name.split()[0])
+            ),
             None,
         )
         assert student_entry is not None, f"Could not find student {name}"
@@ -223,7 +276,9 @@ async def test_supervisor_dashboard_classification_thresholds(
 
 
 @pytest.mark.anyio
-async def test_supervisor_dashboard_has_required_fields(client, supervisor_user, supervisor_token):
+async def test_supervisor_dashboard_has_required_fields(
+    client, supervisor_user, supervisor_token
+):
     """Supervisor dashboard should have all required fields."""
     response = await client.get(
         "/api/dashboard/supervisor",
@@ -238,7 +293,10 @@ async def test_supervisor_dashboard_has_required_fields(client, supervisor_user,
     assert "behind_count" in data
     assert "students" in data
     # Counts should add up correctly
-    assert data["total_students"] == data["on_track_count"] + data["at_risk_count"] + data["behind_count"]
+    assert (
+        data["total_students"]
+        == data["on_track_count"] + data["at_risk_count"] + data["behind_count"]
+    )
 
 
 @pytest.mark.anyio
@@ -255,7 +313,9 @@ async def test_admin_dashboard_sees_all_students(client, admin_token, db_session
 
 
 @pytest.mark.anyio
-async def test_department_dashboard(client, supervisor_user, supervisor_token, admin_token, db_session):
+async def test_department_dashboard(
+    client, supervisor_user, supervisor_token, admin_token, db_session
+):
     """Department dashboard should show per-student progress."""
     dept = await create_department(db_session)
     cat = await create_category(db_session, dept.id, required_count=50)
@@ -290,8 +350,14 @@ async def test_department_dashboard(client, supervisor_user, supervisor_token, a
     await db_session.commit()
 
     # Create some approved submissions
-    await create_submission(db_session, student.id, dept.id, cat.id,
-                           case_count=25, status=SubmissionStatus.approved)
+    await create_submission(
+        db_session,
+        student.id,
+        dept.id,
+        cat.id,
+        case_count=25,
+        status=SubmissionStatus.approved,
+    )
 
     response = await client.get(
         f"/api/dashboard/department/{dept.id}",
@@ -314,7 +380,9 @@ async def test_department_dashboard(client, supervisor_user, supervisor_token, a
 
 
 @pytest.mark.anyio
-async def test_student_dashboard_current_rotation(client, student_user, student_token, db_session):
+async def test_student_dashboard_current_rotation(
+    client, student_user, student_token, db_session
+):
     """Student dashboard should show current department rotation."""
     dept = await create_department(db_session, name="Current Department")
 
@@ -337,16 +405,30 @@ async def test_student_dashboard_current_rotation(client, student_user, student_
 
 
 @pytest.mark.anyio
-async def test_student_dashboard_recent_submissions(client, student_user, student_token, db_session):
+async def test_student_dashboard_recent_submissions(
+    client, student_user, student_token, db_session
+):
     """Student dashboard should show recent submissions."""
     dept = await create_department(db_session)
     cat = await create_category(db_session, dept.id)
 
     # Create some submissions
-    await create_submission(db_session, student_user.id, dept.id, cat.id,
-                           case_count=1, status=SubmissionStatus.approved)
-    await create_submission(db_session, student_user.id, dept.id, cat.id,
-                           case_count=2, status=SubmissionStatus.pending)
+    await create_submission(
+        db_session,
+        student_user.id,
+        dept.id,
+        cat.id,
+        case_count=1,
+        status=SubmissionStatus.approved,
+    )
+    await create_submission(
+        db_session,
+        student_user.id,
+        dept.id,
+        cat.id,
+        case_count=2,
+        status=SubmissionStatus.pending,
+    )
 
     response = await client.get(
         "/api/dashboard/student",

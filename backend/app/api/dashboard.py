@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.dependencies import get_current_user, require_student, require_supervisor
+from app.api.dependencies import require_student, require_supervisor
 from app.core.database import get_db
 from app.models.assignment import AssignmentType, SupervisorAssignment
 from app.models.department import Department, TaskCategory
@@ -85,38 +85,49 @@ async def _build_student_dashboard(
         for cat in cats:
             approved = counts.get((cat.id, SubmissionStatus.approved), 0)
             pending = counts.get((cat.id, SubmissionStatus.pending), 0)
-            pct = min((approved / cat.required_count) * 100, 100.0) if cat.required_count > 0 else 0.0
+            pct = (
+                min((approved / cat.required_count) * 100, 100.0)
+                if cat.required_count > 0
+                else 0.0
+            )
 
-            cat_progresses.append(CategoryProgress(
-                category_id=cat.id,
-                category_name=cat.name,
-                required_count=cat.required_count,
-                completed_count=approved,
-                pending_count=pending,
-                completion_percentage=round(pct, 1),
-            ))
+            cat_progresses.append(
+                CategoryProgress(
+                    category_id=cat.id,
+                    category_name=cat.name,
+                    required_count=cat.required_count,
+                    completed_count=approved,
+                    pending_count=pending,
+                    completion_percentage=round(pct, 1),
+                )
+            )
             dept_required += cat.required_count
             dept_completed += approved
 
         dept_pct = (dept_completed / dept_required * 100) if dept_required > 0 else 0.0
-        department_progresses.append(DepartmentProgress(
-            department_id=dept.id,
-            department_name=dept.name,
-            categories=cat_progresses,
-            total_required=dept_required,
-            total_completed=dept_completed,
-            completion_percentage=round(dept_pct, 1),
-        ))
+        department_progresses.append(
+            DepartmentProgress(
+                department_id=dept.id,
+                department_name=dept.name,
+                categories=cat_progresses,
+                total_required=dept_required,
+                total_completed=dept_completed,
+                completion_percentage=round(dept_pct, 1),
+            )
+        )
         grand_total_required += dept_required
         grand_total_completed += dept_completed
 
     # 5. Overall completion
-    overall_pct = (grand_total_completed / grand_total_required * 100) if grand_total_required > 0 else 0.0
+    overall_pct = (
+        (grand_total_completed / grand_total_required * 100)
+        if grand_total_required > 0
+        else 0.0
+    )
 
     # 6. Current rotation
     rot_result = await db.execute(
-        select(StudentRotation)
-        .where(
+        select(StudentRotation).where(
             StudentRotation.student_id == student.id,
             StudentRotation.is_current.is_(True),
         )
@@ -176,14 +187,18 @@ async def _build_student_dashboard(
     progress_points: list[ProgressDataPoint] = []
     for row in pot_rows:
         cumulative += int(row.daily_cases)
-        progress_points.append(ProgressDataPoint(
-            date=str(row.submission_date),
-            cumulative_cases=cumulative,
-        ))
+        progress_points.append(
+            ProgressDataPoint(
+                date=str(row.submission_date),
+                cumulative_cases=cumulative,
+            )
+        )
 
     return StudentDashboardResponse(
         student_id=student.id,
-        student_name=student.full_name if student.full_name else (student.student_id or student.email),
+        student_name=student.full_name
+        if student.full_name
+        else (student.student_id or student.email),
         current_department=current_dept_name,
         overall_completion_percentage=round(overall_pct, 1),
         total_required=grand_total_required,
@@ -318,8 +333,11 @@ async def get_supervisor_dashboard(
         student_ids = await _get_supervised_student_ids(user.id, db)
         if not student_ids:
             return SupervisorDashboardResponse(
-                total_students=0, on_track_count=0, at_risk_count=0,
-                behind_count=0, students=[],
+                total_students=0,
+                on_track_count=0,
+                at_risk_count=0,
+                behind_count=0,
+                students=[],
             )
         students_result = await db.execute(
             select(User).where(
@@ -351,7 +369,9 @@ async def get_supervisor_dashboard(
             .group_by(CaseSubmission.student_id)
         )
         agg_result = await db.execute(agg_query)
-        completed_map = {row.student_id: int(row.total_completed) for row in agg_result.all()}
+        completed_map = {
+            row.student_id: int(row.total_completed) for row in agg_result.all()
+        }
     else:
         completed_map = {}
 
@@ -376,7 +396,11 @@ async def get_supervisor_dashboard(
 
     for student in students:
         completed = completed_map.get(student.id, 0)
-        pct = (completed / total_required_global * 100) if total_required_global > 0 else 0.0
+        pct = (
+            (completed / total_required_global * 100)
+            if total_required_global > 0
+            else 0.0
+        )
         status = _classify_status(pct)
 
         if status == "on_track":
@@ -387,19 +411,25 @@ async def get_supervisor_dashboard(
             behind += 1
 
         # Use student_code or email as fallback if full_name is empty
-        display_name = student.full_name if student.full_name else (student.student_id or student.email)
+        display_name = (
+            student.full_name
+            if student.full_name
+            else (student.student_id or student.email)
+        )
 
-        summaries.append(StudentSummary(
-            student_id=student.id,
-            student_name=display_name,
-            student_email=student.email,
-            student_code=student.student_id,
-            current_department=rotation_map.get(student.id),
-            overall_completion_percentage=round(pct, 1),
-            total_required=total_required_global,
-            total_completed=completed,
-            status=status,
-        ))
+        summaries.append(
+            StudentSummary(
+                student_id=student.id,
+                student_name=display_name,
+                student_email=student.email,
+                student_code=student.student_id,
+                current_department=rotation_map.get(student.id),
+                overall_completion_percentage=round(pct, 1),
+                total_required=total_required_global,
+                total_completed=completed,
+                status=status,
+            )
+        )
 
     return SupervisorDashboardResponse(
         total_students=len(students),
@@ -482,7 +512,9 @@ async def get_department_dashboard(
             .group_by(CaseSubmission.student_id)
         )
         agg_result = await db.execute(agg_query)
-        completed_map = {row.student_id: int(row.total_completed) for row in agg_result.all()}
+        completed_map = {
+            row.student_id: int(row.total_completed) for row in agg_result.all()
+        }
     else:
         completed_map = {}
 
@@ -492,16 +524,24 @@ async def get_department_dashboard(
 
     for student in students:
         completed = completed_map.get(student.id, 0)
-        pct = (completed / dept_total_required * 100) if dept_total_required > 0 else 0.0
-        display_name = student.full_name if student.full_name else (student.student_id or student.email)
-        student_progresses.append(DepartmentStudentProgress(
-            student_id=student.id,
-            student_name=display_name,
-            total_required=dept_total_required,
-            total_completed=completed,
-            completion_percentage=round(pct, 1),
-            status=_classify_status(pct),
-        ))
+        pct = (
+            (completed / dept_total_required * 100) if dept_total_required > 0 else 0.0
+        )
+        display_name = (
+            student.full_name
+            if student.full_name
+            else (student.student_id or student.email)
+        )
+        student_progresses.append(
+            DepartmentStudentProgress(
+                student_id=student.id,
+                student_name=display_name,
+                total_required=dept_total_required,
+                total_completed=completed,
+                completion_percentage=round(pct, 1),
+                status=_classify_status(pct),
+            )
+        )
         total_completion_sum += pct
 
     avg_completion = (total_completion_sum / len(students)) if students else 0.0

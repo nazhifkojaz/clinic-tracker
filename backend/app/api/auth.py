@@ -19,7 +19,9 @@ router = APIRouter(prefix="/api/auth", tags=["auth"])
 
 @router.post("/login", response_model=TokenResponse)
 @limiter.limit("10/minute")
-async def login(request: Request, body: LoginRequest, db: AsyncSession = Depends(get_db)):
+async def login(
+    request: Request, body: LoginRequest, db: AsyncSession = Depends(get_db)
+):
     """Authenticate user and return access + refresh tokens."""
     result = await db.execute(select(User).where(User.email == body.email))
     user = result.scalar_one_or_none()
@@ -44,7 +46,9 @@ async def login(request: Request, body: LoginRequest, db: AsyncSession = Depends
 
 @router.post("/refresh", response_model=TokenResponse)
 @limiter.limit("30/minute")
-async def refresh_token(request: Request, body: RefreshRequest, db: AsyncSession = Depends(get_db)):
+async def refresh_token(
+    request: Request, body: RefreshRequest, db: AsyncSession = Depends(get_db)
+):
     """Exchange refresh token for new access + refresh tokens."""
     try:
         payload = decode_token(body.refresh_token)

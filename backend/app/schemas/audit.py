@@ -1,4 +1,5 @@
 """Audit log Pydantic schemas."""
+
 import uuid
 from datetime import datetime
 

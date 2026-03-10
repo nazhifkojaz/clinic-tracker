@@ -3,11 +3,11 @@
 Supervisors can send email notifications to students and view notification history.
 Admins can send to any student and view all notifications.
 """
+
 import uuid
-from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import select, update
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -21,7 +21,7 @@ from app.schemas.notification import (
     NotificationSend,
     NotificationTemplateResponse,
 )
-from app.utils.audit import format_template, record_audit
+from app.utils.audit import format_template
 from app.utils.email import is_mock_mode, sanitize_for_email, send_email
 
 router = APIRouter(prefix="/api/notifications", tags=["notifications"])
@@ -33,9 +33,7 @@ async def list_templates(
 ):
     """List available notification templates. Supervisor/admin only."""
     return [
-        NotificationTemplateResponse(
-            key=k, subject=v["subject"], message=v["message"]
-        )
+        NotificationTemplateResponse(key=k, subject=v["subject"], message=v["message"])
         for k, v in NOTIFICATION_TEMPLATES.items()
     ]
 
@@ -49,10 +47,7 @@ async def _get_student_names(
             User.id.in_(student_ids), User.role == UserRole.student
         )
     )
-    return {
-        row.id: (row.full_name or row.email)
-        for row in result.all()
-    }
+    return {row.id: (row.full_name or row.email) for row in result.all()}
 
 
 async def _validate_supervisor_assignments(
@@ -114,9 +109,7 @@ async def send_notification(
     """
     # Admins can send to any student, skip assignment check
     if user.role != UserRole.admin:
-        await _validate_supervisor_assignments(
-            db, user.id, payload.recipient_ids
-        )
+        await _validate_supervisor_assignments(db, user.id, payload.recipient_ids)
 
     # Fetch recipient users and validate they are students
     recipient_result = await db.execute(
@@ -129,9 +122,7 @@ async def send_notification(
 
     if len(recipients) != len(payload.recipient_ids):
         found_ids = {r.id for r in recipients}
-        missing = [
-            str(uid) for uid in payload.recipient_ids if uid not in found_ids
-        ]
+        missing = [str(uid) for uid in payload.recipient_ids if uid not in found_ids]
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Students not found: {', '.join(missing)}",
@@ -172,8 +163,12 @@ async def send_notification(
                 "student_name": recipient_name,
                 "supervisor_name": sender_name,
             }
-            personalized_subject = format_template(personalized_subject, vars_with_recipient)
-            personalized_message = format_template(personalized_message, vars_with_recipient)
+            personalized_subject = format_template(
+                personalized_subject, vars_with_recipient
+            )
+            personalized_message = format_template(
+                personalized_message, vars_with_recipient
+            )
 
         # Create notification record
         notification = Notification(
@@ -191,7 +186,7 @@ async def send_notification(
                 subject=personalized_subject,
                 html=f"<p>{sanitize_for_email(personalized_message).replace(chr(10), '<br>')}</p>",
             )
-        except Exception as e:
+        except Exception:
             # Log error but don't fail the request
             # Notification record is still created
             pass
@@ -207,7 +202,9 @@ async def send_notification(
     # Fetch full data for response
     result = await db.execute(
         select(Notification)
-        .options(selectinload(Notification.sender), selectinload(Notification.recipient))
+        .options(
+            selectinload(Notification.sender), selectinload(Notification.recipient)
+        )
         .where(Notification.id.in_([n.id for n in created_notifications]))
     )
     notifications = result.scalars().all()

@@ -2,13 +2,13 @@
 
 Admins can view a filterable, paginated audit trail of data modifications.
 """
+
 import uuid
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy import func, select, text
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
 
 from app.api.dependencies import require_admin
 from app.core.database import get_db

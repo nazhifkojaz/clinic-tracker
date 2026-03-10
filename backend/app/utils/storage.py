@@ -18,8 +18,8 @@ SETUP GUIDE FOR R2:
 
 5. The presigned URLs will work automatically once configured.
 """
+
 import uuid
-from pathlib import Path
 
 from app.core.config import settings
 

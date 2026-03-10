@@ -1,4 +1,5 @@
 """Seed an initial admin user. Usage: uv run python -m app.scripts.seed_admin"""
+
 import asyncio
 
 from sqlalchemy import select

@@ -1,14 +1,19 @@
+from __future__ import annotations
+
 import enum
 import uuid
 from datetime import datetime
+from typing import TYPE_CHECKING
 
-from sqlalchemy import (
-    DateTime, Enum, ForeignKey, Integer, String, Text, func, text
-)
+from sqlalchemy import DateTime, Enum, ForeignKey, Integer, String, Text, func, text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
+
+if TYPE_CHECKING:
+    from app.models.department import Department, TaskCategory
+    from app.models.user import User
 
 
 class SubmissionStatus(str, enum.Enum):

@@ -42,7 +42,10 @@ async def list_assignments(
             student_alias.c.full_name.label("student_name"),
             Department.name.label("department_name"),
         )
-        .join(supervisor_alias, SupervisorAssignment.supervisor_id == supervisor_alias.c.id)
+        .join(
+            supervisor_alias,
+            SupervisorAssignment.supervisor_id == supervisor_alias.c.id,
+        )
         .outerjoin(student_alias, SupervisorAssignment.student_id == student_alias.c.id)
         .outerjoin(Department, SupervisorAssignment.department_id == Department.id)
     )
@@ -83,9 +86,7 @@ async def list_assignments(
     return assignments
 
 
-@router.post(
-    "", response_model=AssignmentResponse, status_code=status.HTTP_201_CREATED
-)
+@router.post("", response_model=AssignmentResponse, status_code=status.HTTP_201_CREATED)
 async def create_assignment(
     body: AssignmentCreate,
     admin: User = Depends(require_admin),
@@ -137,7 +138,9 @@ async def create_assignment(
         if not student:
             raise HTTPException(status_code=404, detail="Student not found or inactive")
         if student.role != UserRole.student:
-            raise HTTPException(status_code=400, detail="Assigned user is not a student")
+            raise HTTPException(
+                status_code=400, detail="Assigned user is not a student"
+            )
 
     # Validate department exists (if department-type)
     if body.department_id:
@@ -159,9 +162,7 @@ async def create_assignment(
         await db.commit()
     except IntegrityError:
         await db.rollback()
-        raise HTTPException(
-            status_code=409, detail="This assignment already exists"
-        )
+        raise HTTPException(status_code=409, detail="This assignment already exists")
 
     await db.refresh(assignment)
 
@@ -176,7 +177,9 @@ async def create_assignment(
             "supervisor_id": str(assignment.supervisor_id),
             "student_id": str(assignment.student_id) if assignment.student_id else None,
             "assignment_type": assignment.assignment_type.value,
-            "department_id": str(assignment.department_id) if assignment.department_id else None,
+            "department_id": str(assignment.department_id)
+            if assignment.department_id
+            else None,
         },
     )
 
@@ -202,7 +205,9 @@ async def delete_assignment(
         "supervisor_id": str(assignment.supervisor_id),
         "student_id": str(assignment.student_id) if assignment.student_id else None,
         "assignment_type": assignment.assignment_type.value,
-        "department_id": str(assignment.department_id) if assignment.department_id else None,
+        "department_id": str(assignment.department_id)
+        if assignment.department_id
+        else None,
     }
 
     await db.delete(assignment)
@@ -255,7 +260,11 @@ async def get_my_students(
             SupervisorAssignment.assignment_type.label("assignment_type"),
         )
         .join(student_user, SupervisorAssignment.student_id == student_user.id)
-        .outerjoin(StudentRotation, (StudentRotation.student_id == student_user.id) & StudentRotation.is_current.is_(True))
+        .outerjoin(
+            StudentRotation,
+            (StudentRotation.student_id == student_user.id)
+            & StudentRotation.is_current.is_(True),
+        )
         .outerjoin(Department, StudentRotation.department_id == Department.id)
         .where(
             SupervisorAssignment.supervisor_id == user.id,
@@ -277,7 +286,10 @@ async def get_my_students(
                 Department.name.label("dept_name"),
                 SupervisorAssignment.assignment_type.label("assignment_type"),
             )
-            .join(SupervisorAssignment, SupervisorAssignment.department_id == StudentRotation.department_id)
+            .join(
+                SupervisorAssignment,
+                SupervisorAssignment.department_id == StudentRotation.department_id,
+            )
             .join(student_user, StudentRotation.student_id == student_user.id)
             .join(Department, StudentRotation.department_id == Department.id)
             .where(
@@ -292,9 +304,8 @@ async def get_my_students(
     if dept_students_query is not None:
         combined = union(primary_query, dept_students_query)
         combined_subquery = combined.subquery()
-        final_query = (
-            select(combined_subquery)
-            .order_by(combined_subquery.c.student_name)
+        final_query = select(combined_subquery).order_by(
+            combined_subquery.c.student_name
         )
     else:
         final_query = primary_query.order_by(student_user.full_name)
@@ -304,19 +315,24 @@ async def get_my_students(
     seen_student_depts = set()
 
     for row in result:
-        student_dept_key = (str(row.student_id), str(row.dept_id) if row.dept_id else "primary")
+        student_dept_key = (
+            str(row.student_id),
+            str(row.dept_id) if row.dept_id else "primary",
+        )
         if student_dept_key in seen_student_depts:
             continue
         seen_student_depts.add(student_dept_key)
 
-        students.append({
-            "assignment_id": str(row.assignment_id),
-            "student_id": str(row.student_id),
-            "student_name": row.student_name,
-            "student_email": row.student_email,
-            "student_code": row.student_code,
-            "assignment_type": row.assignment_type,
-            "department_id": str(row.dept_id) if row.dept_id else None,
-            "department_name": row.dept_name,
-        })
+        students.append(
+            {
+                "assignment_id": str(row.assignment_id),
+                "student_id": str(row.student_id),
+                "student_name": row.student_name,
+                "student_email": row.student_email,
+                "student_code": row.student_code,
+                "assignment_type": row.assignment_type,
+                "department_id": str(row.dept_id) if row.dept_id else None,
+                "department_name": row.dept_name,
+            }
+        )
     return students

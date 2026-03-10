@@ -6,6 +6,7 @@ from pydantic import BaseModel, Field
 
 # --- Task Category Schemas ---
 
+
 class TaskCategoryCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=255)
     required_count: int = Field(..., gt=0)
@@ -33,6 +34,7 @@ class TaskCategoryResponse(BaseModel):
 
 
 # --- Department Schemas ---
+
 
 class DepartmentCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=255)

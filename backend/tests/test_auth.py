@@ -99,6 +99,7 @@ async def test_refresh_token(client, student_user):
     assert "refresh_token" in data
     # Verify we can decode the new access token
     from app.core.security import decode_token
+
     payload = decode_token(data["access_token"])
     assert payload["type"] == "access"
 

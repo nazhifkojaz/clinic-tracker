@@ -14,6 +14,7 @@ SETUP GUIDE FOR RESEND:
 
 5. The resend package is already in dependencies.
 """
+
 import html
 import logging
 

@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.dependencies import get_current_user, require_student, require_supervisor
+from app.api.dependencies import require_student, require_supervisor
 from app.core.database import get_db
 from app.models.department import Department
 from app.models.rotation import StudentRotation

@@ -1,7 +1,3 @@
-import pytest
-from pydantic import ValidationError
-
-
 def test_settings_loads_from_env(monkeypatch):
     """Settings should load required values from environment variables."""
     monkeypatch.setenv(
@@ -23,12 +19,15 @@ def test_settings_loads_from_env(monkeypatch):
 
 def test_settings_defaults(monkeypatch):
     """Settings should have correct default values for optional fields."""
-    monkeypatch.setenv("DATABASE_URL", "postgresql+asyncpg://test:test@localhost/testdb")
+    monkeypatch.setenv(
+        "DATABASE_URL", "postgresql+asyncpg://test:test@localhost/testdb"
+    )
     monkeypatch.setenv("SECRET_KEY", "test-secret-key-at-least-32-chars-long!!")
     monkeypatch.delenv("DEBUG", raising=False)
 
     import importlib
     import app.core.config
+
     importlib.reload(app.core.config)
     from app.core.config import Settings
 

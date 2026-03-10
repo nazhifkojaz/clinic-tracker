@@ -1,27 +1,27 @@
-import uuid
 import random
 import string
+import uuid
 
 import pytest
 from sqlalchemy import select
+
+from app.models.assignment import AssignmentType, SupervisorAssignment
+from tests.conftest import auth_header
+from tests.factories import create_category, create_department
 
 
 def _random_suffix() -> str:
     """Generate a random suffix for unique names."""
     return "".join(random.choices(string.ascii_lowercase, k=8))
 
-from app.models.assignment import AssignmentType, SupervisorAssignment
-from app.models.department import Department, TaskCategory
-from app.models.submission import CaseSubmission, SubmissionStatus
-from tests.conftest import auth_header
-from tests.factories import create_category, create_department, create_submission
-
 
 @pytest.mark.anyio
 async def test_create_submission(client, student_user, student_token, db_session):
     """Student can create a valid case submission."""
     dept = await create_department(db_session, name="Oral Surgery")
-    cat = await create_category(db_session, dept.id, name="Extraction", required_count=20)
+    cat = await create_category(
+        db_session, dept.id, name="Extraction", required_count=20
+    )
 
     response = await client.post(
         "/api/submissions",
@@ -58,7 +58,9 @@ async def test_create_submission_invalid_department(client, student_token):
 
 
 @pytest.mark.anyio
-async def test_create_submission_mismatched_category(client, student_user, student_token, db_session):
+async def test_create_submission_mismatched_category(
+    client, student_user, student_token, db_session
+):
     """Submission with category from different department should return 404."""
     dept1 = await create_department(db_session, name="Department 1")
     dept2 = await create_department(db_session, name="Department 2")
@@ -186,7 +188,9 @@ async def test_student_only_sees_own_submissions(
     cat = await create_category(db_session, dept.id)
 
     # Get initial count
-    initial_list = await client.get("/api/submissions", headers=auth_header(student_token))
+    initial_list = await client.get(
+        "/api/submissions", headers=auth_header(student_token)
+    )
     initial_count = len(initial_list.json())
 
     # Student creates a submission
@@ -202,7 +206,9 @@ async def test_student_only_sees_own_submissions(
     )
 
     # Student lists — should see initial_count + 1
-    student_list = await client.get("/api/submissions", headers=auth_header(student_token))
+    student_list = await client.get(
+        "/api/submissions", headers=auth_header(student_token)
+    )
     assert len(student_list.json()) == initial_count + 1
 
     # Admin lists — should also see at least as many as student
@@ -267,7 +273,13 @@ async def test_student_cannot_review_submission(
 
 @pytest.mark.anyio
 async def test_supervisor_can_only_see_assigned_students_submissions(
-    client, student_user, student_token, supervisor_user, supervisor_token, admin_token, db_session
+    client,
+    student_user,
+    student_token,
+    supervisor_user,
+    supervisor_token,
+    admin_token,
+    db_session,
 ):
     """Supervisor should only see submissions from their assigned students or departments."""
     # Create a separate student for this test to avoid interference
@@ -288,13 +300,16 @@ async def test_supervisor_can_only_see_assigned_students_submissions(
 
     # Create a token for the new student
     from app.core.security import create_access_token
+
     new_student_token = create_access_token(subject=str(new_student.id), role="student")
 
     dept = await create_department(db_session)
     cat = await create_category(db_session, dept.id)
 
     # Get initial supervisor count
-    initial_supervisor_list = await client.get("/api/submissions", headers=auth_header(supervisor_token))
+    initial_supervisor_list = await client.get(
+        "/api/submissions", headers=auth_header(supervisor_token)
+    )
     initial_count = len(initial_supervisor_list.json())
 
     # Create a submission from the new student (supervisor not assigned yet)
@@ -310,7 +325,9 @@ async def test_supervisor_can_only_see_assigned_students_submissions(
     )
 
     # Supervisor lists - should still see initial_count because they're not assigned
-    supervisor_list = await client.get("/api/submissions", headers=auth_header(supervisor_token))
+    supervisor_list = await client.get(
+        "/api/submissions", headers=auth_header(supervisor_token)
+    )
     assert len(supervisor_list.json()) == initial_count
 
     # Create assignment
@@ -323,7 +340,9 @@ async def test_supervisor_can_only_see_assigned_students_submissions(
     await db_session.commit()
 
     # Now supervisor should see initial_count + 1 (their assigned student's submission)
-    supervisor_list_after = await client.get("/api/submissions", headers=auth_header(supervisor_token))
+    supervisor_list_after = await client.get(
+        "/api/submissions", headers=auth_header(supervisor_token)
+    )
     assert len(supervisor_list_after.json()) == initial_count + 1
 
 

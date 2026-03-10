@@ -16,6 +16,7 @@ class SubmissionCreate(BaseModel):
 
 class StudentInfo(BaseModel):
     """Basic student information for submission responses."""
+
     id: uuid.UUID
     full_name: str
     student_id: str | None
@@ -24,6 +25,7 @@ class StudentInfo(BaseModel):
 
 class ReviewerInfo(BaseModel):
     """Basic reviewer information for submission responses."""
+
     id: uuid.UUID
     full_name: str
 
@@ -47,6 +49,7 @@ class SubmissionResponse(BaseModel):
 
 class SubmissionListResponse(BaseModel):
     """Response for submission list that includes student info."""
+
     id: uuid.UUID
     student_id: uuid.UUID
     student: StudentInfo | None
