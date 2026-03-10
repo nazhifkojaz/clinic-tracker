@@ -4,6 +4,7 @@ import { useAuthStore } from "@/stores/authStore";
 import ProtectedRoute from "@/components/layout/ProtectedRoute";
 import AppLayout from "@/components/layout/AppLayout";
 import Login from "@/pages/Login";
+import DashboardRouter from "@/pages/DashboardRouter";
 import CaseInputForm from "@/pages/CaseInputForm";
 import SubmissionHistory from "@/pages/SubmissionHistory";
 import UserManagement from "@/pages/admin/UserManagement";
@@ -31,7 +32,7 @@ function App() {
       <Route path="/login" element={<Login />} />
       <Route element={<ProtectedRoute />}>
         <Route element={<AppLayout />}>
-          <Route path="/" element={<div>Dashboard (coming in Phase 5)</div>} />
+          <Route path="/" element={<DashboardRouter />} />
           <Route path="/cases/new" element={<CaseInputForm />} />
           <Route path="/submissions" element={<SubmissionHistory />} />
           <Route element={<ProtectedRoute allowedRoles={["admin"]} />}>
