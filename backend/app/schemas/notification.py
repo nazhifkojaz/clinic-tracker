@@ -10,7 +10,7 @@ class NotificationSend(BaseModel):
 
     recipient_ids: list[uuid.UUID] = Field(..., min_length=1, max_length=20)
     subject: str = Field(..., min_length=1, max_length=255)
-    message: str = Field(..., min_length=1)
+    message: str = Field(..., min_length=1, max_length=5000)
     template_key: str | None = None
     template_vars: dict[str, str] | None = None
 

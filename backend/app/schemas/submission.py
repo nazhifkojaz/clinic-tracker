@@ -11,7 +11,7 @@ class SubmissionCreate(BaseModel):
     task_category_id: uuid.UUID
     case_count: int = Field(..., gt=0)
     proof_url: str = Field(..., min_length=1, max_length=1024)
-    notes: str | None = None
+    notes: str | None = Field(None, max_length=2000)
 
 
 class StudentInfo(BaseModel):

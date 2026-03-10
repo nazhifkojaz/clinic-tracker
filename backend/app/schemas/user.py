@@ -1,26 +1,26 @@
 import uuid
 from datetime import datetime
 
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, Field
 
 from app.models.user import UserRole
 
 
 class UserCreate(BaseModel):
     email: EmailStr
-    password: str
-    full_name: str
-    student_id: str | None = None
+    password: str = Field(..., min_length=8, max_length=100)
+    full_name: str = Field(..., min_length=1, max_length=200)
+    student_id: str | None = Field(None, max_length=50)
     role: UserRole
 
 
 class UserUpdate(BaseModel):
     email: EmailStr | None = None
-    full_name: str | None = None
-    student_id: str | None = None
+    full_name: str | None = Field(None, max_length=200)
+    student_id: str | None = Field(None, max_length=50)
     role: UserRole | None = None
     is_active: bool | None = None
-    password: str | None = None  # Optional password reset
+    password: str | None = Field(None, min_length=8, max_length=100)
 
 
 class UserResponse(BaseModel):
