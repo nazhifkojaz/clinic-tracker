@@ -1,6 +1,8 @@
 import { useEffect } from "react";
 import { Routes, Route } from "react-router-dom";
 import { useAuthStore } from "@/stores/authStore";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
+import { Toaster } from "@/components/ui/sonner";
 import ProtectedRoute from "@/components/layout/ProtectedRoute";
 import AppLayout from "@/components/layout/AppLayout";
 import Login from "@/pages/Login";
@@ -31,26 +33,29 @@ function App() {
   }
 
   return (
-    <Routes>
-      <Route path="/login" element={<Login />} />
-      <Route element={<ProtectedRoute />}>
-        <Route element={<AppLayout />}>
-          <Route path="/" element={<DashboardRouter />} />
-          <Route path="/cases/new" element={<CaseInputForm />} />
-          <Route path="/submissions" element={<SubmissionHistory />} />
-          <Route path="/notifications/send" element={<SendNotification />} />
-          <Route path="/notifications" element={<NotificationHistory />} />
-          <Route element={<ProtectedRoute allowedRoles={["admin"]} />}>
-            <Route path="/admin/users" element={<UserManagement />} />
-            <Route path="/admin/departments" element={<DepartmentManagement />} />
-            <Route path="/admin/assignments" element={<AssignmentManagement />} />
-            <Route path="/admin/audit-log" element={<AuditLog />} />
-            <Route path="/admin/settings" element={<div>Settings (coming in Phase 2)</div>} />
+    <ErrorBoundary>
+      <Routes>
+        <Route path="/login" element={<Login />} />
+        <Route element={<ProtectedRoute />}>
+          <Route element={<AppLayout />}>
+            <Route path="/" element={<DashboardRouter />} />
+            <Route path="/cases/new" element={<CaseInputForm />} />
+            <Route path="/submissions" element={<SubmissionHistory />} />
+            <Route path="/notifications/send" element={<SendNotification />} />
+            <Route path="/notifications" element={<NotificationHistory />} />
+            <Route element={<ProtectedRoute allowedRoles={["admin"]} />}>
+              <Route path="/admin/users" element={<UserManagement />} />
+              <Route path="/admin/departments" element={<DepartmentManagement />} />
+              <Route path="/admin/assignments" element={<AssignmentManagement />} />
+              <Route path="/admin/audit-log" element={<AuditLog />} />
+              <Route path="/admin/settings" element={<div>Settings (coming in Phase 2)</div>} />
+            </Route>
           </Route>
         </Route>
-      </Route>
-      <Route path="*" element={<NotFound />} />
-    </Routes>
+        <Route path="*" element={<NotFound />} />
+      </Routes>
+      <Toaster />
+    </ErrorBoundary>
   );
 }
 
