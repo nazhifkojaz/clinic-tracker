@@ -42,3 +42,17 @@ class User(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
+
+
+def display_name(user: User) -> str:
+    """Get the best display name for a user.
+
+    Priority: full_name > student_id > email
+
+    Args:
+        user: User object
+
+    Returns:
+        The best available display name
+    """
+    return user.full_name or user.student_id or user.email
