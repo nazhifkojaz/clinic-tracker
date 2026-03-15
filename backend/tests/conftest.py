@@ -21,7 +21,19 @@ if not TEST_DATABASE_URL:
         "Set it to a local test database to avoid running tests against production."
     )
 
+# Safety: refuse to run tests against a remote/production database
+if "neon.tech" in TEST_DATABASE_URL or "amazonaws.com" in TEST_DATABASE_URL:
+    raise RuntimeError(
+        f"TEST_DATABASE_URL points to a remote database ({TEST_DATABASE_URL[:50]}...). "
+        "Tests must run against a local database (localhost). "
+        "Never run tests against production!"
+    )
+
 # Use NullPool to avoid connection reuse across different event loops
+# Test database engine
+# Note: TEST_DATABASE_URL uses local Postgres without SSL
+# The main engine in database.py uses DATABASE_SSL setting
+# Test engine is created separately to avoid SSL requirement
 test_engine = create_async_engine(
     TEST_DATABASE_URL,
     echo=False,
