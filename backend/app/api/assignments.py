@@ -16,6 +16,7 @@ from app.schemas.assignment import (
     AssignmentCreate,
     AssignmentResponse,
     AssignmentWithDetailsResponse,
+    MyStudentResponse,
 )
 from app.utils.audit import record_audit
 
@@ -168,7 +169,9 @@ async def create_assignment(
             record_id=assignment.id,
             new_values={
                 "supervisor_id": str(assignment.supervisor_id),
-                "student_id": str(assignment.student_id) if assignment.student_id else None,
+                "student_id": str(assignment.student_id)
+                if assignment.student_id
+                else None,
                 "assignment_type": assignment.assignment_type.value,
                 "department_id": str(assignment.department_id)
                 if assignment.department_id
@@ -220,7 +223,7 @@ async def delete_assignment(
     await db.commit()
 
 
-@router.get("/my-students", response_model=list[dict])
+@router.get("/my-students", response_model=list[MyStudentResponse])
 async def get_my_students(
     user: User = Depends(require_supervisor),
     db: AsyncSession = Depends(get_db),
@@ -320,15 +323,15 @@ async def get_my_students(
         seen_student_depts.add(student_dept_key)
 
         students.append(
-            {
-                "assignment_id": str(row.assignment_id),
-                "student_id": str(row.student_id),
-                "student_name": row.student_name,
-                "student_email": row.student_email,
-                "student_code": row.student_code,
-                "assignment_type": row.assignment_type,
-                "department_id": str(row.dept_id) if row.dept_id else None,
-                "department_name": row.dept_name,
-            }
+            MyStudentResponse(
+                assignment_id=str(row.assignment_id),
+                student_id=str(row.student_id),
+                student_name=row.student_name,
+                student_email=row.student_email,
+                student_code=row.student_code,
+                assignment_type=row.assignment_type,
+                department_id=str(row.dept_id) if row.dept_id else None,
+                department_name=row.dept_name,
+            )
         )
     return students
