@@ -159,29 +159,27 @@ async def create_assignment(
     db.add(assignment)
 
     try:
+        await db.flush()  # Get server-generated UUID before audit
+        await record_audit(
+            db,
+            user_id=admin.id,
+            action="create",
+            table_name="supervisor_assignments",
+            record_id=assignment.id,
+            new_values={
+                "supervisor_id": str(assignment.supervisor_id),
+                "student_id": str(assignment.student_id) if assignment.student_id else None,
+                "assignment_type": assignment.assignment_type.value,
+                "department_id": str(assignment.department_id)
+                if assignment.department_id
+                else None,
+            },
+        )
         await db.commit()
+        await db.refresh(assignment)
     except IntegrityError:
         await db.rollback()
         raise HTTPException(status_code=409, detail="This assignment already exists")
-
-    await db.refresh(assignment)
-
-    # Audit log
-    await record_audit(
-        db,
-        user_id=admin.id,
-        action="create",
-        table_name="supervisor_assignments",
-        record_id=assignment.id,
-        new_values={
-            "supervisor_id": str(assignment.supervisor_id),
-            "student_id": str(assignment.student_id) if assignment.student_id else None,
-            "assignment_type": assignment.assignment_type.value,
-            "department_id": str(assignment.department_id)
-            if assignment.department_id
-            else None,
-        },
-    )
 
     return assignment
 
@@ -210,10 +208,7 @@ async def delete_assignment(
         else None,
     }
 
-    await db.delete(assignment)
-    await db.commit()
-
-    # Audit log
+    await db.flush()  # Ensure changes are staged
     await record_audit(
         db,
         user_id=admin.id,
@@ -222,6 +217,7 @@ async def delete_assignment(
         record_id=assignment_id,
         old_values=old_values,
     )
+    await db.commit()
 
 
 @router.get("/my-students", response_model=list[dict])

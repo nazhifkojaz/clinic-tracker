@@ -89,6 +89,18 @@ async def create_department(
     department = Department(**body.model_dump())
     db.add(department)
     try:
+        await db.flush()  # Get server-generated UUID before audit
+        await record_audit(
+            db,
+            user_id=admin.id,
+            action="create",
+            table_name="departments",
+            record_id=department.id,
+            new_values={
+                "name": department.name,
+                "description": department.description,
+            },
+        )
         await db.commit()
         await db.refresh(department)
     except IntegrityError:
@@ -96,19 +108,6 @@ async def create_department(
         raise HTTPException(
             status_code=409, detail="Department with this name already exists"
         )
-
-    # Audit log
-    await record_audit(
-        db,
-        user_id=admin.id,
-        action="create",
-        table_name="departments",
-        record_id=department.id,
-        new_values={
-            "name": department.name,
-            "description": department.description,
-        },
-    )
 
     return department
 
@@ -136,7 +135,24 @@ async def update_department(
     for field, value in body.model_dump(exclude_unset=True).items():
         setattr(department, field, value)
 
+    # New values for audit
+    new_values = {
+        "name": department.name,
+        "description": department.description,
+        "is_active": department.is_active,
+    }
+
     try:
+        await db.flush()  # Ensure changes are staged
+        await record_audit(
+            db,
+            user_id=admin.id,
+            action="update",
+            table_name="departments",
+            record_id=department.id,
+            old_values=old_values,
+            new_values=new_values,
+        )
         await db.commit()
         await db.refresh(department)
     except IntegrityError:
@@ -144,22 +160,6 @@ async def update_department(
         raise HTTPException(
             status_code=409, detail="Department with this name already exists"
         )
-
-    # Audit log
-    new_values = {
-        "name": department.name,
-        "description": department.description,
-        "is_active": department.is_active,
-    }
-    await record_audit(
-        db,
-        user_id=admin.id,
-        action="update",
-        table_name="departments",
-        record_id=department.id,
-        old_values=old_values,
-        new_values=new_values,
-    )
 
     return department
 
@@ -204,10 +204,7 @@ async def create_task_category(
 
     category = TaskCategory(department_id=department_id, **body.model_dump())
     db.add(category)
-    await db.commit()
-    await db.refresh(category)
-
-    # Audit log
+    await db.flush()  # Get server-generated UUID before audit
     await record_audit(
         db,
         user_id=admin.id,
@@ -220,6 +217,8 @@ async def create_task_category(
             "required_count": category.required_count,
         },
     )
+    await db.commit()
+    await db.refresh(category)
 
     return category
 
@@ -257,16 +256,15 @@ async def update_task_category(
     for field, value in body.model_dump(exclude_unset=True).items():
         setattr(category, field, value)
 
-    await db.commit()
-    await db.refresh(category)
-
-    # Audit log
+    # New values for audit
     new_values = {
         "name": category.name,
         "required_count": category.required_count,
         "description": category.description,
         "is_active": category.is_active,
     }
+
+    await db.flush()  # Ensure changes are staged
     await record_audit(
         db,
         user_id=admin.id,
@@ -276,5 +274,7 @@ async def update_task_category(
         old_values=old_values,
         new_values=new_values,
     )
+    await db.commit()
+    await db.refresh(category)
 
     return category

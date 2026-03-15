@@ -45,7 +45,21 @@ async def create_user(
     )
     db.add(user)
     try:
-        await db.commit()
+        await db.flush()  # Get server-generated UUID before audit
+        await record_audit(
+            db,
+            user_id=admin.id,
+            action="create",
+            table_name="users",
+            record_id=user.id,
+            new_values={
+                "email": user.email,
+                "full_name": user.full_name,
+                "student_id": user.student_id,
+                "role": user.role.value,
+            },
+        )
+        await db.commit()  # Single atomic commit for user + audit
         await db.refresh(user)
     except IntegrityError:
         await db.rollback()
@@ -53,21 +67,6 @@ async def create_user(
             status_code=status.HTTP_409_CONFLICT,
             detail="A user with this email already exists",
         )
-
-    # Audit log
-    await record_audit(
-        db,
-        user_id=admin.id,
-        action="create",
-        table_name="users",
-        record_id=user.id,
-        new_values={
-            "email": user.email,
-            "full_name": user.full_name,
-            "student_id": user.student_id,
-            "role": user.role.value,
-        },
-    )
 
     return user
 
@@ -102,7 +101,25 @@ async def update_user(
     for field, value in update_data.items():
         setattr(user, field, value)
 
+    # New values for audit
+    new_values = {
+        "email": user.email,
+        "full_name": user.full_name,
+        "student_id": user.student_id,
+        "role": user.role.value if user.role else None,
+    }
+
     try:
+        await db.flush()  # Ensure changes are staged
+        await record_audit(
+            db,
+            user_id=admin.id,
+            action="update",
+            table_name="users",
+            record_id=user.id,
+            old_values=old_values,
+            new_values=new_values,
+        )
         await db.commit()
         await db.refresh(user)
     except IntegrityError:
@@ -111,22 +128,5 @@ async def update_user(
             status_code=status.HTTP_409_CONFLICT,
             detail="A user with this email already exists",
         )
-
-    # Audit log
-    new_values = {
-        "email": user.email,
-        "full_name": user.full_name,
-        "student_id": user.student_id,
-        "role": user.role.value if user.role else None,
-    }
-    await record_audit(
-        db,
-        user_id=admin.id,
-        action="update",
-        table_name="users",
-        record_id=user.id,
-        old_values=old_values,
-        new_values=new_values,
-    )
 
     return user

@@ -79,10 +79,7 @@ async def create_submission(
         **body.model_dump(),
     )
     db.add(submission)
-    await db.commit()
-    await db.refresh(submission)
-
-    # Audit log
+    await db.flush()  # Get server-generated UUID before audit
     await record_audit(
         db,
         user_id=user.id,
@@ -96,6 +93,8 @@ async def create_submission(
             "case_count": submission.case_count,
         },
     )
+    await db.commit()
+    await db.refresh(submission)
 
     return submission
 
@@ -261,10 +260,7 @@ async def review_submission(
     submission.reviewed_by = user.id
     submission.review_notes = body.review_notes
 
-    await db.commit()
-    await db.refresh(submission)
-
-    # Audit log
+    await db.flush()  # Ensure changes are staged
     await record_audit(
         db,
         user_id=user.id,
@@ -278,6 +274,8 @@ async def review_submission(
             "review_notes": submission.review_notes,
         },
     )
+    await db.commit()
+    await db.refresh(submission)
 
     return submission
 
