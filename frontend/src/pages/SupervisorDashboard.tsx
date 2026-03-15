@@ -207,7 +207,6 @@ export default function SupervisorDashboard() {
                           <div className="text-xs text-muted-foreground">{student.student_email}</div>
                         </td>
                         <td className="py-3">{student.current_department || "—"}</td>
-                        <td className="py-3">{student.current_department || "—"}</td>
                         <td className="py-3 text-right">
                           <div className="flex items-center justify-end gap-2">
                             <div className="w-20 rounded-full bg-secondary h-2">

@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import React from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -214,15 +215,6 @@ export default function DepartmentManagement() {
     }
   };
 
-  const getCategoryCount = (deptId: string) => {
-    if (expandedDeptId === deptId) {
-      return expandedDeptCategories.length;
-    }
-    // For collapsed departments, we don't have the category count
-    // Return a placeholder or fetch separately if needed
-    return 0;
-  };
-
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -259,8 +251,8 @@ export default function DepartmentManagement() {
               </thead>
               <tbody>
                 {departments.map((dept) => (
-                  <>
-                    <tr key={dept.id} className="border-b last:border-0">
+                  <React.Fragment key={dept.id}>
+                    <tr className="border-b last:border-0">
                       <td className="p-4">
                         <Button
                           variant="ghost"
@@ -280,7 +272,7 @@ export default function DepartmentManagement() {
                       </td>
                       <td className="p-4">
                         <span className="text-sm">
-                          {getCategoryCount(dept.id)}
+                          {dept.category_count ?? "—"}
                         </span>
                       </td>
                       <td className="p-4">
@@ -412,7 +404,7 @@ export default function DepartmentManagement() {
                         </td>
                       </tr>
                     )}
-                  </>
+                  </React.Fragment>
                 ))}
               </tbody>
             </table>
