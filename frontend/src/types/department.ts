@@ -3,6 +3,7 @@ export interface Department {
   name: string;
   description: string | null;
   is_active: boolean;
+  category_count?: number;
   created_at: string;
   updated_at: string;
 }
