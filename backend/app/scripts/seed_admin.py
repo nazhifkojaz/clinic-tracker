@@ -1,6 +1,8 @@
 """Seed an initial admin user. Usage: uv run python -m app.scripts.seed_admin"""
 
 import asyncio
+import os
+import secrets
 
 from sqlalchemy import select
 
@@ -8,10 +10,16 @@ from app.core.database import async_session_maker
 from app.core.security import hash_password
 from app.models.user import User, UserRole
 
-# Default admin credentials - CHANGE IMMEDIATELY AFTER FIRST LOGIN!
-ADMIN_EMAIL = "admin@dashko.id"
-ADMIN_PASSWORD = "admin123"
-ADMIN_NAME = "System Admin"
+# Read from environment variables, with secure defaults
+ADMIN_EMAIL = os.environ.get("SEED_ADMIN_EMAIL", "admin@clinic.id")
+ADMIN_PASSWORD = os.environ.get("SEED_ADMIN_PASSWORD")
+ADMIN_NAME = "Admin"
+
+# Generate secure random password if not provided
+_generated_password = None
+if not ADMIN_PASSWORD:
+    _generated_password = secrets.token_urlsafe(24)
+    ADMIN_PASSWORD = _generated_password
 
 
 async def seed() -> None:
@@ -32,8 +40,14 @@ async def seed() -> None:
         )
         session.add(admin)
         await session.commit()
-        print(f"Admin user created: {ADMIN_EMAIL} / {ADMIN_PASSWORD}")
-        print("⚠ Change this password immediately after first login!")
+
+        if _generated_password:
+            print(f"⚠️  No SEED_ADMIN_PASSWORD environment variable set.")
+            print(f"⚠️  Generated secure password: {ADMIN_PASSWORD}")
+            print(f"⚠️  CHANGE THIS PASSWORD IMMEDIATELY AFTER FIRST LOGIN!")
+        else:
+            print(f"Admin user created: {ADMIN_EMAIL}")
+            print("⚠️  If this is production, ensure you've set a strong password!")
 
 
 if __name__ == "__main__":
