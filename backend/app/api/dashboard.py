@@ -12,7 +12,7 @@ from app.models.assignment import AssignmentType, SupervisorAssignment
 from app.models.department import Department, TaskCategory
 from app.models.rotation import StudentRotation
 from app.models.submission import CaseSubmission, SubmissionStatus
-from app.models.user import User, UserRole
+from app.models.user import User, UserRole, display_name
 from app.schemas.dashboard import (
     CategoryProgress,
     DepartmentDashboardResponse,
@@ -196,9 +196,7 @@ async def _build_student_dashboard(
 
     return StudentDashboardResponse(
         student_id=student.id,
-        student_name=student.full_name
-        if student.full_name
-        else (student.student_id or student.email),
+        student_name=display_name(student),
         current_department=current_dept_name,
         overall_completion_percentage=round(overall_pct, 1),
         total_required=grand_total_required,
@@ -410,17 +408,10 @@ async def get_supervisor_dashboard(
         else:
             behind += 1
 
-        # Use student_code or email as fallback if full_name is empty
-        display_name = (
-            student.full_name
-            if student.full_name
-            else (student.student_id or student.email)
-        )
-
         summaries.append(
             StudentSummary(
                 student_id=student.id,
-                student_name=display_name,
+                student_name=display_name(student),
                 student_email=student.email,
                 student_code=student.student_id,
                 current_department=rotation_map.get(student.id),
@@ -527,15 +518,10 @@ async def get_department_dashboard(
         pct = (
             (completed / dept_total_required * 100) if dept_total_required > 0 else 0.0
         )
-        display_name = (
-            student.full_name
-            if student.full_name
-            else (student.student_id or student.email)
-        )
         student_progresses.append(
             DepartmentStudentProgress(
                 student_id=student.id,
-                student_name=display_name,
+                student_name=display_name(student),
                 total_required=dept_total_required,
                 total_completed=completed,
                 completion_percentage=round(pct, 1),
