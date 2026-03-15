@@ -38,7 +38,7 @@ async def list_departments(
             Department,
             func.count(TaskCategory.id)
             .filter(TaskCategory.is_active.is_(True))
-            .label("category_count")
+            .label("category_count"),
         )
         .outerjoin(TaskCategory, TaskCategory.department_id == Department.id)
         .where(Department.is_active.is_(True))
@@ -204,21 +204,28 @@ async def create_task_category(
 
     category = TaskCategory(department_id=department_id, **body.model_dump())
     db.add(category)
-    await db.flush()  # Get server-generated UUID before audit
-    await record_audit(
-        db,
-        user_id=admin.id,
-        action="create",
-        table_name="task_categories",
-        record_id=category.id,
-        new_values={
-            "department_id": str(department_id),
-            "name": category.name,
-            "required_count": category.required_count,
-        },
-    )
-    await db.commit()
-    await db.refresh(category)
+
+    try:
+        await db.flush()  # Get server-generated UUID before audit
+        await record_audit(
+            db,
+            user_id=admin.id,
+            action="create",
+            table_name="task_categories",
+            record_id=category.id,
+            new_values={
+                "department_id": str(department_id),
+                "name": category.name,
+                "required_count": category.required_count,
+            },
+        )
+        await db.commit()
+        await db.refresh(category)
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(
+            status_code=409, detail="Task category with this name already exists"
+        )
 
     return category
 
