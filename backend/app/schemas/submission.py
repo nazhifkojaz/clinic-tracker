@@ -1,6 +1,7 @@
 import re
 import uuid
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -87,7 +88,7 @@ class SubmissionWithDetailsResponse(SubmissionResponse):
 
 
 class SubmissionReview(BaseModel):
-    status: SubmissionStatus = Field(
+    status: Literal["approved", "rejected"] = Field(
         ..., description="Must be 'approved' or 'rejected'"
     )
     review_notes: str | None = None
