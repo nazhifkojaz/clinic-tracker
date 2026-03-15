@@ -52,6 +52,7 @@ class DepartmentResponse(BaseModel):
     name: str
     description: str | None
     is_active: bool
+    category_count: int = 0
     created_at: datetime
     updated_at: datetime
 

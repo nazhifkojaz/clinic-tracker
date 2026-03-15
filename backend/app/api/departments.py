@@ -1,7 +1,7 @@
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import select, func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -32,13 +32,33 @@ async def list_departments(
     _user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """List all active departments. Available to all authenticated users."""
+    """List all active departments with category counts."""
     result = await db.execute(
-        select(Department)
+        select(
+            Department,
+            func.count(TaskCategory.id)
+            .filter(TaskCategory.is_active.is_(True))
+            .label("category_count")
+        )
+        .outerjoin(TaskCategory, TaskCategory.department_id == Department.id)
         .where(Department.is_active.is_(True))
+        .group_by(Department.id)
         .order_by(Department.name)
     )
-    return result.scalars().all()
+    rows = result.all()
+
+    return [
+        DepartmentResponse(
+            id=dept.id,
+            name=dept.name,
+            description=dept.description,
+            is_active=dept.is_active,
+            category_count=count or 0,
+            created_at=dept.created_at,
+            updated_at=dept.updated_at,
+        )
+        for dept, count in rows
+    ]
 
 
 @router.get("/{department_id}", response_model=DepartmentWithCategoriesResponse)
