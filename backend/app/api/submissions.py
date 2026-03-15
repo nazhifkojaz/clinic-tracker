@@ -12,7 +12,6 @@ from app.api.dependencies import (
 from app.core.database import get_db
 from app.models.assignment import AssignmentType, SupervisorAssignment
 from app.models.department import Department, TaskCategory
-from app.models.rotation import StudentRotation
 from app.models.submission import CaseSubmission, SubmissionStatus
 from app.models.user import User, UserRole
 from app.schemas.submission import (
@@ -124,18 +123,14 @@ async def list_submissions(
             SupervisorAssignment.supervisor_id == user.id,
             SupervisorAssignment.assignment_type == AssignmentType.primary,
         )
-        # 2. Students currently rotating in a department they supervise
+        # 2. Any submission for a department they supervise
         supervised_depts = select(SupervisorAssignment.department_id).where(
             SupervisorAssignment.supervisor_id == user.id,
             SupervisorAssignment.assignment_type == AssignmentType.department,
         )
-        dept_students = select(StudentRotation.student_id).where(
-            StudentRotation.department_id.in_(supervised_depts),
-            StudentRotation.is_current.is_(True),
-        )
         query = query.where(
             CaseSubmission.student_id.in_(primary_students)
-            | CaseSubmission.student_id.in_(dept_students)
+            | CaseSubmission.department_id.in_(supervised_depts)
         )
     # Admins see all submissions (no filter)
 
@@ -304,6 +299,10 @@ async def get_proof_url(
     # Students can only see their own
     if user.role == UserRole.student and submission.student_id != user.id:
         raise HTTPException(status_code=403, detail="Access denied")
+
+    # Runtime guard: check for empty proof_url before generating URL
+    if not submission.proof_url:
+        raise HTTPException(status_code=404, detail="Proof URL not available")
 
     url = generate_read_url(submission.proof_url)
     return {"url": url}

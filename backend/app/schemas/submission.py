@@ -1,7 +1,8 @@
+import re
 import uuid
 from datetime import datetime
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from app.models.submission import SubmissionStatus
 
@@ -12,6 +13,18 @@ class SubmissionCreate(BaseModel):
     case_count: int = Field(..., gt=0)
     proof_url: str = Field(..., min_length=1, max_length=1024)
     notes: str | None = Field(None, max_length=2000)
+
+    @field_validator("proof_url")
+    @classmethod
+    def validate_proof_url(cls, v: str) -> str:
+        """Validate proof_url follows expected pattern."""
+        pattern = r"^submissions/[a-zA-Z0-9._-]+$"
+        if not re.match(pattern, v):
+            raise ValueError(
+                "proof_url must match pattern: submissions/<filename> "
+                "(alphanumeric, dots, dashes, underscores only)"
+            )
+        return v
 
 
 class StudentInfo(BaseModel):
