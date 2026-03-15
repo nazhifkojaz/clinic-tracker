@@ -35,11 +35,6 @@ if not _MOCK_MODE:
     _resend_client = resend
 
 
-def _is_configured() -> bool:
-    """Check if Resend is properly configured."""
-    return bool(settings.RESEND_API_KEY)
-
-
 def sanitize_for_email(content: str) -> str:
     """Escape HTML entities in user-provided content to prevent injection.
 
@@ -71,7 +66,7 @@ async def send_email(
         Logs the email details instead of sending.
         Use this for development without a Resend account.
     """
-    if not _is_configured():
+    if _MOCK_MODE:
         logger.info(f"[MOCK EMAIL] To: {to} | Subject: {subject}")
         logger.debug(f"[MOCK EMAIL] Body: {html[:500]}...")
         return None
