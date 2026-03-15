@@ -6,6 +6,7 @@ import pytest
 from sqlalchemy import select
 
 from app.models.assignment import AssignmentType, SupervisorAssignment
+from app.models.submission import SubmissionStatus
 from tests.conftest import auth_header
 from tests.factories import create_category, create_department
 
@@ -29,7 +30,7 @@ async def test_create_submission(client, student_user, student_token, db_session
             "department_id": str(dept.id),
             "task_category_id": str(cat.id),
             "case_count": 3,
-            "proof_url": "uploads/test-proof.jpg",
+            "proof_url": "submissions/test-proof.jpg",
             "notes": "Completed 3 extractions",
         },
         headers=auth_header(student_token),
@@ -50,7 +51,7 @@ async def test_create_submission_invalid_department(client, student_token):
             "department_id": str(uuid.uuid4()),
             "task_category_id": str(uuid.uuid4()),
             "case_count": 1,
-            "proof_url": "uploads/test.jpg",
+            "proof_url": "submissions/test.jpg",
         },
         headers=auth_header(student_token),
     )
@@ -72,7 +73,7 @@ async def test_create_submission_mismatched_category(
             "department_id": str(dept2.id),  # Different department
             "task_category_id": str(cat1.id),  # Category from dept1
             "case_count": 1,
-            "proof_url": "uploads/test.jpg",
+            "proof_url": "submissions/test.jpg",
         },
         headers=auth_header(student_token),
     )
@@ -94,7 +95,7 @@ async def test_supervisor_approve_submission(
             "department_id": str(dept.id),
             "task_category_id": str(cat.id),
             "case_count": 2,
-            "proof_url": "uploads/proof.jpg",
+            "proof_url": "submissions/proof.jpg",
         },
         headers=auth_header(student_token),
     )
@@ -126,7 +127,7 @@ async def test_supervisor_reject_submission(
             "department_id": str(dept.id),
             "task_category_id": str(cat.id),
             "case_count": 1,
-            "proof_url": "uploads/proof.jpg",
+            "proof_url": "submissions/proof.jpg",
         },
         headers=auth_header(student_token),
     )
@@ -158,7 +159,7 @@ async def test_cannot_re_review_submission(
             "department_id": str(dept.id),
             "task_category_id": str(cat.id),
             "case_count": 1,
-            "proof_url": "uploads/proof.jpg",
+            "proof_url": "submissions/proof.jpg",
         },
         headers=auth_header(student_token),
     )
@@ -200,7 +201,7 @@ async def test_student_only_sees_own_submissions(
             "department_id": str(dept.id),
             "task_category_id": str(cat.id),
             "case_count": 1,
-            "proof_url": "uploads/proof.jpg",
+            "proof_url": "submissions/proof.jpg",
         },
         headers=auth_header(student_token),
     )
@@ -231,7 +232,7 @@ async def test_student_cannot_create_for_another_student(
             "department_id": str(dept.id),
             "task_category_id": str(cat.id),
             "case_count": 1,
-            "proof_url": "uploads/proof.jpg",
+            "proof_url": "submissions/proof.jpg",
         },
         headers=auth_header(student_token),
     )
@@ -256,7 +257,7 @@ async def test_student_cannot_review_submission(
             "department_id": str(dept.id),
             "task_category_id": str(cat.id),
             "case_count": 1,
-            "proof_url": "uploads/proof.jpg",
+            "proof_url": "submissions/proof.jpg",
         },
         headers=auth_header(student_token),
     )
@@ -319,7 +320,7 @@ async def test_supervisor_can_only_see_assigned_students_submissions(
             "department_id": str(dept.id),
             "task_category_id": str(cat.id),
             "case_count": 1,
-            "proof_url": "uploads/proof.jpg",
+            "proof_url": "submissions/proof.jpg",
         },
         headers=auth_header(new_student_token),
     )
@@ -362,7 +363,7 @@ async def test_submission_creates_audit_log(
             "department_id": str(dept.id),
             "task_category_id": str(cat.id),
             "case_count": 1,
-            "proof_url": "uploads/proof.jpg",
+            "proof_url": "submissions/proof.jpg",
         },
         headers=auth_header(student_token),
     )
@@ -380,3 +381,143 @@ async def test_submission_creates_audit_log(
     audit_entry = result.scalar_one_or_none()
     assert audit_entry is not None
     assert audit_entry.user_id == student_user.id
+
+
+@pytest.mark.anyio
+async def test_supervisor_sees_department_submissions_not_primary_supervisor(
+    client,
+    student_user,
+    student_token,
+    supervisor_user,
+    supervisor_token,
+    admin_token,
+    db_session,
+):
+    """
+    Test that a supervisor sees submissions for their assigned department,
+    even when the student is primarily supervised by a different supervisor.
+    This is the bug fix: student-b (supervised by supervisor-B) submits for
+    department A (supervised by supervisor-A) → supervisor-A should see it.
+    """
+    from app.core.security import hash_password, create_access_token
+    from app.models.user import User, UserRole
+
+    # Create another supervisor (supervisor-B) who will be student's primary supervisor
+    other_supervisor = User(
+        email=f"other_sup_{_random_suffix()}@test.com",
+        password_hash=hash_password("testpass123"),
+        full_name="Other Supervisor",
+        role=UserRole.supervisor,
+        is_active=True,
+    )
+    db_session.add(other_supervisor)
+    await db_session.commit()
+    await db_session.refresh(other_supervisor)
+
+    other_supervisor_token = create_access_token(
+        subject=str(other_supervisor.id), role="supervisor"
+    )
+
+    # Create department A that supervisor_user (supervisor-A) will supervise
+    dept_a = await create_department(db_session, name="Department A")
+    cat_a = await create_category(db_session, dept_a.id, name="Category A")
+
+    # Assign supervisor-A to department A
+    dept_assignment = SupervisorAssignment(
+        supervisor_id=supervisor_user.id,
+        department_id=dept_a.id,
+        assignment_type=AssignmentType.department,
+    )
+    db_session.add(dept_assignment)
+
+    # Assign supervisor-B as primary supervisor of the student
+    primary_assignment = SupervisorAssignment(
+        supervisor_id=other_supervisor.id,
+        student_id=student_user.id,
+        assignment_type=AssignmentType.primary,
+    )
+    db_session.add(primary_assignment)
+    await db_session.commit()
+
+    # Student submits for department A
+    submission_response = await client.post(
+        "/api/submissions",
+        json={
+            "department_id": str(dept_a.id),
+            "task_category_id": str(cat_a.id),
+            "case_count": 5,
+            "proof_url": "submissions/proof.jpg",
+        },
+        headers=auth_header(student_token),
+    )
+    assert submission_response.status_code == 201
+    submission_id = submission_response.json()["id"]
+
+    # supervisor-A (department supervisor) should see this submission
+    supervisor_a_list = await client.get(
+        "/api/submissions", headers=auth_header(supervisor_token)
+    )
+    supervisor_a_submissions = supervisor_a_list.json()
+    submission_ids_seen_by_a = {s["id"] for s in supervisor_a_submissions}
+    assert submission_id in submission_ids_seen_by_a
+
+    # supervisor-B (primary supervisor) should also see this submission
+    # (because they're the student's primary supervisor)
+    supervisor_b_list = await client.get(
+        "/api/submissions", headers=auth_header(other_supervisor_token)
+    )
+    supervisor_b_submissions = supervisor_b_list.json()
+    submission_ids_seen_by_b = {s["id"] for s in supervisor_b_submissions}
+    assert submission_id in submission_ids_seen_by_b
+
+
+@pytest.mark.anyio
+async def test_invalid_proof_url_format(client, student_token, db_session):
+    """Submission with invalid proof_url format should return 422."""
+    dept = await create_department(db_session)
+    cat = await create_category(db_session, dept.id)
+
+    response = await client.post(
+        "/api/submissions",
+        json={
+            "department_id": str(dept.id),
+            "task_category_id": str(cat.id),
+            "case_count": 1,
+            "proof_url": "invalid-path/proof.jpg",  # Missing 'submissions/' prefix
+        },
+        headers=auth_header(student_token),
+    )
+    assert response.status_code == 422
+    assert "proof_url must match pattern" in response.json()["detail"][0]["msg"]
+
+
+@pytest.mark.anyio
+async def test_empty_proof_url_returns_404(
+    client, student_user, student_token, db_session
+):
+    """Empty proof_url on get_proof_url should return 404, not 500."""
+    from app.models.submission import CaseSubmission
+
+    dept = await create_department(db_session)
+    cat = await create_category(db_session, dept.id)
+
+    # Create submission with empty proof_url (directly in DB to bypass validation)
+    submission = CaseSubmission(
+        student_id=student_user.id,
+        department_id=dept.id,
+        task_category_id=cat.id,
+        case_count=1,
+        proof_url="",  # Empty string
+        status=SubmissionStatus.pending,
+    )
+    db_session.add(submission)
+    await db_session.commit()
+    await db_session.refresh(submission)
+
+    # Try to get proof URL - should return 404, not 500
+    response = await client.get(
+        f"/api/submissions/{submission.id}/proof-url",
+        headers=auth_header(student_token),
+    )
+    assert response.status_code == 404
+    assert "not available" in response.json()["detail"]
