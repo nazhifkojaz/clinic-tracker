@@ -4,14 +4,17 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 from sqlalchemy.orm import DeclarativeBase
+from sqlalchemy.pool import NullPool
 
 from app.core.config import settings
+
+connect_args = {"ssl": True} if settings.DATABASE_SSL else {}
 
 engine = create_async_engine(
     settings.DATABASE_URL,
     echo=settings.DEBUG,
-    pool_pre_ping=True,
-    connect_args={"ssl": True},  # Neon requires SSL
+    poolclass=NullPool,
+    connect_args=connect_args,
 )
 
 async_session_maker = async_sessionmaker(

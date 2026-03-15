@@ -6,6 +6,7 @@ class Settings(BaseSettings):
         env_file=".env",
         env_file_encoding="utf-8",
         case_sensitive=True,
+        extra="ignore",
     )
 
     # App
@@ -14,6 +15,7 @@ class Settings(BaseSettings):
 
     # Database (Neon PostgreSQL)
     DATABASE_URL: str  # Required — no default, must be set in env
+    DATABASE_SSL: bool = True  # Default to secure for production, set false for local dev
 
     # Auth (JWT)
     SECRET_KEY: str  # Required — no default
