@@ -13,7 +13,7 @@ from app.core.database import get_db
 from app.models.assignment import AssignmentType, SupervisorAssignment
 from app.models.department import Department, TaskCategory
 from app.models.submission import CaseSubmission, SubmissionStatus
-from app.models.user import User, UserRole
+from app.models.user import User, UserRole, display_name
 from app.schemas.submission import (
     ReviewerInfo,
     StudentInfo,
@@ -41,6 +41,38 @@ async def get_upload_url(
         content_type=body.content_type,
     )
     return UploadUrlResponse(upload_url=upload_url, object_key=object_key)
+
+
+async def _get_submission_or_403(
+    submission_id: UUID,
+    user: User,
+    db: AsyncSession,
+) -> CaseSubmission:
+    """Fetch submission and verify student ownership.
+
+    Args:
+        submission_id: ID of submission to fetch
+        user: Current authenticated user
+        db: Database session
+
+    Returns:
+        The submission if found and user has access
+
+    Raises:
+        HTTPException: 404 if not found, 403 if access denied
+    """
+    result = await db.execute(
+        select(CaseSubmission).where(CaseSubmission.id == submission_id)
+    )
+    submission = result.scalar_one_or_none()
+    if not submission:
+        raise HTTPException(status_code=404, detail="Submission not found")
+
+    # Students can only see their own submissions
+    if user.role == UserRole.student and submission.student_id != user.id:
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    return submission
 
 
 @router.post("", response_model=SubmissionResponse, status_code=status.HTTP_201_CREATED)
@@ -164,9 +196,7 @@ async def list_submissions(
     for submission, student_user in submissions_data:
         student_info = StudentInfo(
             id=student_user.id,
-            full_name=student_user.full_name
-            if student_user.full_name
-            else (student_user.student_id or student_user.email),
+            full_name=display_name(student_user),
             student_id=student_user.student_id,
             email=student_user.email,
         )
@@ -176,9 +206,7 @@ async def list_submissions(
             reviewer_user = reviewers_map[submission.reviewed_by]
             reviewer_info = ReviewerInfo(
                 id=reviewer_user.id,
-                full_name=reviewer_user.full_name
-                if reviewer_user.full_name
-                else reviewer_user.email,
+                full_name=display_name(reviewer_user),
             )
 
         submissions.append(
@@ -210,17 +238,7 @@ async def get_submission(
     db: AsyncSession = Depends(get_db),
 ):
     """Get a submission detail. Students can only view their own."""
-    result = await db.execute(
-        select(CaseSubmission).where(CaseSubmission.id == submission_id)
-    )
-    submission = result.scalar_one_or_none()
-    if not submission:
-        raise HTTPException(status_code=404, detail="Submission not found")
-
-    # Students can only see their own submissions
-    if user.role == UserRole.student and submission.student_id != user.id:
-        raise HTTPException(status_code=403, detail="Access denied")
-
+    submission = await _get_submission_or_403(submission_id, user, db)
     return submission
 
 
@@ -232,9 +250,8 @@ async def review_submission(
     db: AsyncSession = Depends(get_db),
 ):
     """Approve or reject a submission. Supervisor/admin only."""
-    # Validate status transition
-    if body.status == SubmissionStatus.pending:
-        raise HTTPException(status_code=400, detail="Cannot set status back to pending")
+    # Convert string status to enum
+    status_enum = SubmissionStatus(body.status)
 
     result = await db.execute(
         select(CaseSubmission).where(CaseSubmission.id == submission_id)
@@ -256,7 +273,7 @@ async def review_submission(
         "review_notes": None,
     }
 
-    submission.status = body.status
+    submission.status = status_enum
     submission.reviewed_by = user.id
     submission.review_notes = body.review_notes
 
@@ -287,16 +304,7 @@ async def get_proof_url(
     db: AsyncSession = Depends(get_db),
 ):
     """Get a temporary presigned URL to view the proof image."""
-    result = await db.execute(
-        select(CaseSubmission).where(CaseSubmission.id == submission_id)
-    )
-    submission = result.scalar_one_or_none()
-    if not submission:
-        raise HTTPException(status_code=404, detail="Submission not found")
-
-    # Students can only see their own
-    if user.role == UserRole.student and submission.student_id != user.id:
-        raise HTTPException(status_code=403, detail="Access denied")
+    submission = await _get_submission_or_403(submission_id, user, db)
 
     # Runtime guard: check for empty proof_url before generating URL
     if not submission.proof_url:
