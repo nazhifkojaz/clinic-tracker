@@ -4,6 +4,7 @@ Supervisors can send email notifications to students and view notification histo
 Admins can send to any student and view all notifications.
 """
 
+import logging
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -16,7 +17,7 @@ from app.core.database import get_db
 from app.models.assignment import AssignmentType, SupervisorAssignment
 from app.models.notification import NOTIFICATION_TEMPLATES, Notification
 from app.models.rotation import StudentRotation
-from app.models.user import User, UserRole
+from app.models.user import User, UserRole, display_name
 from app.schemas.notification import (
     NotificationResponse,
     NotificationSend,
@@ -24,6 +25,8 @@ from app.schemas.notification import (
 )
 from app.utils.audit import format_template
 from app.utils.email import is_mock_mode, sanitize_for_email, send_email
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/notifications", tags=["notifications"])
 
@@ -44,11 +47,13 @@ async def _get_student_names(
 ) -> dict[uuid.UUID, str]:
     """Fetch student names for a list of student IDs."""
     result = await db.execute(
-        select(User.id, User.full_name, User.email).where(
+        select(User.id, User.full_name, User.student_id, User.email).where(
             User.id.in_(student_ids), User.role == UserRole.student
         )
     )
-    return {row.id: (row.full_name or row.email) for row in result.all()}
+    return {
+        row.id: (row.full_name or row.student_id or row.email) for row in result.all()
+    }
 
 
 async def _validate_supervisor_assignments(
@@ -198,7 +203,11 @@ async def send_notification(
         except Exception:
             # Log error but don't fail the request
             # Notification record is still created
-            pass
+            logger.exception(
+                "Failed to send email notification to %s (recipient_id=%s)",
+                recipient.email,
+                recipient_id,
+            )
 
         created_notifications.append(notification)
 
@@ -222,9 +231,9 @@ async def send_notification(
         NotificationResponse(
             id=n.id,
             sender_id=n.sender_id,
-            sender_name=n.sender.full_name or n.sender.email,
+            sender_name=display_name(n.sender),
             recipient_id=n.recipient_id,
-            recipient_name=n.recipient.full_name or n.recipient.email,
+            recipient_name=display_name(n.recipient),
             subject=n.subject,
             message=n.message,
             sent_at=n.sent_at,
@@ -272,9 +281,9 @@ async def list_notifications(
         NotificationResponse(
             id=n.id,
             sender_id=n.sender_id,
-            sender_name=n.sender.full_name or n.sender.email,
+            sender_name=display_name(n.sender),
             recipient_id=n.recipient_id,
-            recipient_name=n.recipient.full_name or n.recipient.email,
+            recipient_name=display_name(n.recipient),
             subject=n.subject,
             message=n.message,
             sent_at=n.sent_at,
