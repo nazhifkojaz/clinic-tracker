@@ -15,6 +15,7 @@ from app.api.dependencies import get_current_user, require_supervisor
 from app.core.database import get_db
 from app.models.assignment import AssignmentType, SupervisorAssignment
 from app.models.notification import NOTIFICATION_TEMPLATES, Notification
+from app.models.rotation import StudentRotation
 from app.models.user import User, UserRole
 from app.schemas.notification import (
     NotificationResponse,
@@ -57,41 +58,49 @@ async def _validate_supervisor_assignments(
 ) -> None:
     """Validate that the supervisor is assigned to each recipient student.
 
+    Supervisors can only send notifications to:
+    1. Students they are the primary supervisor of
+    2. Students currently rotating in departments they supervise
+
     Raises:
         HTTPException: If supervisor is not assigned to a student.
     """
+    # 1. Get all primary-assigned student IDs
+    primary_query = select(SupervisorAssignment.student_id).where(
+        SupervisorAssignment.supervisor_id == supervisor_id,
+        SupervisorAssignment.assignment_type == AssignmentType.primary,
+        SupervisorAssignment.student_id.isnot(None),
+    )
+    primary_result = await db.execute(primary_query)
+    primary_ids = {row[0] for row in primary_result.all()}
+
+    # 2. Get all department-assigned student IDs (via StudentRotation join)
+    dept_query = select(SupervisorAssignment.department_id).where(
+        SupervisorAssignment.supervisor_id == supervisor_id,
+        SupervisorAssignment.assignment_type == AssignmentType.department,
+    )
+    dept_result = await db.execute(dept_query)
+    supervised_dept_ids = [row[0] for row in dept_result.all()]
+
+    dept_student_ids: set[uuid.UUID] = set()
+    if supervised_dept_ids:
+        rot_query = select(StudentRotation.student_id).where(
+            StudentRotation.department_id.in_(supervised_dept_ids),
+            StudentRotation.is_current.is_(True),
+        )
+        rot_result = await db.execute(rot_query)
+        dept_student_ids = {row[0] for row in rot_result.all()}
+
+    # 3. Combine allowed student IDs
+    allowed_student_ids = primary_ids | dept_student_ids
+
+    # 4. Validate all recipients are in allowed set
     for recipient_id in recipient_ids:
-        # Check if primary assignment exists
-        result = await db.execute(
-            select(SupervisorAssignment).where(
-                SupervisorAssignment.supervisor_id == supervisor_id,
-                SupervisorAssignment.student_id == recipient_id,
-                SupervisorAssignment.assignment_type == AssignmentType.primary,
-            )
-        )
-        if result.scalar_one_or_none():
-            continue
-
-        # Check if department assignment exists (student is currently rotating
-        # in a department supervised by this supervisor)
-        dept_result = await db.execute(
-            select(SupervisorAssignment).where(
-                SupervisorAssignment.supervisor_id == supervisor_id,
-                SupervisorAssignment.assignment_type == AssignmentType.department,
-            )
-        )
-        dept_assignments = dept_result.scalars().all()
-
-        # If no department assignments, deny access
-        if not dept_assignments:
+        if recipient_id not in allowed_student_ids:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail=f"You are not assigned to student {recipient_id}",
             )
-
-        # For now, allow supervisors with any department assignment to send to any student
-        # This is a simplification - in production, you'd want to check if the student
-        # is actually rotating in one of the supervisor's departments
 
 
 @router.post("/send", response_model=list[NotificationResponse])
