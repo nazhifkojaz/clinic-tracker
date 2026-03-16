@@ -56,7 +56,7 @@ async def create_submission(
     task_category_id: uuid.UUID,
     case_count: int = 1,
     status: SubmissionStatus = SubmissionStatus.pending,
-    proof_url: str = "submissions/proof.jpg",
+    proof_key: str = "submissions/proof.jpg",
     notes: str | None = None,
 ) -> CaseSubmission:
     """Create a test case submission."""
@@ -65,7 +65,7 @@ async def create_submission(
         department_id=department_id,
         task_category_id=task_category_id,
         case_count=case_count,
-        proof_url=proof_url,
+        proof_key=proof_key,
         status=status,
         notes=notes,
     )

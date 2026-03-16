@@ -22,7 +22,7 @@ async def test_create_submission(client, student_user, student_token, db_session
             "department_id": str(dept.id),
             "task_category_id": str(cat.id),
             "case_count": 3,
-            "proof_url": "submissions/test-proof.jpg",
+            "proof_key": "submissions/test-proof.jpg",
             "notes": "Completed 3 extractions",
         },
         headers=auth_header(student_token),
@@ -42,7 +42,7 @@ async def test_create_submission_invalid_department(client, student_token):
             "department_id": str(uuid.uuid4()),
             "task_category_id": str(uuid.uuid4()),
             "case_count": 1,
-            "proof_url": "submissions/test.jpg",
+            "proof_key": "submissions/test.jpg",
         },
         headers=auth_header(student_token),
     )
@@ -63,7 +63,7 @@ async def test_create_submission_mismatched_category(
             "department_id": str(dept2.id),  # Different department
             "task_category_id": str(cat1.id),  # Category from dept1
             "case_count": 1,
-            "proof_url": "submissions/test.jpg",
+            "proof_key": "submissions/test.jpg",
         },
         headers=auth_header(student_token),
     )
@@ -84,7 +84,7 @@ async def test_supervisor_approve_submission(
             "department_id": str(dept.id),
             "task_category_id": str(cat.id),
             "case_count": 2,
-            "proof_url": "submissions/proof.jpg",
+            "proof_key": "submissions/proof.jpg",
         },
         headers=auth_header(student_token),
     )
@@ -115,7 +115,7 @@ async def test_supervisor_reject_submission(
             "department_id": str(dept.id),
             "task_category_id": str(cat.id),
             "case_count": 1,
-            "proof_url": "submissions/proof.jpg",
+            "proof_key": "submissions/proof.jpg",
         },
         headers=auth_header(student_token),
     )
@@ -146,7 +146,7 @@ async def test_cannot_re_review_submission(
             "department_id": str(dept.id),
             "task_category_id": str(cat.id),
             "case_count": 1,
-            "proof_url": "submissions/proof.jpg",
+            "proof_key": "submissions/proof.jpg",
         },
         headers=auth_header(student_token),
     )
@@ -187,7 +187,7 @@ async def test_student_only_sees_own_submissions(
             "department_id": str(dept.id),
             "task_category_id": str(cat.id),
             "case_count": 1,
-            "proof_url": "submissions/proof.jpg",
+            "proof_key": "submissions/proof.jpg",
         },
         headers=auth_header(student_token),
     )
@@ -217,7 +217,7 @@ async def test_student_cannot_create_for_another_student(
             "department_id": str(dept.id),
             "task_category_id": str(cat.id),
             "case_count": 1,
-            "proof_url": "submissions/proof.jpg",
+            "proof_key": "submissions/proof.jpg",
         },
         headers=auth_header(student_token),
     )
@@ -241,7 +241,7 @@ async def test_student_cannot_review_submission(
             "department_id": str(dept.id),
             "task_category_id": str(cat.id),
             "case_count": 1,
-            "proof_url": "submissions/proof.jpg",
+            "proof_key": "submissions/proof.jpg",
         },
         headers=auth_header(student_token),
     )
@@ -303,7 +303,7 @@ async def test_supervisor_can_only_see_assigned_students_submissions(
             "department_id": str(dept.id),
             "task_category_id": str(cat.id),
             "case_count": 1,
-            "proof_url": "submissions/proof.jpg",
+            "proof_key": "submissions/proof.jpg",
         },
         headers=auth_header(new_student_token),
     )
@@ -345,7 +345,7 @@ async def test_submission_creates_audit_log(
             "department_id": str(dept.id),
             "task_category_id": str(cat.id),
             "case_count": 1,
-            "proof_url": "submissions/proof.jpg",
+            "proof_key": "submissions/proof.jpg",
         },
         headers=auth_header(student_token),
     )
@@ -427,7 +427,7 @@ async def test_supervisor_sees_department_submissions_not_primary_supervisor(
             "department_id": str(dept_a.id),
             "task_category_id": str(cat_a.id),
             "case_count": 5,
-            "proof_url": "submissions/proof.jpg",
+            "proof_key": "submissions/proof.jpg",
         },
         headers=auth_header(student_token),
     )
@@ -463,12 +463,12 @@ async def test_invalid_proof_url_format(client, student_token, db_session):
             "department_id": str(dept.id),
             "task_category_id": str(cat.id),
             "case_count": 1,
-            "proof_url": "invalid-path/proof.jpg",  # Missing 'submissions/' prefix
+            "proof_key": "invalid-path/proof.jpg",  # Missing 'submissions/' prefix
         },
         headers=auth_header(student_token),
     )
     assert response.status_code == 422
-    assert "proof_url must match pattern" in response.json()["detail"][0]["msg"]
+    assert "proof_key must match pattern" in response.json()["detail"][0]["msg"]
 
 
 async def test_empty_proof_url_returns_404(
@@ -486,7 +486,7 @@ async def test_empty_proof_url_returns_404(
         department_id=dept.id,
         task_category_id=cat.id,
         case_count=1,
-        proof_url="",  # Empty string
+        proof_key="",  # Empty string
         status=SubmissionStatus.pending,
     )
     db_session.add(submission)
@@ -536,7 +536,7 @@ async def test_get_submission_by_id_student_own_only(
             "department_id": str(dept.id),
             "task_category_id": str(cat.id),
             "case_count": 1,
-            "proof_url": "submissions/proof.jpg",
+            "proof_key": "submissions/proof.jpg",
         },
         headers=auth_header(other_student_token),
     )
@@ -564,7 +564,7 @@ async def test_get_submission_by_id_supervisor_can_view_assigned(
             "department_id": str(dept.id),
             "task_category_id": str(cat.id),
             "case_count": 1,
-            "proof_url": "submissions/proof.jpg",
+            "proof_key": "submissions/proof.jpg",
         },
         headers=auth_header(student_token),
     )
@@ -593,7 +593,7 @@ async def test_get_submission_by_id_admin_can_view_all(
             "department_id": str(dept.id),
             "task_category_id": str(cat.id),
             "case_count": 1,
-            "proof_url": "submissions/proof.jpg",
+            "proof_key": "submissions/proof.jpg",
         },
         headers=auth_header(student_token),
     )
@@ -632,7 +632,7 @@ async def test_get_proof_url_student_own_only(
             "department_id": str(dept.id),
             "task_category_id": str(cat.id),
             "case_count": 1,
-            "proof_url": "submissions/proof.jpg",
+            "proof_key": "submissions/proof.jpg",
         },
         headers=auth_header(student_token),
     )
