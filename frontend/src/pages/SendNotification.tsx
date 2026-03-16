@@ -25,6 +25,7 @@ export default function SendNotification() {
   const [isSending, setIsSending] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
   const [emailStatus, setEmailStatus] = useState<NotificationStatus | null>(null);
+  const [sendError, setSendError] = useState("");
 
   useEffect(() => {
     const fetchData = async () => {
@@ -73,10 +74,14 @@ export default function SendNotification() {
   };
 
   const handleSendClick = () => {
+    setSendError(""); // Clear previous errors
+
     if (selectedStudentIds.length === 0) {
+      setSendError("Please select at least one student.");
       return;
     }
     if (!subject.trim() || !message.trim()) {
+      setSendError("Please enter both subject and message.");
       return;
     }
     setShowConfirm(true);
@@ -85,6 +90,7 @@ export default function SendNotification() {
   const handleSendConfirm = async () => {
     setIsSending(true);
     setShowConfirm(false);
+    setSendError(""); // Clear previous error
 
     try {
       await notificationService.send({
@@ -99,8 +105,10 @@ export default function SendNotification() {
       });
 
       navigate("/notifications");
-    } catch (error: any) {
-      console.error("Failed to send notification:", error);
+    } catch (err) {
+      console.error("Failed to send notification:", err);
+      const error = err as { response?: { data?: { detail?: string } } };
+      setSendError(error.response?.data?.detail || "Failed to send notification. Please try again.");
       setIsSending(false);
     }
   };
@@ -140,6 +148,13 @@ export default function SendNotification() {
           </div>
         )}
       </div>
+
+      {sendError && (
+        <div className="flex items-center gap-2 rounded-md bg-destructive/10 p-3 text-sm text-destructive">
+          <AlertCircle className="h-4 w-4" />
+          <span>{sendError}</span>
+        </div>
+      )}
 
       <div className="grid gap-6 lg:grid-cols-2">
         {/* Select Recipients */}
@@ -276,7 +291,7 @@ export default function SendNotification() {
               </Button>
               <Button
                 onClick={handleSendClick}
-                disabled={isSending || selectedStudentIds.length === 0}
+                disabled={isSending || selectedStudentIds.length === 0 || !subject.trim() || !message.trim()}
               >
                 {isSending ? (
                   <>
