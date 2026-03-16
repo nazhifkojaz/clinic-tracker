@@ -35,7 +35,6 @@ async def _create_student(db_session) -> User:
     return student
 
 
-@pytest.mark.anyio
 async def test_supervisor_with_primary_assignment_can_notify_student(
     client, supervisor_user, supervisor_token, db_session
 ):
@@ -67,7 +66,6 @@ async def test_supervisor_with_primary_assignment_can_notify_student(
     assert data[0]["recipient_id"] == str(student.id)
 
 
-@pytest.mark.anyio
 async def test_supervisor_with_department_assignment_can_notify_rotating_student(
     client, supervisor_user, supervisor_token, db_session
 ):
@@ -106,7 +104,6 @@ async def test_supervisor_with_department_assignment_can_notify_rotating_student
     assert len(response.json()) == 1
 
 
-@pytest.mark.anyio
 async def test_supervisor_cannot_notify_student_not_in_their_department(
     client, supervisor_user, supervisor_token, db_session
 ):
@@ -142,7 +139,6 @@ async def test_supervisor_cannot_notify_student_not_in_their_department(
     assert "not assigned to student" in response.json()["detail"]
 
 
-@pytest.mark.anyio
 async def test_admin_can_notify_any_student(
     client, admin_token, db_session
 ):
@@ -162,7 +158,6 @@ async def test_admin_can_notify_any_student(
     assert len(response.json()) == 1
 
 
-@pytest.mark.anyio
 async def test_notification_requires_student_recipients(
     client, supervisor_token, admin_user, db_session
 ):
@@ -185,7 +180,6 @@ async def test_notification_requires_student_recipients(
     assert response.status_code in (403, 404)
 
 
-@pytest.mark.anyio
 async def test_notification_saves_to_database(
     client, supervisor_user, supervisor_token, db_session
 ):

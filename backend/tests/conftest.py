@@ -11,6 +11,8 @@ from app.core.security import create_access_token, hash_password
 from app.main import app
 from app.models.user import User, UserRole
 
+from tests.factories import _random_suffix
+
 # Use a dedicated test database URL — never the production one.
 import os
 
@@ -29,11 +31,7 @@ if "neon.tech" in TEST_DATABASE_URL or "amazonaws.com" in TEST_DATABASE_URL:
         "Never run tests against production!"
     )
 
-# Use NullPool to avoid connection reuse across different event loops
-# Test database engine
-# Note: TEST_DATABASE_URL uses local Postgres without SSL
-# The main engine in database.py uses DATABASE_SSL setting
-# Test engine is created separately to avoid SSL requirement
+# Use NullPool so each test's event loop gets a fresh connection with no cross-loop sharing.
 test_engine = create_async_engine(
     TEST_DATABASE_URL,
     echo=False,
@@ -41,28 +39,15 @@ test_engine = create_async_engine(
 )
 TestSessionLocal = async_sessionmaker(test_engine, expire_on_commit=False)
 
-# Store created users for use in tests
+# Store created users for use in tests (populated once at session start)
 _created_users = {}
 
 
-@pytest.fixture(scope="session")
-def event_loop():
-    """Create a single event loop for the entire test session."""
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    yield loop
-    loop.close()
-
-
-@pytest.fixture(scope="session")
-async def _setup_database():
-    """Create tables and seed test users at session start."""
-    global _created_users
-
+async def _run_setup():
+    """Create schema and seed base test users. Runs once per session via asyncio.run()."""
     async with test_engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 
-    # Create test users
     async with TestSessionLocal() as session:
         admin = User(
             email="admin@test.com",
@@ -94,15 +79,24 @@ async def _setup_database():
             await session.refresh(user)
             _created_users[user.role.value] = user
 
-    yield
-    # Clean up at session end
+
+async def _run_teardown():
+    """Drop all tables. Runs once per session via asyncio.run()."""
     async with test_engine.begin() as conn:
         await conn.run_sync(Base.metadata.drop_all)
 
 
+@pytest.fixture(scope="session", autouse=True)
+def _setup_database():
+    """Session-scoped sync fixture: creates schema + seeds users before any test runs."""
+    asyncio.run(_run_setup())
+    yield
+    asyncio.run(_run_teardown())
+
+
 @pytest.fixture
-async def db_session(_setup_database) -> AsyncGenerator[AsyncSession, None]:
-    """Provide a database session for each test."""
+async def db_session() -> AsyncGenerator[AsyncSession, None]:
+    """Provide a fresh database session for each test (function-scoped event loop)."""
     async with TestSessionLocal() as session:
         yield session
 
@@ -156,6 +150,42 @@ def student_token(student_user: User) -> str:
 def supervisor_token(supervisor_user: User) -> str:
     """JWT access token for supervisor user."""
     return create_access_token(subject=str(supervisor_user.id), role="supervisor")
+
+
+@pytest.fixture
+async def inactive_user(db_session: AsyncSession) -> User:
+    """Create an inactive user for testing inactive login scenarios."""
+    suffix = _random_suffix()
+    user = User(
+        email=f"inactive_{suffix}@test.com",
+        password_hash=hash_password("testpass123"),
+        full_name="Inactive User",
+        student_id=f"INACTIVE{suffix}",
+        role=UserRole.student,
+        is_active=False,
+    )
+    db_session.add(user)
+    await db_session.commit()
+    await db_session.refresh(user)
+    return user
+
+
+@pytest.fixture
+async def fresh_student(db_session: AsyncSession) -> User:
+    """Create a fresh student with no pre-existing data for isolated tests."""
+    suffix = _random_suffix()
+    user = User(
+        email=f"fresh_{suffix}@test.com",
+        password_hash=hash_password("testpass123"),
+        full_name="Fresh Student",
+        student_id=f"FRESH{suffix}",
+        role=UserRole.student,
+        is_active=True,
+    )
+    db_session.add(user)
+    await db_session.commit()
+    await db_session.refresh(user)
+    return user
 
 
 def auth_header(token: str) -> dict[str, str]:
