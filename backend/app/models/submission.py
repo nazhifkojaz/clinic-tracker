@@ -49,7 +49,7 @@ class CaseSubmission(Base):
         index=True,
     )
     case_count: Mapped[int] = mapped_column(Integer, nullable=False)
-    proof_url: Mapped[str] = mapped_column(String(1024), nullable=False)
+    proof_key: Mapped[str] = mapped_column(String(1024), nullable=False)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     status: Mapped[SubmissionStatus] = mapped_column(
         Enum(SubmissionStatus, name="submission_status", create_constraint=True),

@@ -12,17 +12,17 @@ class SubmissionCreate(BaseModel):
     department_id: uuid.UUID
     task_category_id: uuid.UUID
     case_count: int = Field(..., gt=0)
-    proof_url: str = Field(..., min_length=1, max_length=1024)
+    proof_key: str = Field(..., min_length=1, max_length=1024)
     notes: str | None = Field(None, max_length=2000)
 
-    @field_validator("proof_url")
+    @field_validator("proof_key")
     @classmethod
-    def validate_proof_url(cls, v: str) -> str:
-        """Validate proof_url follows expected pattern."""
+    def validate_proof_key(cls, v: str) -> str:
+        """Validate proof_key follows expected pattern."""
         pattern = r"^submissions/[a-zA-Z0-9._-]+$"
         if not re.match(pattern, v):
             raise ValueError(
-                "proof_url must match pattern: submissions/<filename> "
+                "proof_key must match pattern: submissions/<filename> "
                 "(alphanumeric, dots, dashes, underscores only)"
             )
         return v
@@ -50,7 +50,7 @@ class SubmissionResponse(BaseModel):
     department_id: uuid.UUID
     task_category_id: uuid.UUID
     case_count: int
-    proof_url: str
+    proof_key: str
     notes: str | None
     status: SubmissionStatus
     reviewed_by: uuid.UUID | None
@@ -70,7 +70,7 @@ class SubmissionListResponse(BaseModel):
     department_id: uuid.UUID
     task_category_id: uuid.UUID
     case_count: int
-    proof_url: str
+    proof_key: str
     notes: str | None
     status: SubmissionStatus
     reviewed_by: uuid.UUID | None
@@ -94,11 +94,6 @@ class SubmissionReview(BaseModel):
     review_notes: str | None = None
 
 
-class UploadUrlRequest(BaseModel):
-    filename: str = Field(..., min_length=1, max_length=255)
-    content_type: str = Field(..., pattern=r"^image/(jpeg|png|gif|webp)$")
-
-
 class UploadUrlResponse(BaseModel):
     upload_url: str
-    object_key: str
+    key: str
