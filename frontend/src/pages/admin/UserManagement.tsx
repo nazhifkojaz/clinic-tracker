@@ -22,8 +22,14 @@ export default function UserManagement() {
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const fetchUsers = async () => {
-    const data = await userService.list();
-    setUsers(data);
+    try {
+      const data = await userService.list();
+      setUsers(data);
+      setError(""); // Clear any previous error
+    } catch (err) {
+      console.error("Failed to load users:", err);
+      setError("Failed to load users. Please refresh the page.");
+    }
   };
 
   useEffect(() => {

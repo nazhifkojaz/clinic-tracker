@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import React from "react";
 import { auditService } from "@/services/audit";
 import type { AuditLogEntry, AuditLogMetadata } from "@/types/audit";
@@ -46,6 +46,15 @@ interface Filters {
   date_to: string;
 }
 
+interface AuditLogQueryParams {
+  limit: number;
+  offset: number;
+  action?: string;
+  table_name?: string;
+  date_from?: string;
+  date_to?: string;
+}
+
 const ACTION_LABELS: Record<string, string> = {
   create: "Create",
   update: "Update",
@@ -83,14 +92,10 @@ export default function AuditLog() {
   const [offset, setOffset] = useState(0);
   const limit = 50;
 
-  useEffect(() => {
-    fetchData();
-  }, [filters, offset]);
-
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     setIsLoading(true);
     try {
-      const params: any = { limit, offset };
+      const params: AuditLogQueryParams = { limit, offset };
       if (filters.action) params.action = filters.action;
       if (filters.table_name) params.table_name = filters.table_name;
       if (filters.date_from) params.date_from = filters.date_from;
@@ -109,7 +114,11 @@ export default function AuditLog() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [filters, offset]);
+
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
 
   const updateFilter = (key: keyof Filters, value: string) => {
     setFilters((prev) => ({ ...prev, [key]: value }));

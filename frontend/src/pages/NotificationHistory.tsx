@@ -1,11 +1,11 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import React from "react";
 import { useAuthStore } from "@/stores/authStore";
 import { notificationService } from "@/services/notifications";
 import type { NotificationRecord } from "@/types/notification";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Bell, ChevronDown, ChevronUp } from "lucide-react";
+import { Bell, ChevronDown, ChevronUp, AlertCircle } from "lucide-react";
 import { TableSkeleton } from "@/components/skeletons/TableSkeleton";
 
 interface ExpandedRow {
@@ -44,22 +44,25 @@ export default function NotificationHistory() {
 
   const [notifications, setNotifications] = useState<NotificationRecord[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState("");
   const [expanded, setExpanded] = useState<ExpandedRow>({});
 
-  useEffect(() => {
-    fetchNotifications();
-  }, []);
-
-  const fetchNotifications = async () => {
+  const fetchNotifications = useCallback(async () => {
     try {
       const data = await notificationService.list({ limit: 100 });
       setNotifications(data);
-    } catch (error) {
-      console.error("Failed to load notification history:", error);
+      setError(""); // Clear previous error
+    } catch (err) {
+      console.error("Failed to load notification history:", err);
+      setError("Failed to load notifications. Please try again.");
     } finally {
       setIsLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    fetchNotifications();
+  }, [fetchNotifications]);
 
   const toggleExpand = (id: string) => {
     setExpanded((prev) => ({ ...prev, [id]: !prev[id] }));
@@ -94,7 +97,12 @@ export default function NotificationHistory() {
           Email notifications you have sent to students
         </p>
 
-        {notifications.length === 0 ? (
+        {error ? (
+          <div className="text-center py-12 text-destructive">
+            <AlertCircle className="h-12 w-12 mx-auto mb-4" />
+            <p>{error}</p>
+          </div>
+        ) : notifications.length === 0 ? (
           <div className="text-center py-12 text-muted-foreground">
             <Bell className="h-12 w-12 mx-auto mb-4 opacity-50" />
             <p>No notifications sent yet.</p>
