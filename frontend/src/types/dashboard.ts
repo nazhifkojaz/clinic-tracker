@@ -72,7 +72,7 @@ export interface DepartmentStudentProgress {
   total_required: number;
   total_completed: number;
   completion_percentage: number;
-  status: string;
+  status: StudentStatus;
 }
 
 export interface DepartmentDashboardData {

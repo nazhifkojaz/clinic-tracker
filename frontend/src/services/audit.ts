@@ -1,5 +1,5 @@
 import api from "./api";
-import type { AuditLogListResponse, AuditLogMetadata } from "../types/audit";
+import type { AuditLogListResponse, AuditLogMetadata } from "@/types/audit";
 
 export const auditService = {
   async list(params?: {

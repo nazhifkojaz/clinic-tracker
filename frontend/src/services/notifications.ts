@@ -4,7 +4,7 @@ import type {
   NotificationSend,
   NotificationStatus,
   NotificationTemplate,
-} from "../types/notification";
+} from "@/types/notification";
 
 export const notificationService = {
   async getTemplates(): Promise<NotificationTemplate[]> {
