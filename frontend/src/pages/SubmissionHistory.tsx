@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { useAuthStore } from "@/stores/authStore";
 import { submissionService } from "@/services/submissions";
 import { departmentService } from "@/services/departments";
@@ -28,6 +29,7 @@ const statusConfig: Record<
 
 export default function SubmissionHistory() {
   const { user } = useAuthStore();
+  const navigate = useNavigate();
   const isStudent = user?.role === "student";
 
   const [submissions, setSubmissions] = useState<Submission[]>([]);
@@ -49,6 +51,42 @@ export default function SubmissionHistory() {
   const [isReviewing, setIsReviewing] = useState(false);
   const [reviewNotes, setReviewNotes] = useState("");
 
+  // Fetch departments and categories once on mount (independent of filters)
+  useEffect(() => {
+    const fetchCategories = async () => {
+      try {
+        const deptsData = await departmentService.list();
+        const activeDepts = deptsData.filter((d) => d.is_active);
+
+        const deptsWithCategories: DepartmentWithCategories[] = await Promise.all(
+          activeDepts.map(async (dept) => {
+            const categories = await departmentService.listCategories(dept.id);
+            return {
+              ...dept,
+              task_categories: categories,
+            };
+          })
+        );
+
+        setDepartments(deptsWithCategories);
+
+        // Build a categories map for easy lookup
+        const catsMap: Record<string, TaskCategory> = {};
+        deptsWithCategories.forEach((dept) => {
+          dept.task_categories.forEach((cat) => {
+            catsMap[cat.id] = cat;
+          });
+        });
+        setCategoriesMap(catsMap);
+      } catch {
+        setError("Failed to load departments");
+      }
+    };
+
+    fetchCategories();
+  }, []); // Empty deps - only runs once on mount
+
+  // Fetch submissions when filters change
   const fetchData = useCallback(async () => {
     try {
       setIsLoading(true);
@@ -58,35 +96,8 @@ export default function SubmissionHistory() {
       if (departmentFilter) params.department_id = departmentFilter;
       if (statusFilter) params.status = statusFilter;
 
-      const [subsData, deptsData] = await Promise.all([
-        submissionService.list(params),
-        departmentService.list(),
-      ]);
-
+      const subsData = await submissionService.list(params);
       setSubmissions(subsData);
-      const activeDepts = deptsData.filter((d) => d.is_active);
-
-      // Fetch categories for each department
-      const deptsWithCategories: DepartmentWithCategories[] = await Promise.all(
-        activeDepts.map(async (dept) => {
-          const categories = await departmentService.listCategories(dept.id);
-          return {
-            ...dept,
-            task_categories: categories,
-          };
-        })
-      );
-
-      setDepartments(deptsWithCategories);
-
-      // Build a categories map for easy lookup
-      const catsMap: Record<string, TaskCategory> = {};
-      deptsWithCategories.forEach((dept) => {
-        dept.task_categories.forEach((cat) => {
-          catsMap[cat.id] = cat;
-        });
-      });
-      setCategoriesMap(catsMap);
     } catch {
       setError("Failed to load submissions");
     } finally {
@@ -225,7 +236,7 @@ export default function SubmissionHistory() {
           </p>
           {isStudent && (
             <button
-              onClick={() => (window.location.hash = "#/cases/new")}
+              onClick={() => navigate("/cases/new")}
               className="mt-4 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
             >
               Submit Your First Case

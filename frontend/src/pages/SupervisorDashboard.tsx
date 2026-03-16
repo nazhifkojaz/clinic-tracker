@@ -57,6 +57,7 @@ export default function SupervisorDashboard() {
   const viewStudent = async (studentId: string) => {
     try {
       setStudentLoading(true);
+      setExpandedDept(null); // Reset expanded department when viewing a new student
       const result = await dashboardService.getStudentDashboardById(studentId);
       setSelectedStudent(result);
     } catch {
