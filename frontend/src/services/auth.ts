@@ -8,13 +8,6 @@ export const authService = {
     return data;
   },
 
-  async refresh(refreshToken: string): Promise<TokenResponse> {
-    const { data } = await api.post<TokenResponse>("/api/auth/refresh", {
-      refresh_token: refreshToken,
-    });
-    return data;
-  },
-
   async getMe(): Promise<User> {
     const { data } = await api.get<User>("/api/users/me");
     return data;

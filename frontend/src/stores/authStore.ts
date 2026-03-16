@@ -29,7 +29,10 @@ export const useAuthStore = create<AuthState>((set) => ({
       const user = await authService.getMe();
       set({ user, isAuthenticated: true, isLoading: false });
     } catch (error) {
-      set({ isLoading: false });
+      // Clear tokens and reset auth state on error
+      localStorage.removeItem("access_token");
+      localStorage.removeItem("refresh_token");
+      set({ user: null, isAuthenticated: false, isLoading: false });
       throw error;
     }
   },

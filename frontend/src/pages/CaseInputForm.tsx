@@ -152,6 +152,15 @@ export default function CaseInputForm() {
     }
   };
 
+  // Cleanup object URL on unmount or when imagePreview changes
+  useEffect(() => {
+    return () => {
+      if (imagePreview) {
+        URL.revokeObjectURL(imagePreview);
+      }
+    };
+  }, [imagePreview]);
+
   const clearImage = () => {
     setImageFile(null);
     setImagePreview("");
