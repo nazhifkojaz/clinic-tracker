@@ -194,7 +194,7 @@ export default function CaseInputForm() {
         department_id: departmentId,
         task_category_id: taskCategoryId,
         case_count: caseCount,
-        proof_url: uploadedObjectKey,
+        proof_key: uploadedObjectKey,
         notes: notes || null,
       });
 

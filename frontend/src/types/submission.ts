@@ -19,7 +19,7 @@ export interface Submission {
   department_id: string;
   task_category_id: string;
   case_count: number;
-  proof_url: string;
+  proof_key: string;
   notes: string | null;
   status: SubmissionStatus;
   reviewed_by: string | null;
@@ -33,7 +33,7 @@ export interface SubmissionCreate {
   department_id: string;
   task_category_id: string;
   case_count: number;
-  proof_url: string;
+  proof_key: string;
   notes?: string | null;
 }
 
