@@ -21,7 +21,6 @@ from app.schemas.submission import (
     SubmissionListResponse,
     SubmissionResponse,
     SubmissionReview,
-    UploadUrlRequest,
     UploadUrlResponse,
 )
 from app.utils.audit import record_audit
@@ -30,17 +29,18 @@ from app.utils.storage import generate_read_url, generate_upload_url
 router = APIRouter(prefix="/api/submissions", tags=["submissions"])
 
 
-@router.post("/upload-url", response_model=UploadUrlResponse)
+@router.get("/upload-url", response_model=UploadUrlResponse)
 async def get_upload_url(
-    body: UploadUrlRequest,
     _user: User = Depends(require_student),
+    filename: str = "image.jpg",
+    content_type: str = "image/jpeg",
 ):
     """Get a presigned URL for uploading proof image to R2. Student only."""
     upload_url, object_key = generate_upload_url(
-        filename=body.filename,
-        content_type=body.content_type,
+        filename=filename,
+        content_type=content_type,
     )
-    return UploadUrlResponse(upload_url=upload_url, object_key=object_key)
+    return UploadUrlResponse(upload_url=upload_url, key=object_key)
 
 
 async def _get_submission_or_403(
@@ -217,7 +217,7 @@ async def list_submissions(
                 department_id=submission.department_id,
                 task_category_id=submission.task_category_id,
                 case_count=submission.case_count,
-                proof_url=submission.proof_url,
+                proof_key=submission.proof_key,
                 notes=submission.notes,
                 status=submission.status,
                 reviewed_by=submission.reviewed_by,
@@ -306,9 +306,9 @@ async def get_proof_url(
     """Get a temporary presigned URL to view the proof image."""
     submission = await _get_submission_or_403(submission_id, user, db)
 
-    # Runtime guard: check for empty proof_url before generating URL
-    if not submission.proof_url:
+    # Runtime guard: check for empty proof_key before generating URL
+    if not submission.proof_key:
         raise HTTPException(status_code=404, detail="Proof URL not available")
 
-    url = generate_read_url(submission.proof_url)
+    url = generate_read_url(submission.proof_key)
     return {"url": url}
