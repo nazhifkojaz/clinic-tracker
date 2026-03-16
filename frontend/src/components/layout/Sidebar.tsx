@@ -40,6 +40,8 @@ const navItems = {
   ],
 };
 
+const BREAKPOINTS = { lg: 1024 } as const;
+
 interface SidebarProps {
   open?: boolean;
   onClose?: () => void;
@@ -83,7 +85,7 @@ export default function Sidebar({ open = false, onClose }: SidebarProps) {
             }
             onClick={() => {
               // Close sidebar on mobile after navigation
-              if (window.innerWidth < 1024) {
+              if (window.innerWidth < BREAKPOINTS.lg) {
                 onClose?.();
               }
             }}
