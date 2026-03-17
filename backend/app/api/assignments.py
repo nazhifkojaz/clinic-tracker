@@ -106,29 +106,7 @@ async def create_assignment(
     db: AsyncSession = Depends(get_db),
 ):
     """Create a supervisor assignment. Admin only."""
-    # Validate assignment_type + field consistency
-    if body.assignment_type == AssignmentType.primary:
-        if body.student_id is None:
-            raise HTTPException(
-                status_code=400,
-                detail="Primary assignments must have a student_id",
-            )
-        if body.department_id is not None:
-            raise HTTPException(
-                status_code=400,
-                detail="Primary assignments must not have a department_id",
-            )
-    elif body.assignment_type == AssignmentType.department:
-        if body.department_id is None:
-            raise HTTPException(
-                status_code=400,
-                detail="Department assignments must have a department_id",
-            )
-        if body.student_id is not None:
-            raise HTTPException(
-                status_code=400,
-                detail="Department assignments must not have a student_id",
-            )
+    # Note: assignment_type + field consistency validation is now in the AssignmentCreate schema
 
     # Validate supervisor exists and has supervisor/admin role
     sup_result = await db.execute(
