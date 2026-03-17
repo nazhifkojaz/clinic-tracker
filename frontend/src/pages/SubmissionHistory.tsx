@@ -8,6 +8,8 @@ import type { DepartmentWithCategories, TaskCategory } from "@/types/department"
 import {
   AlertCircle,
   CheckCircle,
+  ChevronLeft,
+  ChevronRight,
   Clock,
   Eye,
   FileImage,
@@ -27,12 +29,18 @@ const statusConfig: Record<
   rejected: { label: "Rejected", className: "bg-red-500/10 text-red-600 dark:text-red-400" },
 };
 
+const PAGE_SIZE = 20;
+
 export default function SubmissionHistory() {
   const { user } = useAuthStore();
   const navigate = useNavigate();
   const isStudent = user?.role === "student";
 
   const [submissions, setSubmissions] = useState<Submission[]>([]);
+  const [totalCount, setTotalCount] = useState(0);
+  const [currentPage, setCurrentPage] = useState(0);
+  const [hasMore, setHasMore] = useState(false);
+
   const [departments, setDepartments] = useState<DepartmentWithCategories[]>([]);
   const [categoriesMap, setCategoriesMap] = useState<Record<string, TaskCategory>>({});
   const [isLoading, setIsLoading] = useState(true);
@@ -86,28 +94,43 @@ export default function SubmissionHistory() {
     fetchCategories();
   }, []); // Empty deps - only runs once on mount
 
-  // Fetch submissions when filters change
+  // Fetch submissions when filters or page changes
   const fetchData = useCallback(async () => {
     try {
       setIsLoading(true);
       setError("");
 
-      const params: { department_id?: string; status?: string } = {};
+      const params: {
+        department_id?: string;
+        status?: string;
+        limit: number;
+        offset: number;
+      } = {
+        limit: PAGE_SIZE,
+        offset: currentPage * PAGE_SIZE,
+      };
       if (departmentFilter) params.department_id = departmentFilter;
       if (statusFilter) params.status = statusFilter;
 
-      const subsData = await submissionService.list(params);
-      setSubmissions(subsData);
+      const response = await submissionService.list(params);
+      setSubmissions(response.items);
+      setTotalCount(response.total);
+      setHasMore(response.has_more);
     } catch {
       setError("Failed to load submissions");
     } finally {
       setIsLoading(false);
     }
-  }, [departmentFilter, statusFilter]);
+  }, [departmentFilter, statusFilter, currentPage]);
 
   useEffect(() => {
     fetchData();
   }, [fetchData]);
+
+  // Reset to first page when filters change
+  useEffect(() => {
+    setCurrentPage(0);
+  }, [departmentFilter, statusFilter]);
 
   const handleViewDetail = async (submission: Submission) => {
     setSelectedSubmission(submission);
@@ -295,8 +318,70 @@ export default function SubmissionHistory() {
               ))}
             </tbody>
           </table>
+
+          {/* Pagination Controls */}
+          {totalCount > 0 && (
+            <div className="flex items-center justify-between border-t px-4 py-3">
+              <div className="text-sm text-muted-foreground">
+                Showing {currentPage * PAGE_SIZE + 1} -{" "}
+                {Math.min((currentPage + 1) * PAGE_SIZE, totalCount)} of {totalCount}
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setCurrentPage((p) => Math.max(0, p - 1))}
+                  disabled={currentPage === 0 || isLoading}
+                  className="inline-flex items-center gap-1 rounded-md border px-3 py-2 text-sm font-medium hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                  Previous
+                </button>
+                <span className="text-sm">
+                  Page {currentPage + 1} of {Math.ceil(totalCount / PAGE_SIZE)}
+                </span>
+                <button
+                  onClick={() => setCurrentPage((p) => p + 1)}
+                  disabled={!hasMore || isLoading}
+                  className="inline-flex items-center gap-1 rounded-md border px-3 py-2 text-sm font-medium hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  Next
+                  <ChevronRight className="h-4 w-4" />
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       )}
+
+        {/* Pagination Controls */}
+        {totalCount > 0 && (
+          <div className="flex items-center justify-between border-t pt-4">
+            <div className="text-sm text-muted-foreground">
+              Showing {currentPage * PAGE_SIZE + 1} -{" "}
+              {Math.min((currentPage + 1) * PAGE_SIZE, totalCount)} of {totalCount}
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setCurrentPage((p) => Math.max(0, p - 1))}
+                disabled={currentPage === 0 || isLoading}
+                className="inline-flex items-center gap-1 rounded-md border px-3 py-2 text-sm font-medium hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <ChevronLeft className="h-4 w-4" />
+                Previous
+              </button>
+              <span className="text-sm">
+                Page {currentPage + 1} of {Math.ceil(totalCount / PAGE_SIZE)}
+              </span>
+              <button
+                onClick={() => setCurrentPage((p) => p + 1)}
+                disabled={!hasMore || isLoading}
+                className="inline-flex items-center gap-1 rounded-md border px-3 py-2 text-sm font-medium hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Next
+                <ChevronRight className="h-4 w-4" />
+              </button>
+            </div>
+          </div>
+        )}
 
       {/* Detail Modal */}
       {selectedSubmission && (
