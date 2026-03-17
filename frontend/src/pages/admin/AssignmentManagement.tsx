@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -32,10 +32,17 @@ export default function AssignmentManagement() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
 
-  const supervisors = users.filter(
-    (u) => (u.role === "supervisor" || u.role === "admin") && u.is_active
+  // Session-scope cache for form data (users + departments rarely change)
+  const formDataCache = useRef<{ users: User[]; departments: Department[] } | null>(null);
+
+  const supervisors = useMemo(
+    () => users.filter((u) => (u.role === "supervisor" || u.role === "admin") && u.is_active),
+    [users]
   );
-  const students = users.filter((u) => u.role === "student" && u.is_active);
+  const students = useMemo(
+    () => users.filter((u) => u.role === "student" && u.is_active),
+    [users]
+  );
 
   const fetchAssignments = async (page: number = currentPage) => {
     setIsLoading(true);
@@ -54,18 +61,27 @@ export default function AssignmentManagement() {
     }
   };
 
-  const fetchFormData = async () => {
+  const fetchFormData = useCallback(async () => {
+    // Return cached data if available
+    if (formDataCache.current) {
+      setUsers(formDataCache.current.users);
+      setDepartments(formDataCache.current.departments);
+      return;
+    }
+
     try {
       const [usersResponse, deptsData] = await Promise.all([
         userService.list({ limit: 1000, offset: 0 }), // Get all users for dropdown
         departmentService.list(),
       ]);
-      setUsers(usersResponse.items);
-      setDepartments(deptsData);
+      const data = { users: usersResponse.items, departments: deptsData };
+      formDataCache.current = data;
+      setUsers(data.users);
+      setDepartments(data.departments);
     } catch {
       setError("Failed to load form data.");
     }
-  };
+  }, []);
 
   useEffect(() => {
     fetchAssignments();

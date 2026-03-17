@@ -101,20 +101,29 @@ export default function AuditLog() {
       if (filters.date_from) params.date_from = filters.date_from;
       if (filters.date_to) params.date_to = filters.date_to;
 
-      const [logsData, metadataData] = await Promise.all([
-        auditService.list(params),
-        auditService.getMetadata(),
-      ]);
-
+      const logsData = await auditService.list(params);
       setEntries(logsData.items);
       setTotal(logsData.total);
-      setMetadata(metadataData);
     } catch (error) {
       console.error("Failed to load audit logs:", error);
     } finally {
       setIsLoading(false);
     }
-  }, [filters, offset]);
+  }, [filters, offset, limit]);
+
+  // Fetch metadata once on mount (independent of filters/pagination)
+  useEffect(() => {
+    const fetchMetadata = async () => {
+      try {
+        const data = await auditService.getMetadata();
+        setMetadata(data);
+      } catch (error) {
+        console.error("Failed to load audit metadata");
+      }
+    };
+
+    fetchMetadata();
+  }, []); // Empty deps - runs once on mount
 
   useEffect(() => {
     fetchData();
@@ -135,6 +144,10 @@ export default function AuditLog() {
   const toggleExpand = (id: string) => {
     setExpanded((prev) => ({ ...prev, [id]: !prev[id] }));
   };
+
+  const handleRowClick = useCallback((entry: AuditLogEntry) => {
+    toggleExpand(entry.id);
+  }, []);
 
   const renderJsonDiff = (
     oldValues: Record<string, unknown> | null,
@@ -355,7 +368,7 @@ export default function AuditLog() {
                     <React.Fragment key={entry.id}>
                       <tr
                         className="border-t cursor-pointer hover:bg-muted/50"
-                        onClick={() => toggleExpand(entry.id)}
+                        onClick={() => handleRowClick(entry)}
                       >
                         <td className="px-4 py-3 font-mono text-xs">
                           {formatDateShort(entry.created_at)}
