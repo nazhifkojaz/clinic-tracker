@@ -2,6 +2,7 @@
 
 import { useMemo } from "react";
 import { RadialBarChart, RadialBar, PolarAngleAxis } from "recharts";
+import { useSuccessColor, useWarningColor, useDestructiveColor, useMutedColor } from "@/hooks/useThemeColor";
 
 interface ProgressGaugeProps {
   percentage: number;
@@ -9,9 +10,14 @@ interface ProgressGaugeProps {
 }
 
 export default function ProgressGauge({ percentage, size = 180 }: ProgressGaugeProps) {
+  const successColor = useSuccessColor();
+  const warningColor = useWarningColor();
+  const destructiveColor = useDestructiveColor();
+  const mutedColor = useMutedColor();
+
   const gaugeColor = useMemo(
-    () => percentage >= 60 ? "#22c55e" : percentage >= 30 ? "#f59e0b" : "#ef4444",
-    [percentage]
+    () => percentage >= 60 ? successColor : percentage >= 30 ? warningColor : destructiveColor,
+    [percentage, successColor, warningColor, destructiveColor]
   );
 
   const data = useMemo(() => [{ value: percentage, fill: gaugeColor }], [percentage, gaugeColor]);
@@ -31,7 +37,7 @@ export default function ProgressGauge({ percentage, size = 180 }: ProgressGaugeP
         barSize={12}
       >
         <PolarAngleAxis type="number" domain={[0, 100]} angleAxisId={0} tick={false} />
-        <RadialBar dataKey="value" cornerRadius={6} background={{ fill: "#e5e7eb" }} />
+        <RadialBar dataKey="value" cornerRadius={6} background={{ fill: mutedColor || "#e5e7eb" }} />
       </RadialBarChart>
       <div className="-mt-[calc(50%+10px)] flex flex-col items-center">
         <span className="text-3xl font-bold">{percentage.toFixed(1)}%</span>

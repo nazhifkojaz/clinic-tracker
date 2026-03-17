@@ -4,6 +4,7 @@ import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
 } from "recharts";
 import type { ProgressDataPoint } from "@/types/dashboard";
+import { usePrimaryColor } from "@/hooks/useThemeColor";
 
 interface ProgressTimelineProps {
   data: ProgressDataPoint[];
@@ -20,6 +21,8 @@ function formatTooltipLabel(val: unknown): string {
 }
 
 export default function ProgressTimeline({ data }: ProgressTimelineProps) {
+  const primaryColor = usePrimaryColor();
+
   if (data.length === 0) {
     return <p className="text-sm text-muted-foreground py-8 text-center">No data yet</p>;
   }
@@ -41,7 +44,7 @@ export default function ProgressTimeline({ data }: ProgressTimelineProps) {
         <Line
           type="monotone"
           dataKey="cumulative_cases"
-          stroke="#6366f1"
+          stroke={primaryColor || "#6366f1"}
           strokeWidth={2}
           dot={{ r: 3 }}
           activeDot={{ r: 5 }}

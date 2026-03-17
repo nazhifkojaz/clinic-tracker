@@ -5,18 +5,26 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell,
 } from "recharts";
 import type { DepartmentProgress } from "@/types/dashboard";
+import { useSuccessColor, useWarningColor, useDestructiveColor } from "@/hooks/useThemeColor";
 
 interface DepartmentBarsProps {
   departments: DepartmentProgress[];
 }
 
-function getColor(pct: number): string {
-  if (pct >= 60) return "#22c55e";
-  if (pct >= 30) return "#f59e0b";
-  return "#ef4444";
-}
-
 export default function DepartmentBars({ departments }: DepartmentBarsProps) {
+  const successColor = useSuccessColor();
+  const warningColor = useWarningColor();
+  const destructiveColor = useDestructiveColor();
+
+  const getColor = useMemo(
+    () => (pct: number): string => {
+      if (pct >= 60) return successColor;
+      if (pct >= 30) return warningColor;
+      return destructiveColor;
+    },
+    [successColor, warningColor, destructiveColor]
+  );
+
   if (departments.length === 0) {
     return <p className="text-sm text-muted-foreground py-8 text-center">No departments</p>;
   }

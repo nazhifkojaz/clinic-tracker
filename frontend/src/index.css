@@ -38,6 +38,8 @@
     --sidebar-accent-foreground: oklch(0.205 0 0);
     --sidebar-border: oklch(0.922 0 0);
     --sidebar-ring: oklch(0.708 0 0);
+    --success: oklch(0.65 0.15 145);
+    --warning: oklch(0.75 0.12 65);
 }
 
 .dark {
@@ -72,6 +74,8 @@
     --sidebar-accent-foreground: oklch(0.985 0 0);
     --sidebar-border: oklch(1 0 0 / 10%);
     --sidebar-ring: oklch(0.556 0 0);
+    --success: oklch(0.70 0.16 145);
+    --warning: oklch(0.78 0.14 65);
 }
 
 @theme inline {
@@ -107,6 +111,8 @@
     --color-card: var(--card);
     --color-foreground: var(--foreground);
     --color-background: var(--background);
+    --color-success: var(--success);
+    --color-warning: var(--warning);
     --radius-sm: calc(var(--radius) * 0.6);
     --radius-md: calc(var(--radius) * 0.8);
     --radius-lg: var(--radius);

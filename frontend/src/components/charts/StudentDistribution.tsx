@@ -4,6 +4,7 @@ import { useMemo } from "react";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell,
 } from "recharts";
+import { useSuccessColor, useWarningColor, useDestructiveColor } from "@/hooks/useThemeColor";
 
 interface StudentDistributionProps {
   onTrack: number;
@@ -11,9 +12,16 @@ interface StudentDistributionProps {
   behind: number;
 }
 
-const COLORS = { "On Track": "#22c55e", "At Risk": "#f59e0b", "Behind": "#ef4444" };
-
 export default function StudentDistribution({ onTrack, atRisk, behind }: StudentDistributionProps) {
+  const successColor = useSuccessColor();
+  const warningColor = useWarningColor();
+  const destructiveColor = useDestructiveColor();
+
+  const COLORS = useMemo(
+    () => ({ "On Track": successColor, "At Risk": warningColor, "Behind": destructiveColor }),
+    [successColor, warningColor, destructiveColor]
+  );
+
   const data = useMemo(
     () => [
       { name: "On Track", count: onTrack },
