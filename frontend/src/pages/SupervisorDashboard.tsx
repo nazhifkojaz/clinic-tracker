@@ -1,6 +1,6 @@
 // frontend/src/pages/SupervisorDashboard.tsx
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, useMemo, useRef } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -37,6 +37,9 @@ export default function SupervisorDashboard() {
   const [studentLoading, setStudentLoading] = useState(false);
   const [expandedDept, setExpandedDept] = useState<string | null>(null);
 
+  // Session-scope cache for student detail data
+  const studentDetailCache = useRef<Record<string, StudentDashboardData>>({});
+
   const loadDashboard = useCallback(async () => {
     try {
       setLoading(true);
@@ -54,18 +57,42 @@ export default function SupervisorDashboard() {
     loadDashboard();
   }, [loadDashboard]);
 
-  const viewStudent = async (studentId: string) => {
+  const viewStudent = useCallback(async (studentId: string) => {
+    // Check cache first
+    if (studentDetailCache.current[studentId]) {
+      setExpandedDept(null); // Reset expanded department when viewing a new student
+      setSelectedStudent(studentDetailCache.current[studentId]);
+      return;
+    }
+
     try {
       setStudentLoading(true);
-      setExpandedDept(null); // Reset expanded department when viewing a new student
+      setExpandedDept(null);
       const result = await dashboardService.getStudentDashboardById(studentId);
+      studentDetailCache.current[studentId] = result;
       setSelectedStudent(result);
     } catch {
       setError("Failed to load student data");
     } finally {
       setStudentLoading(false);
     }
-  };
+  }, [dashboardService]);
+
+  // Filter students with memoization (must be before early returns to satisfy Rules of Hooks)
+  const filteredStudents = useMemo(
+    () => {
+      if (!data) return [];
+      return data.students.filter((s: StudentSummary) => {
+        const matchesSearch =
+          s.student_name.toLowerCase().includes(search.toLowerCase()) ||
+          s.student_email.toLowerCase().includes(search.toLowerCase()) ||
+          (s.student_code && s.student_code.toLowerCase().includes(search.toLowerCase()));
+        const matchesStatus = statusFilter === "all" || s.status === statusFilter;
+        return matchesSearch && matchesStatus;
+      });
+    },
+    [data, search, statusFilter]
+  );
 
   if (loading) {
     return <DashboardSkeleton />;
@@ -79,16 +106,6 @@ export default function SupervisorDashboard() {
       </div>
     );
   }
-
-  // Filter students
-  const filteredStudents = data.students.filter((s: StudentSummary) => {
-    const matchesSearch =
-      s.student_name.toLowerCase().includes(search.toLowerCase()) ||
-      s.student_email.toLowerCase().includes(search.toLowerCase()) ||
-      (s.student_code && s.student_code.toLowerCase().includes(search.toLowerCase()));
-    const matchesStatus = statusFilter === "all" || s.status === statusFilter;
-    return matchesSearch && matchesStatus;
-  });
 
   return (
     <div className="space-y-6">
