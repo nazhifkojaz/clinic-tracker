@@ -1,7 +1,7 @@
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import select, union
+from sqlalchemy import func, select, union
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
@@ -18,20 +18,23 @@ from app.schemas.assignment import (
     AssignmentWithDetailsResponse,
     MyStudentResponse,
 )
+from app.schemas.pagination import PaginatedResponse
 from app.utils.audit import record_audit
 
 router = APIRouter(prefix="/api/assignments", tags=["assignments"])
 
 
-@router.get("", response_model=list[AssignmentWithDetailsResponse])
+@router.get("", response_model=PaginatedResponse[AssignmentWithDetailsResponse])
 async def list_assignments(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
     assignment_type: AssignmentType | None = Query(None),
     supervisor_id: UUID | None = Query(None),
     student_id: UUID | None = Query(None),
+    limit: int = Query(50, ge=1, le=200, description="Items per page"),
+    offset: int = Query(0, ge=0, description="Items to skip"),
 ):
-    """List assignments. Admins see all; supervisors see their own."""
+    """List assignments with pagination. Admins see all; supervisors see their own."""
     # Build query with joined user names
     supervisor_alias = User.__table__.alias("sup")
     student_alias = User.__table__.alias("stu")
@@ -65,7 +68,15 @@ async def list_assignments(
     if student_id:
         query = query.where(SupervisorAssignment.student_id == student_id)
 
+    # Get total count
+    count_subquery = query.subquery()
+    count_query = select(func.count()).select_from(count_subquery)
+    total_result = await db.execute(count_query)
+    total = total_result.scalar() or 0
+
+    # Apply pagination and ordering
     query = query.order_by(SupervisorAssignment.created_at.desc())
+    query = query.limit(limit).offset(offset)
     result = await db.execute(query)
 
     assignments = []
@@ -84,7 +95,8 @@ async def list_assignments(
                 department_name=row.department_name,
             )
         )
-    return assignments
+
+    return PaginatedResponse.create(assignments, total, limit, offset)
 
 
 @router.post("", response_model=AssignmentResponse, status_code=status.HTTP_201_CREATED)
@@ -211,7 +223,8 @@ async def delete_assignment(
         else None,
     }
 
-    await db.flush()  # Ensure changes are staged
+    await db.delete(assignment)
+    await db.flush()  # Ensure delete is staged before audit
     await record_audit(
         db,
         user_id=admin.id,

@@ -1,7 +1,7 @@
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.dependencies import (
@@ -14,6 +14,7 @@ from app.models.assignment import AssignmentType, SupervisorAssignment
 from app.models.department import Department, TaskCategory
 from app.models.submission import CaseSubmission, SubmissionStatus
 from app.models.user import User, UserRole, display_name
+from app.schemas.pagination import PaginatedResponse
 from app.schemas.submission import (
     ReviewerInfo,
     StudentInfo,
@@ -131,14 +132,16 @@ async def create_submission(
     return submission
 
 
-@router.get("", response_model=list[SubmissionListResponse])
+@router.get("", response_model=PaginatedResponse[SubmissionListResponse])
 async def list_submissions(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
     department_id: UUID | None = Query(None),
     status_filter: SubmissionStatus | None = Query(None, alias="status"),
+    limit: int = Query(50, ge=1, le=200, description="Items per page"),
+    offset: int = Query(0, ge=0, description="Items to skip"),
 ):
-    """List submissions. Students see their own; supervisors/admins see all."""
+    """List submissions with pagination. Students see their own; supervisors/admins see all."""
     # Join with User to get student information
     query = select(CaseSubmission, User).join(
         User, CaseSubmission.student_id == User.id
@@ -171,7 +174,15 @@ async def list_submissions(
     if status_filter:
         query = query.where(CaseSubmission.status == status_filter)
 
+    # Get total count
+    count_subquery = query.subquery()
+    count_query = select(func.count()).select_from(count_subquery)
+    total_result = await db.execute(count_query)
+    total = total_result.scalar() or 0
+
+    # Apply pagination and ordering
     query = query.order_by(CaseSubmission.created_at.desc())
+    query = query.limit(limit).offset(offset)
     result = await db.execute(query)
 
     # Collect all reviewer IDs
@@ -228,7 +239,7 @@ async def list_submissions(
             )
         )
 
-    return submissions
+    return PaginatedResponse.create(submissions, total, limit, offset)
 
 
 @router.get("/{submission_id}", response_model=SubmissionResponse)
