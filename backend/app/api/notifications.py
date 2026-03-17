@@ -157,7 +157,7 @@ async def send_notification(
             message = template["message"]
 
     # Get sender name
-    sender_name = user.full_name or user.email
+    sender_name = display_name(user)
 
     # Create notification records and send emails
     created_notifications = []
@@ -165,7 +165,7 @@ async def send_notification(
 
     for recipient_id in payload.recipient_ids:
         recipient = recipient_map[recipient_id]
-        recipient_name = recipient.full_name or recipient.email
+        recipient_name = display_name(recipient)
 
         # Personalize message with recipient info if using template vars
         personalized_subject = subject
