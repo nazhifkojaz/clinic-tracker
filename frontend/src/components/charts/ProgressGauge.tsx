@@ -1,5 +1,6 @@
 // frontend/src/components/charts/ProgressGauge.tsx
 
+import { useMemo } from "react";
 import { RadialBarChart, RadialBar, PolarAngleAxis } from "recharts";
 
 interface ProgressGaugeProps {
@@ -8,7 +9,12 @@ interface ProgressGaugeProps {
 }
 
 export default function ProgressGauge({ percentage, size = 180 }: ProgressGaugeProps) {
-  const data = [{ value: percentage, fill: percentage >= 60 ? "#22c55e" : percentage >= 30 ? "#f59e0b" : "#ef4444" }];
+  const gaugeColor = useMemo(
+    () => percentage >= 60 ? "#22c55e" : percentage >= 30 ? "#f59e0b" : "#ef4444",
+    [percentage]
+  );
+
+  const data = useMemo(() => [{ value: percentage, fill: gaugeColor }], [percentage, gaugeColor]);
 
   return (
     <div className="flex flex-col items-center">

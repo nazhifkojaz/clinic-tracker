@@ -1,5 +1,6 @@
 // frontend/src/components/charts/DepartmentBars.tsx
 
+import { useMemo } from "react";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell,
 } from "recharts";
@@ -20,10 +21,13 @@ export default function DepartmentBars({ departments }: DepartmentBarsProps) {
     return <p className="text-sm text-muted-foreground py-8 text-center">No departments</p>;
   }
 
-  const data = departments.map((d) => ({
-    name: d.department_name,
-    completion: d.completion_percentage,
-  }));
+  const data = useMemo(
+    () => departments.map((d) => ({
+      name: d.department_name,
+      completion: d.completion_percentage,
+    })),
+    [departments]
+  );
 
   return (
     <ResponsiveContainer width="100%" height={Math.max(200, departments.length * 50)}>

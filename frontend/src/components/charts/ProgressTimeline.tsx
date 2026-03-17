@@ -9,6 +9,16 @@ interface ProgressTimelineProps {
   data: ProgressDataPoint[];
 }
 
+// Module-level formatters (avoid re-creation on each render)
+function formatTickLabel(val: unknown): string {
+  const d = new Date(String(val));
+  return `${d.getMonth() + 1}/${d.getDate()}`;
+}
+
+function formatTooltipLabel(val: unknown): string {
+  return val ? new Date(String(val)).toLocaleDateString() : "";
+}
+
 export default function ProgressTimeline({ data }: ProgressTimelineProps) {
   if (data.length === 0) {
     return <p className="text-sm text-muted-foreground py-8 text-center">No data yet</p>;
@@ -21,14 +31,11 @@ export default function ProgressTimeline({ data }: ProgressTimelineProps) {
         <XAxis
           dataKey="date"
           tick={{ fontSize: 12 }}
-          tickFormatter={(val) => {
-            const d = new Date(String(val));
-            return `${d.getMonth() + 1}/${d.getDate()}`;
-          }}
+          tickFormatter={formatTickLabel}
         />
         <YAxis tick={{ fontSize: 12 }} />
         <Tooltip
-          labelFormatter={(val) => val ? new Date(String(val)).toLocaleDateString() : ""}
+          labelFormatter={formatTooltipLabel}
           formatter={(value) => [value, "Total Cases"]}
         />
         <Line

@@ -1,5 +1,6 @@
 // frontend/src/components/charts/StudentDistribution.tsx
 
+import { useMemo } from "react";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell,
 } from "recharts";
@@ -13,11 +14,14 @@ interface StudentDistributionProps {
 const COLORS = { "On Track": "#22c55e", "At Risk": "#f59e0b", "Behind": "#ef4444" };
 
 export default function StudentDistribution({ onTrack, atRisk, behind }: StudentDistributionProps) {
-  const data = [
-    { name: "On Track", count: onTrack },
-    { name: "At Risk", count: atRisk },
-    { name: "Behind", count: behind },
-  ];
+  const data = useMemo(
+    () => [
+      { name: "On Track", count: onTrack },
+      { name: "At Risk", count: atRisk },
+      { name: "Behind", count: behind },
+    ],
+    [onTrack, atRisk, behind]
+  );
 
   return (
     <ResponsiveContainer width="100%" height={200}>
