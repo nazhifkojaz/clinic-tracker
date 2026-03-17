@@ -19,7 +19,6 @@ export interface Submission {
   department_id: string;
   task_category_id: string;
   case_count: number;
-  proof_key: string;
   notes: string | null;
   status: SubmissionStatus;
   reviewed_by: string | null;
