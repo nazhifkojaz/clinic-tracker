@@ -20,6 +20,10 @@ function formatTooltipLabel(val: unknown): string {
   return val ? new Date(String(val)).toLocaleDateString() : "";
 }
 
+// Recharts formatter - use any to work around strict typing
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const formatValue = (value: any): [any, string] => [value, "Total Cases"];
+
 export default function ProgressTimeline({ data }: ProgressTimelineProps) {
   const primaryColor = usePrimaryColor();
 
@@ -39,7 +43,7 @@ export default function ProgressTimeline({ data }: ProgressTimelineProps) {
         <YAxis tick={{ fontSize: 12 }} />
         <Tooltip
           labelFormatter={formatTooltipLabel}
-          formatter={(value) => [value, "Total Cases"]}
+          formatter={formatValue}
         />
         <Line
           type="monotone"
