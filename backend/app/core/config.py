@@ -15,7 +15,14 @@ class Settings(BaseSettings):
 
     # Database (Neon PostgreSQL)
     DATABASE_URL: str  # Required — no default, must be set in env
-    DATABASE_SSL: bool = True  # Default to secure for production, set false for local dev
+    DATABASE_SSL: bool = (
+        True  # Default to secure for production, set false for local dev
+    )
+    # Connection pool settings (small for auto-sleep compatibility on fly.io/Neon free tier)
+    DATABASE_POOL_SIZE: int = 2  # Small pool to minimize stale connections
+    DATABASE_MAX_OVERFLOW: int = 1  # Allow brief bursts
+    DATABASE_POOL_RECYCLE: int = 300  # Recycle after 5 min (before sleep timeout)
+    DATABASE_POOL_TIMEOUT: int = 30
 
     # Auth (JWT)
     SECRET_KEY: str  # Required — no default
