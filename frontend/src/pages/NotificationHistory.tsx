@@ -68,6 +68,10 @@ export default function NotificationHistory() {
     setExpanded((prev) => ({ ...prev, [id]: !prev[id] }));
   };
 
+  const handleRowClick = useCallback((id: string) => {
+    toggleExpand(id);
+  }, []);
+
   if (isLoading) {
     return <TableSkeleton rows={5} cols={4} />;
   }
@@ -127,7 +131,7 @@ export default function NotificationHistory() {
                   <React.Fragment key={notification.id}>
                     <tr
                       className="border-t cursor-pointer hover:bg-muted/50"
-                      onClick={() => toggleExpand(notification.id)}
+                      onClick={() => handleRowClick(notification.id)}
                     >
                       <td className="px-4 py-3 font-mono text-xs">
                         {formatDate(notification.sent_at)}

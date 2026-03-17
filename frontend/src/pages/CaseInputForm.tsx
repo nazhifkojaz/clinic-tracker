@@ -402,6 +402,8 @@ export default function CaseInputForm() {
                   <img
                     src={imagePreview}
                     alt="Preview"
+                    loading="lazy"
+                    decoding="async"
                     className="h-24 w-24 rounded-md object-cover"
                   />
                   <div>

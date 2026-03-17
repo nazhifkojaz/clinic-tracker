@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuthStore } from "@/stores/authStore";
 import { notificationService } from "@/services/notifications";
@@ -113,8 +113,15 @@ export default function SendNotification() {
     }
   };
 
-  const selectedStudents = students.filter((s) =>
-    selectedStudentIds.includes(s.student_id)
+  // O(1) lookup for selected student IDs
+  const selectedStudentIdsSet = useMemo(
+    () => new Set(selectedStudentIds),
+    [selectedStudentIds]
+  );
+
+  const selectedStudents = useMemo(
+    () => students.filter((s) => selectedStudentIdsSet.has(s.student_id)),
+    [students, selectedStudentIdsSet]
   );
 
   if (isLoading) {
