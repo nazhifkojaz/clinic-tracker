@@ -3,6 +3,8 @@
 Admins can view a filterable, paginated audit trail of data modifications.
 """
 
+import asyncio
+import time
 import uuid
 from datetime import datetime
 
@@ -17,6 +19,10 @@ from app.models.user import User
 from app.schemas.audit import AuditLogListResponse, AuditLogResponse
 
 router = APIRouter(prefix="/api/admin/audit-logs", tags=["audit"])
+
+# Simple in-memory cache for audit metadata (avoids full table scans)
+_audit_metadata_cache: tuple[list[str], list[str], float] | None = None
+_AUDIT_METADATA_TTL = 300  # 5 minutes
 
 
 @router.get("", response_model=AuditLogListResponse)
@@ -99,18 +105,29 @@ async def get_audit_metadata(
     """Get metadata for audit log filters. Admin only.
 
     Returns distinct values for action, table_name, etc. to populate filter dropdowns.
+    Results are cached for 5 minutes to avoid repeated full-table scans.
     """
-    # Get distinct actions
-    actions_result = await db.execute(
-        select(AuditLog.action).distinct().order_by(AuditLog.action)
-    )
-    actions = [row[0] for row in actions_result.all()]
+    global _audit_metadata_cache
 
-    # Get distinct table names
-    tables_result = await db.execute(
-        select(AuditLog.table_name).distinct().order_by(AuditLog.table_name)
+    now = time.time()
+
+    # Check cache
+    if _audit_metadata_cache is not None:
+        actions, tables, expiry = _audit_metadata_cache
+        if now < expiry:
+            return {"actions": actions, "table_names": tables}
+
+    # Cache miss or expired - refresh with concurrent queries
+    actions_result, tables_result = await asyncio.gather(
+        db.execute(select(AuditLog.action).distinct().order_by(AuditLog.action)),
+        db.execute(select(AuditLog.table_name).distinct().order_by(AuditLog.table_name)),
     )
+
+    actions = [row[0] for row in actions_result.all()]
     tables = [row[0] for row in tables_result.all()]
+
+    # Update cache
+    _audit_metadata_cache = (actions, tables, now + _AUDIT_METADATA_TTL)
 
     return {
         "actions": actions,

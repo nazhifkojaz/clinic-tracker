@@ -1,5 +1,6 @@
 # backend/app/api/dashboard.py
 
+import asyncio
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -7,6 +8,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.dependencies import require_student, require_supervisor
+from app.core.cache import categories_cache, departments_cache
 from app.core.database import get_db
 from app.models.assignment import AssignmentType, SupervisorAssignment
 from app.models.department import Department, TaskCategory
@@ -33,17 +35,27 @@ async def _build_student_dashboard(
 ) -> StudentDashboardResponse:
     """Build complete dashboard data for a student. Shared logic for both endpoints."""
 
-    # 1. Get all active departments with their categories
-    dept_result = await db.execute(
-        select(Department).where(Department.is_active.is_(True))
-    )
-    departments = dept_result.scalars().all()
+    # 1. Get all active departments (with cache)
+    CACHE_KEY_DEPTS = "all_active_departments"
+    departments = await departments_cache.get(CACHE_KEY_DEPTS)
 
-    # 2. Get all active task categories
-    cat_result = await db.execute(
-        select(TaskCategory).where(TaskCategory.is_active.is_(True))
-    )
-    all_categories = cat_result.scalars().all()
+    if departments is None:
+        dept_result = await db.execute(
+            select(Department).where(Department.is_active.is_(True))
+        )
+        departments = dept_result.scalars().all()
+        await departments_cache.set(CACHE_KEY_DEPTS, departments)
+
+    # 2. Get all active task categories (with cache)
+    CACHE_KEY_CATS = "all_active_categories"
+    all_categories = await categories_cache.get(CACHE_KEY_CATS)
+
+    if all_categories is None:
+        cat_result = await db.execute(
+            select(TaskCategory).where(TaskCategory.is_active.is_(True))
+        )
+        all_categories = cat_result.scalars().all()
+        await categories_cache.set(CACHE_KEY_CATS, all_categories)
 
     # Build a lookup: department_id -> [categories]
     dept_categories: dict[UUID, list] = {}
@@ -125,18 +137,18 @@ async def _build_student_dashboard(
         else 0.0
     )
 
-    # 6. Current rotation
+    # 6. Current rotation with department name (single query with JOIN)
     rot_result = await db.execute(
-        select(StudentRotation).where(
+        select(StudentRotation, Department.name)
+        .outerjoin(Department, StudentRotation.department_id == Department.id)
+        .where(
             StudentRotation.student_id == student.id,
             StudentRotation.is_current.is_(True),
         )
     )
-    current_rotation = rot_result.scalar_one_or_none()
-    current_dept_name = None
-    if current_rotation:
-        dept_obj = await db.get(Department, current_rotation.department_id)
-        current_dept_name = dept_obj.name if dept_obj else None
+    row = rot_result.one_or_none()
+    current_rotation = row[0] if row else None
+    current_dept_name = row[1] if row else None
 
     # 7. Recent submissions (last 10)
     recent_query = (
@@ -280,31 +292,40 @@ def _classify_status(completion_percentage: float) -> str:
 async def _get_supervised_student_ids(
     supervisor_id: UUID, db: AsyncSession
 ) -> list[UUID]:
-    """Get all student IDs a supervisor is responsible for."""
-    # 1. Primary assignments: direct student links
-    primary_query = select(SupervisorAssignment.student_id).where(
-        SupervisorAssignment.supervisor_id == supervisor_id,
-        SupervisorAssignment.assignment_type == AssignmentType.primary,
-        SupervisorAssignment.student_id.isnot(None),
-    )
-    primary_result = await db.execute(primary_query)
-    primary_ids = {row[0] for row in primary_result.all()}
+    """Get all student IDs a supervisor is responsible for.
 
-    # 2. Department assignments: students currently rotating in supervised depts
-    dept_query = select(SupervisorAssignment.department_id).where(
-        SupervisorAssignment.supervisor_id == supervisor_id,
-        SupervisorAssignment.assignment_type == AssignmentType.department,
+    Uses concurrent queries to fetch primary assignments and department assignments
+    in parallel, reducing round-trips.
+    """
+    # Run primary and department queries concurrently
+    primary_result, dept_result = await asyncio.gather(
+        db.execute(
+            select(SupervisorAssignment.student_id).where(
+                SupervisorAssignment.supervisor_id == supervisor_id,
+                SupervisorAssignment.assignment_type == AssignmentType.primary,
+                SupervisorAssignment.student_id.isnot(None),
+            )
+        ),
+        db.execute(
+            select(SupervisorAssignment.department_id).where(
+                SupervisorAssignment.supervisor_id == supervisor_id,
+                SupervisorAssignment.assignment_type == AssignmentType.department,
+            )
+        ),
     )
-    dept_result = await db.execute(dept_query)
+
+    primary_ids = {row[0] for row in primary_result.all()}
     supervised_dept_ids = [row[0] for row in dept_result.all()]
 
+    # Fetch students rotating in supervised departments
     dept_student_ids: set[UUID] = set()
     if supervised_dept_ids:
-        rot_query = select(StudentRotation.student_id).where(
-            StudentRotation.department_id.in_(supervised_dept_ids),
-            StudentRotation.is_current.is_(True),
+        rot_result = await db.execute(
+            select(StudentRotation.student_id).where(
+                StudentRotation.department_id.in_(supervised_dept_ids),
+                StudentRotation.is_current.is_(True),
+            )
         )
-        rot_result = await db.execute(rot_query)
         dept_student_ids = {row[0] for row in rot_result.all()}
 
     return list(primary_ids | dept_student_ids)
@@ -319,14 +340,14 @@ async def get_supervisor_dashboard(
 
     # Determine student scope
     if user.role == UserRole.admin:
-        # Admins see all students
+        # Admins see all students - select only needed columns
         all_students_result = await db.execute(
-            select(User).where(
+            select(User.id, User.full_name, User.email, User.student_id).where(
                 User.role == UserRole.student,
                 User.is_active.is_(True),
             )
         )
-        students = all_students_result.scalars().all()
+        students = all_students_result.all()
     else:
         student_ids = await _get_supervised_student_ids(user.id, db)
         if not student_ids:
@@ -338,12 +359,12 @@ async def get_supervisor_dashboard(
                 students=[],
             )
         students_result = await db.execute(
-            select(User).where(
+            select(User.id, User.full_name, User.email, User.student_id).where(
                 User.id.in_(student_ids),
                 User.is_active.is_(True),
             )
         )
-        students = students_result.scalars().all()
+        students = students_result.all()
 
     # Get all active categories for total required calculation
     cat_result = await db.execute(
@@ -353,7 +374,7 @@ async def get_supervisor_dashboard(
     total_required_global = sum(c.required_count for c in all_categories)
 
     # Get all approved submission totals per student in one query
-    student_ids_list = [s.id for s in students]
+    student_ids_list = [s[0] for s in students]  # s is now a tuple (id, full_name, email, student_id)
     if student_ids_list:
         agg_query = (
             select(
@@ -392,8 +413,8 @@ async def get_supervisor_dashboard(
     summaries: list[StudentSummary] = []
     on_track = at_risk = behind = 0
 
-    for student in students:
-        completed = completed_map.get(student.id, 0)
+    for student_id, full_name, email, student_code in students:
+        completed = completed_map.get(student_id, 0)
         pct = (
             (completed / total_required_global * 100)
             if total_required_global > 0
@@ -408,13 +429,16 @@ async def get_supervisor_dashboard(
         else:
             behind += 1
 
+        # Build display name from available fields (no User object needed)
+        student_name = full_name or student_code or email
+
         summaries.append(
             StudentSummary(
-                student_id=student.id,
-                student_name=display_name(student),
-                student_email=student.email,
-                student_code=student.student_id,
-                current_department=rotation_map.get(student.id),
+                student_id=student_id,
+                student_name=student_name,
+                student_email=email,
+                student_code=student_code,
+                current_department=rotation_map.get(student_id),
                 overall_completion_percentage=round(pct, 1),
                 total_required=total_required_global,
                 total_completed=completed,

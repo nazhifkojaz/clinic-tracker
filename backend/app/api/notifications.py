@@ -211,19 +211,19 @@ async def send_notification(
 
         created_notifications.append(notification)
 
+    # Flush to get IDs without committing yet
+    await db.flush()
+    notification_ids = [n.id for n in created_notifications]
+
     await db.commit()
 
-    # Refresh all notifications to get their IDs
-    for notification in created_notifications:
-        await db.refresh(notification)
-
-    # Fetch full data for response
+    # Single query with eager loading (no N+1 refresh loop needed)
     result = await db.execute(
         select(Notification)
         .options(
             selectinload(Notification.sender), selectinload(Notification.recipient)
         )
-        .where(Notification.id.in_([n.id for n in created_notifications]))
+        .where(Notification.id.in_(notification_ids))
     )
     notifications = result.scalars().all()
 
