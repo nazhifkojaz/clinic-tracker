@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.api.dependencies import get_current_user, require_admin
+from app.core.cache import categories_cache, departments_cache
 from app.core.database import get_db
 from app.models.department import Department, TaskCategory
 from app.models.user import User
@@ -109,6 +110,9 @@ async def create_department(
             status_code=409, detail="Department with this name already exists"
         )
 
+    # Invalidate cache
+    await departments_cache.invalidate("all_active_departments")
+
     return department
 
 
@@ -160,6 +164,9 @@ async def update_department(
         raise HTTPException(
             status_code=409, detail="Department with this name already exists"
         )
+
+    # Invalidate cache
+    await departments_cache.invalidate("all_active_departments")
 
     return department
 
@@ -227,6 +234,9 @@ async def create_task_category(
             status_code=409, detail="Task category with this name already exists"
         )
 
+    # Invalidate cache
+    await categories_cache.invalidate("all_active_categories")
+
     return category
 
 
@@ -283,5 +293,8 @@ async def update_task_category(
     )
     await db.commit()
     await db.refresh(category)
+
+    # Invalidate cache
+    await categories_cache.invalidate("all_active_categories")
 
     return category
