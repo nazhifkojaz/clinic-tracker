@@ -20,8 +20,11 @@ from app.schemas.audit import AuditLogListResponse, AuditLogResponse
 
 router = APIRouter(prefix="/api/admin/audit-logs", tags=["audit"])
 
+# Fixed audit action vocabulary (never changes)
+_AUDIT_ACTIONS = ["create", "delete", "update"]
+
 # Simple in-memory cache for audit metadata (avoids full table scans)
-_audit_metadata_cache: tuple[list[str], list[str], float] | None = None
+_audit_metadata_cache: tuple[list[str], float] | None = None
 _AUDIT_METADATA_TTL = 300  # 5 minutes
 
 
@@ -105,7 +108,7 @@ async def get_audit_metadata(
     """Get metadata for audit log filters. Admin only.
 
     Returns distinct values for action, table_name, etc. to populate filter dropdowns.
-    Results are cached for 5 minutes to avoid repeated full-table scans.
+    Actions are hardcoded (fixed vocabulary). Table names are cached for 5 minutes.
     """
     global _audit_metadata_cache
 
@@ -113,23 +116,20 @@ async def get_audit_metadata(
 
     # Check cache
     if _audit_metadata_cache is not None:
-        actions, tables, expiry = _audit_metadata_cache
+        tables, expiry = _audit_metadata_cache
         if now < expiry:
-            return {"actions": actions, "table_names": tables}
+            return {"actions": _AUDIT_ACTIONS, "table_names": tables}
 
-    # Cache miss or expired - refresh with concurrent queries
-    actions_result, tables_result = await asyncio.gather(
-        db.execute(select(AuditLog.action).distinct().order_by(AuditLog.action)),
-        db.execute(select(AuditLog.table_name).distinct().order_by(AuditLog.table_name)),
+    # Cache miss or expired - refresh table names only
+    tables_result = await db.execute(
+        select(AuditLog.table_name).distinct().order_by(AuditLog.table_name)
     )
-
-    actions = [row[0] for row in actions_result.all()]
     tables = [row[0] for row in tables_result.all()]
 
     # Update cache
-    _audit_metadata_cache = (actions, tables, now + _AUDIT_METADATA_TTL)
+    _audit_metadata_cache = (tables, now + _AUDIT_METADATA_TTL)
 
     return {
-        "actions": actions,
+        "actions": _AUDIT_ACTIONS,
         "table_names": tables,
     }
