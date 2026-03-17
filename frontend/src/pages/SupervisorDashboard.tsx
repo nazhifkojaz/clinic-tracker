@@ -58,16 +58,17 @@ export default function SupervisorDashboard() {
   }, [loadDashboard]);
 
   const viewStudent = useCallback(async (studentId: string) => {
+    // Always reset expanded department when viewing a new student
+    setExpandedDept(null);
+
     // Check cache first
     if (studentDetailCache.current[studentId]) {
-      setExpandedDept(null); // Reset expanded department when viewing a new student
       setSelectedStudent(studentDetailCache.current[studentId]);
       return;
     }
 
     try {
       setStudentLoading(true);
-      setExpandedDept(null);
       const result = await dashboardService.getStudentDashboardById(studentId);
       studentDetailCache.current[studentId] = result;
       setSelectedStudent(result);
