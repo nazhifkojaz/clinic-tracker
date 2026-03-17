@@ -1,5 +1,6 @@
-import { NavLink } from "react-router-dom";
+import { NavLink, useNavigate } from "react-router-dom";
 import { useAuthStore } from "@/stores/authStore";
+import { useCallback } from "react";
 import {
   LayoutDashboard,
   FilePlus,
@@ -49,9 +50,17 @@ interface SidebarProps {
 
 export default function Sidebar({ open = false, onClose }: SidebarProps) {
   const { user } = useAuthStore();
+  const navigate = useNavigate();
   if (!user) return null;
 
   const items = navItems[user.role] || [];
+
+  const handleNavClick = useCallback((path: string) => {
+    navigate(path);
+    if (window.innerWidth < BREAKPOINTS.lg) {
+      onClose?.();
+    }
+  }, [navigate, onClose]);
 
   return (
     <aside
@@ -83,12 +92,7 @@ export default function Sidebar({ open = false, onClose }: SidebarProps) {
                   : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
               }`
             }
-            onClick={() => {
-              // Close sidebar on mobile after navigation
-              if (window.innerWidth < BREAKPOINTS.lg) {
-                onClose?.();
-              }
-            }}
+            onClick={() => handleNavClick(item.to)}
           >
             <item.icon className="h-4 w-4" />
             {item.label}
