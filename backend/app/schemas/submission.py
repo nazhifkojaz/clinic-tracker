@@ -70,7 +70,6 @@ class SubmissionListResponse(BaseModel):
     department_id: uuid.UUID
     task_category_id: uuid.UUID
     case_count: int
-    proof_key: str
     notes: str | None
     status: SubmissionStatus
     reviewed_by: uuid.UUID | None
