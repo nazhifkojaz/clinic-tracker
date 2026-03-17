@@ -5,7 +5,7 @@ import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import DateTime, Enum, ForeignKey, Integer, String, Text, func, text
+from sqlalchemy import DateTime, Enum, ForeignKey, Integer, String, Text, func, text, Index
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -70,6 +70,13 @@ class CaseSubmission(Base):
         nullable=False,
         server_default=func.now(),
         onupdate=func.now(),
+    )
+
+    # Composite indexes for common query patterns
+    __table_args__ = (
+        Index("ix_submissions_student_status", "student_id", "status"),
+        Index("ix_submissions_dept_status", "department_id", "status"),
+        Index("ix_submissions_category_student", "task_category_id", "student_id"),
     )
 
     # Relationships

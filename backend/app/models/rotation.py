@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, func, text
+from sqlalchemy import Boolean, DateTime, ForeignKey, func, text, Index
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -43,6 +43,12 @@ class StudentRotation(Base):
     )
     ended_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
+    )
+
+    # Composite indexes for common query patterns
+    __table_args__ = (
+        Index("ix_rotations_student_current", "student_id", "is_current"),
+        Index("ix_rotations_dept_current", "department_id", "is_current"),
     )
 
     # Relationships

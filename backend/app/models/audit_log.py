@@ -3,7 +3,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, String, text
+from sqlalchemy import DateTime, ForeignKey, Index, String, text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -35,6 +35,12 @@ class AuditLog(Base):
         DateTime(timezone=True),
         server_default=text("now()"),
         index=True,
+    )
+
+    # Composite indexes for common query patterns
+    __table_args__ = (
+        Index("ix_audit_logs_table_created", "table_name", "created_at"),
+        Index("ix_audit_logs_user_created", "user_id", "created_at"),
     )
 
     # Relationship

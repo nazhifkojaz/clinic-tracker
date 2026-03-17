@@ -5,7 +5,7 @@ import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import DateTime, Enum, ForeignKey, func, text
+from sqlalchemy import DateTime, Enum, ForeignKey, Index, UniqueConstraint, func, text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -23,6 +23,11 @@ class AssignmentType(str, enum.Enum):
 
 class SupervisorAssignment(Base):
     __tablename__ = "supervisor_assignments"
+    __table_args__ = (
+        UniqueConstraint("supervisor_id", "student_id", name="uq_assignment_primary"),
+        UniqueConstraint("supervisor_id", "department_id", name="uq_assignment_dept"),
+        Index("ix_assignments_supervisor_type", "supervisor_id", "assignment_type"),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
