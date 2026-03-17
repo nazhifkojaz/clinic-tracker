@@ -5,7 +5,7 @@ import tailwindcss from "@tailwindcss/vite";
 import { visualizer } from "rollup-plugin-visualizer";
 
 export default defineConfig(({ mode }) => ({
-  base: process.env.VITE_BASE_PATH !== undefined ? process.env.VITE_BASE_PATH : "/clinic-tracker/",  // Must match GitHub repo name for project sites
+  base: process.env.VITE_BASE_PATH ?? "/clinic-tracker/",  // Must match GitHub repo name for project sites
   plugins: [
     react(),
     tailwindcss(),
