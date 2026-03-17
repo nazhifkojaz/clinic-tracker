@@ -1,3 +1,4 @@
+import type { PaginatedResponse, PaginationParams } from "@/types/pagination";
 import type { Rotation, RotationCreate } from "@/types/rotation";
 import api from "./api";
 
@@ -12,8 +13,13 @@ export const rotationService = {
     return data;
   },
 
-  async getHistory(): Promise<Rotation[]> {
-    const { data } = await api.get<Rotation[]>("/api/rotations/history");
+  async getHistory(
+    params?: PaginationParams
+  ): Promise<PaginatedResponse<Rotation>> {
+    const { data } = await api.get<PaginatedResponse<Rotation>>(
+      "/api/rotations/history",
+      { params }
+    );
     return data;
   },
 

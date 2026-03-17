@@ -1,3 +1,4 @@
+import type { PaginatedResponse, PaginationParams } from "@/types/pagination";
 import type {
   Assignment,
   AssignmentCreate,
@@ -7,12 +8,14 @@ import type {
 import api from "./api";
 
 export const assignmentService = {
-  async list(params?: {
-    assignment_type?: string;
-    supervisor_id?: string;
-    student_id?: string;
-  }): Promise<AssignmentWithDetails[]> {
-    const { data } = await api.get<AssignmentWithDetails[]>(
+  async list(
+    params?: {
+      assignment_type?: string;
+      supervisor_id?: string;
+      student_id?: string;
+    } & PaginationParams
+  ): Promise<PaginatedResponse<AssignmentWithDetails>> {
+    const { data } = await api.get<PaginatedResponse<AssignmentWithDetails>>(
       "/api/assignments",
       { params }
     );

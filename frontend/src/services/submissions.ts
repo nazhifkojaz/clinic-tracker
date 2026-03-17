@@ -1,4 +1,8 @@
 import type {
+  PaginatedResponse,
+  PaginationParams,
+} from "@/types/pagination";
+import type {
   Submission,
   SubmissionCreate,
   SubmissionReview,
@@ -21,19 +25,21 @@ export const submissionService = {
     return data;
   },
 
-  async list(params?: {
-    department_id?: string;
-    status?: string;
-  }): Promise<Submission[]> {
-    const { data } = await api.get<Submission[]>("/api/submissions", {
-      params,
-    });
+  async list(
+    params?: {
+      department_id?: string;
+      status?: string;
+    } & PaginationParams
+  ): Promise<PaginatedResponse<Submission>> {
+    const { data } = await api.get<PaginatedResponse<Submission>>(
+      "/api/submissions",
+      { params }
+    );
     return data;
   },
 
-  async get(id: string): Promise<Submission> {
-    const { data } = await api.get<Submission>(`/api/submissions/${id}`);
-    return data;
+  get(id: string): Promise<Submission> {
+    return api.get<Submission>(`/api/submissions/${id}`).then((res) => res.data);
   },
 
   async review(id: string, body: SubmissionReview): Promise<Submission> {
