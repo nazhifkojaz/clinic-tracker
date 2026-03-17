@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, useRef } from "react";
 import type { Rotation } from "@/types/rotation";
 import type { Department } from "@/types/department";
 import { rotationService } from "@/services/rotations";
@@ -24,6 +24,13 @@ export default function RotationSelector({
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
 
+  // Store callback in ref to break dependency cycle
+  const onRotationChangeRef = useRef(onRotationChange);
+
+  useEffect(() => {
+    onRotationChangeRef.current = onRotationChange;
+  }, [onRotationChange]);
+
   const fetchData = useCallback(async () => {
     try {
       setIsLoading(true);
@@ -34,15 +41,15 @@ export default function RotationSelector({
       ]);
       setCurrentRotation(rotationData);
       setDepartments(deptsData.filter((d) => d.is_active));
-      if (rotationData && onRotationChange) {
-        onRotationChange(rotationData.department_id);
+      if (rotationData && onRotationChangeRef.current) {
+        onRotationChangeRef.current(rotationData.department_id);
       }
     } catch {
       setError("Failed to load rotation data");
     } finally {
       setIsLoading(false);
     }
-  }, [onRotationChange]);
+  }, []); // Empty deps - no infinite loop risk
 
   useEffect(() => {
     fetchData();
@@ -73,7 +80,7 @@ export default function RotationSelector({
       const newRotation = await rotationService.set({ department_id: newDeptId });
       setCurrentRotation(newRotation);
       setSuccess("Rotation updated successfully");
-      onRotationChange?.(newDeptId);
+      onRotationChangeRef.current?.(newDeptId);
       setTimeout(() => setSuccess(""), 3000);
     } catch {
       setError("Failed to update rotation");
