@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuthStore } from "@/stores/authStore";
 import { submissionService } from "@/services/submissions";
@@ -42,7 +42,6 @@ export default function SubmissionHistory() {
   const [hasMore, setHasMore] = useState(false);
 
   const [departments, setDepartments] = useState<DepartmentWithCategories[]>([]);
-  const [categoriesMap, setCategoriesMap] = useState<Record<string, TaskCategory>>({});
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -77,15 +76,6 @@ export default function SubmissionHistory() {
         );
 
         setDepartments(deptsWithCategories);
-
-        // Build a categories map for easy lookup
-        const catsMap: Record<string, TaskCategory> = {};
-        deptsWithCategories.forEach((dept) => {
-          dept.task_categories.forEach((cat) => {
-            catsMap[cat.id] = cat;
-          });
-        });
-        setCategoriesMap(catsMap);
       } catch {
         setError("Failed to load departments");
       }
@@ -93,6 +83,26 @@ export default function SubmissionHistory() {
 
     fetchCategories();
   }, []); // Empty deps - only runs once on mount
+
+  // Derive categories map from departments (no separate state needed)
+  const categoriesMap = useMemo(() => {
+    const map: Record<string, TaskCategory> = {};
+    departments.forEach((dept) => {
+      dept.task_categories.forEach((cat) => {
+        map[cat.id] = cat;
+      });
+    });
+    return map;
+  }, [departments]);
+
+  // O(1) department name lookup map
+  const departmentsMap = useMemo(() => {
+    const map: Record<string, string> = {};
+    departments.forEach((d) => {
+      map[d.id] = d.name;
+    });
+    return map;
+  }, [departments]);
 
   // Fetch submissions when filters or page changes
   const fetchData = useCallback(async () => {
@@ -185,10 +195,7 @@ export default function SubmissionHistory() {
   };
 
   // Resolve names from IDs
-  const getDepartmentName = (id: string) => {
-    const dept = departments.find((d) => d.id === id);
-    return dept?.name || id;
-  };
+  const getDepartmentName = (id: string) => departmentsMap[id] || id;
 
   const getTaskCategoryName = (id: string) => {
     const cat = categoriesMap[id];
@@ -352,37 +359,6 @@ export default function SubmissionHistory() {
         </div>
       )}
 
-        {/* Pagination Controls */}
-        {totalCount > 0 && (
-          <div className="flex items-center justify-between border-t pt-4">
-            <div className="text-sm text-muted-foreground">
-              Showing {currentPage * PAGE_SIZE + 1} -{" "}
-              {Math.min((currentPage + 1) * PAGE_SIZE, totalCount)} of {totalCount}
-            </div>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => setCurrentPage((p) => Math.max(0, p - 1))}
-                disabled={currentPage === 0 || isLoading}
-                className="inline-flex items-center gap-1 rounded-md border px-3 py-2 text-sm font-medium hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                <ChevronLeft className="h-4 w-4" />
-                Previous
-              </button>
-              <span className="text-sm">
-                Page {currentPage + 1} of {Math.ceil(totalCount / PAGE_SIZE)}
-              </span>
-              <button
-                onClick={() => setCurrentPage((p) => p + 1)}
-                disabled={!hasMore || isLoading}
-                className="inline-flex items-center gap-1 rounded-md border px-3 py-2 text-sm font-medium hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                Next
-                <ChevronRight className="h-4 w-4" />
-              </button>
-            </div>
-          </div>
-        )}
-
       {/* Detail Modal */}
       {selectedSubmission && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
@@ -475,6 +451,8 @@ export default function SubmissionHistory() {
                       <img
                         src={proofUrl}
                         alt="Proof"
+                        loading="lazy"
+                        decoding="async"
                         className="mx-auto max-h-96 rounded-md object-contain"
                       />
                     )
