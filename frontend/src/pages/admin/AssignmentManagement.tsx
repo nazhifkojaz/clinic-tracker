@@ -8,10 +8,16 @@ import { departmentService } from "@/services/departments";
 import type { AssignmentWithDetails, AssignmentType } from "@/types/assignment";
 import type { User } from "@/types/user";
 import type { Department } from "@/types/department";
-import { Loader2, Plus, Trash2 } from "lucide-react";
+import { ChevronLeft, ChevronRight, Loader2, Plus, Trash2 } from "lucide-react";
+
+const PAGE_SIZE = 25;
 
 export default function AssignmentManagement() {
   const [assignments, setAssignments] = useState<AssignmentWithDetails[]>([]);
+  const [totalCount, setTotalCount] = useState(0);
+  const [currentPage, setCurrentPage] = useState(0);
+  const [hasMore, setHasMore] = useState(false);
+
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [users, setUsers] = useState<User[]>([]);
   const [departments, setDepartments] = useState<Department[]>([]);
@@ -31,11 +37,16 @@ export default function AssignmentManagement() {
   );
   const students = users.filter((u) => u.role === "student" && u.is_active);
 
-  const fetchAssignments = async () => {
+  const fetchAssignments = async (page: number = currentPage) => {
     setIsLoading(true);
     try {
-      const data = await assignmentService.list();
-      setAssignments(data);
+      const response = await assignmentService.list({
+        limit: PAGE_SIZE,
+        offset: page * PAGE_SIZE,
+      });
+      setAssignments(response.items);
+      setTotalCount(response.total);
+      setHasMore(response.has_more);
     } catch {
       setError("Failed to load assignments.");
     } finally {
@@ -45,11 +56,11 @@ export default function AssignmentManagement() {
 
   const fetchFormData = async () => {
     try {
-      const [usersData, deptsData] = await Promise.all([
-        userService.list(),
+      const [usersResponse, deptsData] = await Promise.all([
+        userService.list({ limit: 1000, offset: 0 }), // Get all users for dropdown
         departmentService.list(),
       ]);
-      setUsers(usersData);
+      setUsers(usersResponse.items);
       setDepartments(deptsData);
     } catch {
       setError("Failed to load form data.");
@@ -59,6 +70,11 @@ export default function AssignmentManagement() {
   useEffect(() => {
     fetchAssignments();
   }, []);
+
+  const handlePageChange = (newPage: number) => {
+    setCurrentPage(newPage);
+    fetchAssignments(newPage);
+  };
 
   const openCreateModal = () => {
     setFormData({
@@ -77,7 +93,7 @@ export default function AssignmentManagement() {
     if (!window.confirm("Remove this assignment?")) return;
     try {
       await assignmentService.remove(id);
-      fetchAssignments();
+      fetchAssignments(currentPage);
     } catch {
       alert("Failed to remove assignment.");
     }
@@ -109,7 +125,7 @@ export default function AssignmentManagement() {
         department_id: formData.assignment_type === "department" ? formData.department_id : null,
       });
       setIsModalOpen(false);
-      fetchAssignments();
+      fetchAssignments(currentPage);
     } catch {
       setError("Failed to create assignment. It may already exist.");
     } finally {
@@ -202,6 +218,37 @@ export default function AssignmentManagement() {
               </tbody>
             </table>
             </div>
+
+            {/* Pagination Controls */}
+            {totalCount > 0 && (
+              <div className="flex items-center justify-between border-t px-4 py-3">
+                <div className="text-sm text-muted-foreground">
+                  Showing {currentPage * PAGE_SIZE + 1} -{" "}
+                  {Math.min((currentPage + 1) * PAGE_SIZE, totalCount)} of {totalCount}
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => handlePageChange(Math.max(0, currentPage - 1))}
+                    disabled={currentPage === 0 || isLoading}
+                    className="inline-flex items-center gap-1 rounded-md border px-3 py-2 text-sm font-medium hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                    Previous
+                  </button>
+                  <span className="text-sm">
+                    Page {currentPage + 1} of {Math.ceil(totalCount / PAGE_SIZE)}
+                  </span>
+                  <button
+                    onClick={() => handlePageChange(currentPage + 1)}
+                    disabled={!hasMore || isLoading}
+                    className="inline-flex items-center gap-1 rounded-md border px-3 py-2 text-sm font-medium hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    Next
+                    <ChevronRight className="h-4 w-4" />
+                  </button>
+                </div>
+              </div>
+            )}
           </CardContent>
         </Card>
       )}

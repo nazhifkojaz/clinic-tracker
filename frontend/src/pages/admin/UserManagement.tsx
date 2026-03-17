@@ -5,10 +5,17 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { userService } from "@/services/users";
 import type { User, UserCreate, UserRole } from "@/types/user";
-import { Loader2, Plus, Pencil } from "lucide-react";
+import { ChevronLeft, ChevronRight, Loader2, Plus, Pencil } from "lucide-react";
+
+const PAGE_SIZE = 25;
 
 export default function UserManagement() {
   const [users, setUsers] = useState<User[]>([]);
+  const [totalCount, setTotalCount] = useState(0);
+  const [currentPage, setCurrentPage] = useState(0);
+  const [hasMore, setHasMore] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [formData, setFormData] = useState({
@@ -21,20 +28,33 @@ export default function UserManagement() {
   const [error, setError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const fetchUsers = async () => {
+  const fetchUsers = async (page: number = currentPage) => {
     try {
-      const data = await userService.list();
-      setUsers(data);
+      setIsLoading(true);
+      const response = await userService.list({
+        limit: PAGE_SIZE,
+        offset: page * PAGE_SIZE,
+      });
+      setUsers(response.items);
+      setTotalCount(response.total);
+      setHasMore(response.has_more);
       setError(""); // Clear any previous error
     } catch (err) {
       console.error("Failed to load users:", err);
       setError("Failed to load users. Please refresh the page.");
+    } finally {
+      setIsLoading(false);
     }
   };
 
   useEffect(() => {
     fetchUsers();
   }, []);
+
+  const handlePageChange = (newPage: number) => {
+    setCurrentPage(newPage);
+    fetchUsers(newPage);
+  };
 
   const openCreateModal = () => {
     setEditingUser(null);
@@ -75,7 +95,7 @@ export default function UserManagement() {
         await userService.create(formData as UserCreate);
       }
       setIsModalOpen(false);
-      fetchUsers();
+      fetchUsers(currentPage);
     } catch {
       setError(editingUser ? "Failed to update user." : "Failed to create user. Email may already exist.");
     } finally {
@@ -137,6 +157,37 @@ export default function UserManagement() {
             </tbody>
           </table>
           </div>
+
+          {/* Pagination Controls */}
+          {totalCount > 0 && (
+            <div className="flex items-center justify-between border-t px-4 py-3">
+              <div className="text-sm text-muted-foreground">
+                Showing {currentPage * PAGE_SIZE + 1} -{" "}
+                {Math.min((currentPage + 1) * PAGE_SIZE, totalCount)} of {totalCount}
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => handlePageChange(Math.max(0, currentPage - 1))}
+                  disabled={currentPage === 0 || isLoading}
+                  className="inline-flex items-center gap-1 rounded-md border px-3 py-2 text-sm font-medium hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                  Previous
+                </button>
+                <span className="text-sm">
+                  Page {currentPage + 1} of {Math.ceil(totalCount / PAGE_SIZE)}
+                </span>
+                <button
+                  onClick={() => handlePageChange(currentPage + 1)}
+                  disabled={!hasMore || isLoading}
+                  className="inline-flex items-center gap-1 rounded-md border px-3 py-2 text-sm font-medium hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  Next
+                  <ChevronRight className="h-4 w-4" />
+                </button>
+              </div>
+            </div>
+          )}
         </CardContent>
       </Card>
 
