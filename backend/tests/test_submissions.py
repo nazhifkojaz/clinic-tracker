@@ -178,7 +178,7 @@ async def test_student_only_sees_own_submissions(
     initial_list = await client.get(
         "/api/submissions", headers=auth_header(student_token)
     )
-    initial_count = len(initial_list.json())
+    initial_count = len(initial_list.json()["items"])
 
     # Student creates a submission
     await client.post(
@@ -196,11 +196,11 @@ async def test_student_only_sees_own_submissions(
     student_list = await client.get(
         "/api/submissions", headers=auth_header(student_token)
     )
-    assert len(student_list.json()) == initial_count + 1
+    assert len(student_list.json()["items"]) == initial_count + 1
 
     # Admin lists — should also see at least as many as student
     admin_list = await client.get("/api/submissions", headers=auth_header(admin_token))
-    assert len(admin_list.json()) >= initial_count + 1
+    assert len(admin_list.json()["items"]) >= initial_count + 1
 
 
 async def test_student_cannot_create_for_another_student(
@@ -294,7 +294,7 @@ async def test_supervisor_can_only_see_assigned_students_submissions(
     initial_supervisor_list = await client.get(
         "/api/submissions", headers=auth_header(supervisor_token)
     )
-    initial_count = len(initial_supervisor_list.json())
+    initial_count = len(initial_supervisor_list.json()["items"])
 
     # Create a submission from the new student (supervisor not assigned yet)
     await client.post(
@@ -312,7 +312,7 @@ async def test_supervisor_can_only_see_assigned_students_submissions(
     supervisor_list = await client.get(
         "/api/submissions", headers=auth_header(supervisor_token)
     )
-    assert len(supervisor_list.json()) == initial_count
+    assert len(supervisor_list.json()["items"]) == initial_count
 
     # Create assignment
     assignment = SupervisorAssignment(
@@ -327,7 +327,7 @@ async def test_supervisor_can_only_see_assigned_students_submissions(
     supervisor_list_after = await client.get(
         "/api/submissions", headers=auth_header(supervisor_token)
     )
-    assert len(supervisor_list_after.json()) == initial_count + 1
+    assert len(supervisor_list_after.json()["items"]) == initial_count + 1
 
 
 async def test_submission_creates_audit_log(
@@ -438,7 +438,7 @@ async def test_supervisor_sees_department_submissions_not_primary_supervisor(
     supervisor_a_list = await client.get(
         "/api/submissions", headers=auth_header(supervisor_token)
     )
-    supervisor_a_submissions = supervisor_a_list.json()
+    supervisor_a_submissions = supervisor_a_list.json()["items"]
     submission_ids_seen_by_a = {s["id"] for s in supervisor_a_submissions}
     assert submission_id in submission_ids_seen_by_a
 
@@ -447,7 +447,7 @@ async def test_supervisor_sees_department_submissions_not_primary_supervisor(
     supervisor_b_list = await client.get(
         "/api/submissions", headers=auth_header(other_supervisor_token)
     )
-    supervisor_b_submissions = supervisor_b_list.json()
+    supervisor_b_submissions = supervisor_b_list.json()["items"]
     submission_ids_seen_by_b = {s["id"] for s in supervisor_b_submissions}
     assert submission_id in submission_ids_seen_by_b
 
@@ -655,13 +655,13 @@ async def test_get_proof_url_empty_returns_404(
     dept = await create_department(db_session)
     cat = await create_category(db_session, dept.id)
 
-    # Create submission with empty proof_url
+    # Create submission with empty proof_key
     submission = CaseSubmission(
         student_id=student_user.id,
         department_id=dept.id,
         task_category_id=cat.id,
         case_count=1,
-        proof_url="",
+        proof_key="",
         status=SubmissionStatus.pending,
     )
     db_session.add(submission)

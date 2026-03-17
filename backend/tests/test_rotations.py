@@ -160,8 +160,8 @@ async def test_get_rotation_history_returns_all(
     )
     assert response.status_code == 200
     data = response.json()
-    assert len(data) == 3
-    dept_ids = {r["department_id"] for r in data}
+    assert len(data["items"]) == 3
+    dept_ids = {r["department_id"] for r in data["items"]}
     assert str(dept1.id) in dept_ids
     assert str(dept2.id) in dept_ids
     assert str(dept3.id) in dept_ids
@@ -197,8 +197,8 @@ async def test_get_rotation_history_includes_inactive(
     )
     assert response.status_code == 200
     data = response.json()
-    assert len(data) == 2
-    assert any(not r["is_current"] for r in data)
+    assert len(data["items"]) == 2
+    assert any(not r["is_current"] for r in data["items"])
 
 
 async def test_get_student_rotation_supervisor_assigned_only(

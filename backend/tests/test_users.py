@@ -17,17 +17,20 @@ async def test_list_users_admin_only(client, student_token):
 
 
 async def test_list_users_pagination(client, admin_token):
-    """List users with limit/offset (current implementation returns all)."""
-    # Current implementation doesn't support pagination, but we verify the endpoint works
+    """List users returns paginated response."""
     response = await client.get(
         "/api/users",
         headers=auth_header(admin_token),
     )
     assert response.status_code == 200
     data = response.json()
-    assert isinstance(data, list)
+    assert isinstance(data, dict)
+    assert "items" in data
+    assert isinstance(data["items"], list)
     # Should have at least the 3 seeded users (admin, student, supervisor)
-    assert len(data) >= 3
+    assert len(data["items"]) >= 3
+    assert "total" in data
+    assert data["total"] >= 3
 
 
 async def test_list_users_filters_by_role(client, admin_token, db_session):

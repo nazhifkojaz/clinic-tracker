@@ -42,9 +42,9 @@ async def seed() -> None:
         await session.commit()
 
         if _generated_password:
-            print(f"⚠️  No SEED_ADMIN_PASSWORD environment variable set.")
+            print("⚠️  No SEED_ADMIN_PASSWORD environment variable set.")
             print(f"⚠️  Generated secure password: {ADMIN_PASSWORD}")
-            print(f"⚠️  CHANGE THIS PASSWORD IMMEDIATELY AFTER FIRST LOGIN!")
+            print("⚠️  CHANGE THIS PASSWORD IMMEDIATELY AFTER FIRST LOGIN!")
         else:
             print(f"Admin user created: {ADMIN_EMAIL}")
             print("⚠️  If this is production, ensure you've set a strong password!")

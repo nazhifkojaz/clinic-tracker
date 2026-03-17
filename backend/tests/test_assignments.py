@@ -65,7 +65,7 @@ async def test_list_assignments_filters_by_type(
     )
     assert response.status_code == 200
     data = response.json()
-    assert all(a["assignment_type"] == "primary" for a in data)
+    assert all(a["assignment_type"] == "primary" for a in data["items"])
 
     # Filter by department
     response = await client.get(
@@ -74,7 +74,7 @@ async def test_list_assignments_filters_by_type(
     )
     assert response.status_code == 200
     data = response.json()
-    assert all(a["assignment_type"] == "department" for a in data)
+    assert all(a["assignment_type"] == "department" for a in data["items"])
 
 
 async def test_list_assignments_paginates(
@@ -109,8 +109,10 @@ async def test_list_assignments_paginates(
     )
     assert response.status_code == 200
     data = response.json()
-    assert isinstance(data, list)
-    assert len(data) >= 5
+    assert isinstance(data, dict)
+    assert "items" in data
+    assert isinstance(data["items"], list)
+    assert len(data["items"]) >= 5
 
 
 async def test_get_my_students_supervisor_only(client, student_token):

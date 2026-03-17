@@ -6,6 +6,7 @@ from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import NullPool
 
+from app.core.cache import categories_cache, departments_cache
 from app.core.database import Base, get_db
 from app.core.security import create_access_token, hash_password
 from app.main import app
@@ -92,6 +93,16 @@ def _setup_database():
     asyncio.run(_run_setup())
     yield
     asyncio.run(_run_teardown())
+
+
+@pytest.fixture(autouse=True)
+def _disable_cache_during_tests():
+    """Disable caching during tests to ensure fresh data for each test."""
+    categories_cache.disable()
+    departments_cache.disable()
+    yield
+    categories_cache.enable()
+    departments_cache.enable()
 
 
 @pytest.fixture
