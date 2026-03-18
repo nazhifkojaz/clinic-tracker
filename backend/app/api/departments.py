@@ -87,6 +87,9 @@ async def get_department(
     )
     category_count = count_result.scalar() or 0
 
+    # Filter to active categories only for consistency with category_count
+    active_categories = [c for c in department.task_categories if c.is_active]
+
     return DepartmentWithCategoriesResponse(
         id=department.id,
         name=department.name,
@@ -95,7 +98,7 @@ async def get_department(
         category_count=category_count,
         created_at=department.created_at,
         updated_at=department.updated_at,
-        task_categories=department.task_categories,
+        task_categories=active_categories,
     )
 
 
@@ -281,6 +284,7 @@ async def create_task_category(
 
     # Invalidate cache
     await categories_cache.invalidate("all_active_categories")
+    await departments_cache.invalidate("all_active_departments")
 
     return category
 
@@ -341,5 +345,6 @@ async def update_task_category(
 
     # Invalidate cache
     await categories_cache.invalidate("all_active_categories")
+    await departments_cache.invalidate("all_active_departments")
 
     return category

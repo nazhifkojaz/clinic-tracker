@@ -107,6 +107,31 @@ async def test_list_departments_includes_categories(client, admin_token, db_sess
     assert "Category 2" in category_names
 
 
+async def test_get_department_excludes_inactive_categories(
+    client, admin_token, db_session
+):
+    """Department detail should only return active categories and match category_count."""
+    dept = await create_department(db_session, name="Mixed Dept")
+    await create_category(db_session, dept.id, name="Active 1")
+    await create_category(db_session, dept.id, name="Active 2")
+    await create_category(db_session, dept.id, name="Inactive Cat", is_active=False)
+
+    response = await client.get(
+        f"/api/departments/{dept.id}",
+        headers=auth_header(admin_token),
+    )
+    assert response.status_code == 200
+    data = response.json()
+
+    # Should only return active categories
+    assert len(data["task_categories"]) == 2
+    assert data["category_count"] == 2
+    category_names = [c["name"] for c in data["task_categories"]]
+    assert "Active 1" in category_names
+    assert "Active 2" in category_names
+    assert "Inactive Cat" not in category_names
+
+
 async def test_create_department_admin_only(client, student_token, db_session):
     """Non-admin users should get 403 when creating departments."""
     response = await client.post(
