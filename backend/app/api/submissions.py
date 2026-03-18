@@ -1,7 +1,7 @@
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.dependencies import (
@@ -12,9 +12,9 @@ from app.api.dependencies import (
 from app.core.database import get_db
 from app.models.assignment import AssignmentType, SupervisorAssignment
 from app.models.department import Department, TaskCategory
-from app.models.rotation import StudentRotation
 from app.models.submission import CaseSubmission, SubmissionStatus
-from app.models.user import User, UserRole
+from app.models.user import User, UserRole, display_name
+from app.schemas.pagination import PaginatedResponse
 from app.schemas.submission import (
     ReviewerInfo,
     StudentInfo,
@@ -22,7 +22,6 @@ from app.schemas.submission import (
     SubmissionListResponse,
     SubmissionResponse,
     SubmissionReview,
-    UploadUrlRequest,
     UploadUrlResponse,
 )
 from app.utils.audit import record_audit
@@ -31,17 +30,50 @@ from app.utils.storage import generate_read_url, generate_upload_url
 router = APIRouter(prefix="/api/submissions", tags=["submissions"])
 
 
-@router.post("/upload-url", response_model=UploadUrlResponse)
+@router.get("/upload-url", response_model=UploadUrlResponse)
 async def get_upload_url(
-    body: UploadUrlRequest,
     _user: User = Depends(require_student),
+    filename: str = "image.jpg",
+    content_type: str = "image/jpeg",
 ):
     """Get a presigned URL for uploading proof image to R2. Student only."""
     upload_url, object_key = generate_upload_url(
-        filename=body.filename,
-        content_type=body.content_type,
+        filename=filename,
+        content_type=content_type,
     )
-    return UploadUrlResponse(upload_url=upload_url, object_key=object_key)
+    return UploadUrlResponse(upload_url=upload_url, key=object_key)
+
+
+async def _get_submission_or_403(
+    submission_id: UUID,
+    user: User,
+    db: AsyncSession,
+) -> CaseSubmission:
+    """Fetch submission and verify student ownership.
+
+    Args:
+        submission_id: ID of submission to fetch
+        user: Current authenticated user
+        db: Database session
+
+    Returns:
+        The submission if found and user has access
+
+    Raises:
+        HTTPException: 404 if not found, 403 if access denied
+    """
+    result = await db.execute(
+        select(CaseSubmission).where(CaseSubmission.id == submission_id)
+    )
+    submission = result.scalar_one_or_none()
+    if not submission:
+        raise HTTPException(status_code=404, detail="Submission not found")
+
+    # Students can only see their own submissions
+    if user.role == UserRole.student and submission.student_id != user.id:
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    return submission
 
 
 @router.post("", response_model=SubmissionResponse, status_code=status.HTTP_201_CREATED)
@@ -80,10 +112,7 @@ async def create_submission(
         **body.model_dump(),
     )
     db.add(submission)
-    await db.commit()
-    await db.refresh(submission)
-
-    # Audit log
+    await db.flush()  # Get server-generated UUID before audit
     await record_audit(
         db,
         user_id=user.id,
@@ -97,18 +126,22 @@ async def create_submission(
             "case_count": submission.case_count,
         },
     )
+    await db.commit()
+    await db.refresh(submission)
 
     return submission
 
 
-@router.get("", response_model=list[SubmissionListResponse])
+@router.get("", response_model=PaginatedResponse[SubmissionListResponse])
 async def list_submissions(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
     department_id: UUID | None = Query(None),
     status_filter: SubmissionStatus | None = Query(None, alias="status"),
+    limit: int = Query(50, ge=1, le=200, description="Items per page"),
+    offset: int = Query(0, ge=0, description="Items to skip"),
 ):
-    """List submissions. Students see their own; supervisors/admins see all."""
+    """List submissions with pagination. Students see their own; supervisors/admins see all."""
     # Join with User to get student information
     query = select(CaseSubmission, User).join(
         User, CaseSubmission.student_id == User.id
@@ -124,18 +157,14 @@ async def list_submissions(
             SupervisorAssignment.supervisor_id == user.id,
             SupervisorAssignment.assignment_type == AssignmentType.primary,
         )
-        # 2. Students currently rotating in a department they supervise
+        # 2. Any submission for a department they supervise
         supervised_depts = select(SupervisorAssignment.department_id).where(
             SupervisorAssignment.supervisor_id == user.id,
             SupervisorAssignment.assignment_type == AssignmentType.department,
         )
-        dept_students = select(StudentRotation.student_id).where(
-            StudentRotation.department_id.in_(supervised_depts),
-            StudentRotation.is_current.is_(True),
-        )
         query = query.where(
             CaseSubmission.student_id.in_(primary_students)
-            | CaseSubmission.student_id.in_(dept_students)
+            | CaseSubmission.department_id.in_(supervised_depts)
         )
     # Admins see all submissions (no filter)
 
@@ -145,7 +174,15 @@ async def list_submissions(
     if status_filter:
         query = query.where(CaseSubmission.status == status_filter)
 
+    # Get total count
+    count_subquery = query.subquery()
+    count_query = select(func.count()).select_from(count_subquery)
+    total_result = await db.execute(count_query)
+    total = total_result.scalar() or 0
+
+    # Apply pagination and ordering
     query = query.order_by(CaseSubmission.created_at.desc())
+    query = query.limit(limit).offset(offset)
     result = await db.execute(query)
 
     # Collect all reviewer IDs
@@ -170,9 +207,7 @@ async def list_submissions(
     for submission, student_user in submissions_data:
         student_info = StudentInfo(
             id=student_user.id,
-            full_name=student_user.full_name
-            if student_user.full_name
-            else (student_user.student_id or student_user.email),
+            full_name=display_name(student_user),
             student_id=student_user.student_id,
             email=student_user.email,
         )
@@ -182,9 +217,7 @@ async def list_submissions(
             reviewer_user = reviewers_map[submission.reviewed_by]
             reviewer_info = ReviewerInfo(
                 id=reviewer_user.id,
-                full_name=reviewer_user.full_name
-                if reviewer_user.full_name
-                else reviewer_user.email,
+                full_name=display_name(reviewer_user),
             )
 
         submissions.append(
@@ -195,7 +228,7 @@ async def list_submissions(
                 department_id=submission.department_id,
                 task_category_id=submission.task_category_id,
                 case_count=submission.case_count,
-                proof_url=submission.proof_url,
+                proof_key=submission.proof_key,
                 notes=submission.notes,
                 status=submission.status,
                 reviewed_by=submission.reviewed_by,
@@ -206,7 +239,7 @@ async def list_submissions(
             )
         )
 
-    return submissions
+    return PaginatedResponse.create(submissions, total, limit, offset)
 
 
 @router.get("/{submission_id}", response_model=SubmissionResponse)
@@ -216,17 +249,7 @@ async def get_submission(
     db: AsyncSession = Depends(get_db),
 ):
     """Get a submission detail. Students can only view their own."""
-    result = await db.execute(
-        select(CaseSubmission).where(CaseSubmission.id == submission_id)
-    )
-    submission = result.scalar_one_or_none()
-    if not submission:
-        raise HTTPException(status_code=404, detail="Submission not found")
-
-    # Students can only see their own submissions
-    if user.role == UserRole.student and submission.student_id != user.id:
-        raise HTTPException(status_code=403, detail="Access denied")
-
+    submission = await _get_submission_or_403(submission_id, user, db)
     return submission
 
 
@@ -238,9 +261,8 @@ async def review_submission(
     db: AsyncSession = Depends(get_db),
 ):
     """Approve or reject a submission. Supervisor/admin only."""
-    # Validate status transition
-    if body.status == SubmissionStatus.pending:
-        raise HTTPException(status_code=400, detail="Cannot set status back to pending")
+    # Convert string status to enum
+    status_enum = SubmissionStatus(body.status)
 
     result = await db.execute(
         select(CaseSubmission).where(CaseSubmission.id == submission_id)
@@ -262,14 +284,11 @@ async def review_submission(
         "review_notes": None,
     }
 
-    submission.status = body.status
+    submission.status = status_enum
     submission.reviewed_by = user.id
     submission.review_notes = body.review_notes
 
-    await db.commit()
-    await db.refresh(submission)
-
-    # Audit log
+    await db.flush()  # Ensure changes are staged
     await record_audit(
         db,
         user_id=user.id,
@@ -283,6 +302,8 @@ async def review_submission(
             "review_notes": submission.review_notes,
         },
     )
+    await db.commit()
+    await db.refresh(submission)
 
     return submission
 
@@ -294,16 +315,11 @@ async def get_proof_url(
     db: AsyncSession = Depends(get_db),
 ):
     """Get a temporary presigned URL to view the proof image."""
-    result = await db.execute(
-        select(CaseSubmission).where(CaseSubmission.id == submission_id)
-    )
-    submission = result.scalar_one_or_none()
-    if not submission:
-        raise HTTPException(status_code=404, detail="Submission not found")
+    submission = await _get_submission_or_403(submission_id, user, db)
 
-    # Students can only see their own
-    if user.role == UserRole.student and submission.student_id != user.id:
-        raise HTTPException(status_code=403, detail="Access denied")
+    # Runtime guard: check for empty proof_key before generating URL
+    if not submission.proof_key:
+        raise HTTPException(status_code=404, detail="Proof URL not available")
 
-    url = generate_read_url(submission.proof_url)
+    url = generate_read_url(submission.proof_key)
     return {"url": url}

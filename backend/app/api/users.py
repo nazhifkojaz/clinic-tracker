@@ -1,5 +1,5 @@
-from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import select
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -7,6 +7,7 @@ from app.api.dependencies import get_current_user, require_admin
 from app.core.database import get_db
 from app.core.security import hash_password
 from app.models.user import User
+from app.schemas.pagination import PaginatedResponse
 from app.schemas.user import UserCreate, UserResponse, UserUpdate
 from app.utils.audit import record_audit
 
@@ -19,14 +20,48 @@ async def get_me(user: User = Depends(get_current_user)):
     return user
 
 
-@router.get("", response_model=list[UserResponse])
+@router.get("", response_model=PaginatedResponse[UserResponse])
 async def list_users(
     _admin: User = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
+    role: str | None = Query(None, description="Filter by role"),
+    is_active: bool | None = Query(None, description="Filter by active status"),
+    search: str | None = Query(
+        None, description="Search by name, email, or student ID"
+    ),
+    limit: int = Query(50, ge=1, le=200, description="Items per page"),
+    offset: int = Query(0, ge=0, description="Items to skip"),
 ):
-    """List all users (admin only)."""
-    result = await db.execute(select(User).order_by(User.created_at.desc()))
-    return result.scalars().all()
+    """List all users with pagination and filters (admin only)."""
+    # Build base query
+    query = select(User)
+
+    # Apply filters
+    if role:
+        query = query.where(User.role == role)
+    if is_active is not None:
+        query = query.where(User.is_active == is_active)
+    if search:
+        query = query.where(
+            (User.full_name.ilike(f"%{search}%"))
+            | (User.email.ilike(f"%{search}%"))
+            | (User.student_id.ilike(f"%{search}%"))
+        )
+
+    # Get total count
+    count_subquery = query.subquery()
+    count_query = select(func.count()).select_from(count_subquery)
+    total_result = await db.execute(count_query)
+    total = total_result.scalar() or 0
+
+    # Apply pagination and ordering
+    query = query.order_by(User.created_at.desc())
+    query = query.limit(limit).offset(offset)
+    result = await db.execute(query)
+
+    users = result.scalars().all()
+
+    return PaginatedResponse.create(users, total, limit, offset)
 
 
 @router.post("", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
@@ -45,7 +80,21 @@ async def create_user(
     )
     db.add(user)
     try:
-        await db.commit()
+        await db.flush()  # Get server-generated UUID before audit
+        await record_audit(
+            db,
+            user_id=admin.id,
+            action="create",
+            table_name="users",
+            record_id=user.id,
+            new_values={
+                "email": user.email,
+                "full_name": user.full_name,
+                "student_id": user.student_id,
+                "role": user.role.value,
+            },
+        )
+        await db.commit()  # Single atomic commit for user + audit
         await db.refresh(user)
     except IntegrityError:
         await db.rollback()
@@ -53,21 +102,6 @@ async def create_user(
             status_code=status.HTTP_409_CONFLICT,
             detail="A user with this email already exists",
         )
-
-    # Audit log
-    await record_audit(
-        db,
-        user_id=admin.id,
-        action="create",
-        table_name="users",
-        record_id=user.id,
-        new_values={
-            "email": user.email,
-            "full_name": user.full_name,
-            "student_id": user.student_id,
-            "role": user.role.value,
-        },
-    )
 
     return user
 
@@ -102,7 +136,25 @@ async def update_user(
     for field, value in update_data.items():
         setattr(user, field, value)
 
+    # New values for audit
+    new_values = {
+        "email": user.email,
+        "full_name": user.full_name,
+        "student_id": user.student_id,
+        "role": user.role.value if user.role else None,
+    }
+
     try:
+        await db.flush()  # Ensure changes are staged
+        await record_audit(
+            db,
+            user_id=admin.id,
+            action="update",
+            table_name="users",
+            record_id=user.id,
+            old_values=old_values,
+            new_values=new_values,
+        )
         await db.commit()
         await db.refresh(user)
     except IntegrityError:
@@ -111,22 +163,5 @@ async def update_user(
             status_code=status.HTTP_409_CONFLICT,
             detail="A user with this email already exists",
         )
-
-    # Audit log
-    new_values = {
-        "email": user.email,
-        "full_name": user.full_name,
-        "student_id": user.student_id,
-        "role": user.role.value if user.role else None,
-    }
-    await record_audit(
-        db,
-        user_id=admin.id,
-        action="update",
-        table_name="users",
-        record_id=user.id,
-        old_values=old_values,
-        new_values=new_values,
-    )
 
     return user

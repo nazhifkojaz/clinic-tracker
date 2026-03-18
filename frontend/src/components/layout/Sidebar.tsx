@@ -1,98 +1,103 @@
-import { NavLink } from "react-router-dom";
-import { useAuthStore } from "@/stores/authStore";
 import {
-  LayoutDashboard,
-  FilePlus,
-  Users,
-  Settings,
-  Building2,
-  ClipboardList,
-  Link2,
-  Send,
-  Bell,
-  ScrollText,
-  X,
+	Bell,
+	Building2,
+	ClipboardList,
+	FilePlus,
+	LayoutDashboard,
+	Link2,
+	ScrollText,
+	Send,
+	Settings,
+	Users,
+	X,
 } from "lucide-react";
+import { useCallback } from "react";
+import { NavLink } from "react-router-dom";
 import { cn } from "@/lib/utils";
+import { useAuthStore } from "@/stores/authStore";
 
 const navItems = {
-  student: [
-    { to: "/", label: "Dashboard", icon: LayoutDashboard },
-    { to: "/cases/new", label: "Submit Case", icon: FilePlus },
-    { to: "/submissions", label: "My Submissions", icon: ClipboardList },
-  ],
-  supervisor: [
-    { to: "/", label: "Dashboard", icon: LayoutDashboard },
-    { to: "/submissions", label: "Submissions", icon: ClipboardList },
-    { to: "/notifications/send", label: "Send Notification", icon: Send },
-    { to: "/notifications", label: "Notification History", icon: Bell },
-  ],
-  admin: [
-    { to: "/", label: "Dashboard", icon: LayoutDashboard },
-    { to: "/submissions", label: "Submissions", icon: ClipboardList },
-    { to: "/notifications/send", label: "Send Notification", icon: Send },
-    { to: "/notifications", label: "Notification History", icon: Bell },
-    { to: "/admin/users", label: "Users", icon: Users },
-    { to: "/admin/departments", label: "Departments", icon: Building2 },
-    { to: "/admin/assignments", label: "Assignments", icon: Link2 },
-    { to: "/admin/audit-log", label: "Audit Log", icon: ScrollText },
-    { to: "/admin/settings", label: "Settings", icon: Settings },
-  ],
+	student: [
+		{ to: "/", label: "Dashboard", icon: LayoutDashboard },
+		{ to: "/cases/new", label: "Submit Case", icon: FilePlus },
+		{ to: "/submissions", label: "My Submissions", icon: ClipboardList },
+	],
+	supervisor: [
+		{ to: "/", label: "Dashboard", icon: LayoutDashboard },
+		{ to: "/submissions", label: "Submissions", icon: ClipboardList },
+		{ to: "/notifications/send", label: "Send Notification", icon: Send },
+		{ to: "/notifications", label: "Notification History", icon: Bell },
+	],
+	admin: [
+		{ to: "/", label: "Dashboard", icon: LayoutDashboard },
+		{ to: "/submissions", label: "Submissions", icon: ClipboardList },
+		{ to: "/notifications/send", label: "Send Notification", icon: Send },
+		{ to: "/notifications", label: "Notification History", icon: Bell },
+		{ to: "/admin/users", label: "Users", icon: Users },
+		{ to: "/admin/departments", label: "Departments", icon: Building2 },
+		{ to: "/admin/assignments", label: "Assignments", icon: Link2 },
+		{ to: "/admin/audit-log", label: "Audit Log", icon: ScrollText },
+		{ to: "/admin/settings", label: "Settings", icon: Settings },
+	],
 };
 
+const BREAKPOINTS = { lg: 1024 } as const;
+
 interface SidebarProps {
-  open?: boolean;
-  onClose?: () => void;
+	open?: boolean;
+	onClose?: () => void;
 }
 
 export default function Sidebar({ open = false, onClose }: SidebarProps) {
-  const { user } = useAuthStore();
-  if (!user) return null;
+	const { user } = useAuthStore();
 
-  const items = navItems[user.role] || [];
+	const handleNavClick = useCallback(() => {
+		if (window.innerWidth < BREAKPOINTS.lg) {
+			onClose?.();
+		}
+	}, [onClose]);
 
-  return (
-    <aside
-      className={cn(
-        "fixed inset-y-0 left-0 z-40 w-60 flex-col border-r bg-card transition-transform lg:static lg:translate-x-0",
-        open ? "translate-x-0" : "-translate-x-full lg:flex"
-      )}
-    >
-      <div className="flex h-14 items-center justify-between border-b px-4">
-        <span className="text-lg font-semibold">Clinic Tracker</span>
-        <button
-          className="lg:hidden"
-          onClick={onClose}
-          aria-label="Close sidebar"
-        >
-          <X className="h-5 w-5" />
-        </button>
-      </div>
-      <nav className="flex-1 space-y-1 p-2">
-        {items.map((item) => (
-          <NavLink
-            key={item.to}
-            to={item.to}
-            end
-            className={({ isActive }) =>
-              `flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors ${
-                isActive
-                  ? "bg-primary text-primary-foreground"
-                  : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-              }`
-            }
-            onClick={() => {
-              // Close sidebar on mobile after navigation
-              if (window.innerWidth < 1024) {
-                onClose?.();
-              }
-            }}
-          >
-            <item.icon className="h-4 w-4" />
-            {item.label}
-          </NavLink>
-        ))}
-      </nav>
-    </aside>
-  );
+	if (!user) return null;
+
+	const items = navItems[user.role] || [];
+
+	return (
+		<aside
+			className={cn(
+				"fixed inset-y-0 left-0 z-40 w-60 flex-col border-r bg-card transition-transform lg:static lg:translate-x-0",
+				open ? "translate-x-0" : "-translate-x-full lg:flex",
+			)}
+		>
+			<div className="flex h-14 items-center justify-between border-b px-4">
+				<span className="text-lg font-semibold">Clinic Tracker</span>
+				<button
+					className="lg:hidden"
+					onClick={onClose}
+					aria-label="Close sidebar"
+				>
+					<X className="h-5 w-5" />
+				</button>
+			</div>
+			<nav className="flex-1 space-y-1 p-2">
+				{items.map((item) => (
+					<NavLink
+						key={item.to}
+						to={item.to}
+						end
+						className={({ isActive }) =>
+							`flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors ${
+								isActive
+									? "bg-primary text-primary-foreground"
+									: "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+							}`
+						}
+						onClick={handleNavClick}
+					>
+						<item.icon className="h-4 w-4" />
+						{item.label}
+					</NavLink>
+				))}
+			</nav>
+		</aside>
+	);
 }

@@ -1,7 +1,7 @@
 """Audit log recording helper.
 
-Call record_audit() from route handlers after state-changing operations
-to create an audit trail of who changed what, when.
+Call record_audit() from route handlers BEFORE the main db.commit()
+to ensure atomicity - audit and data change are committed together.
 """
 
 import uuid
@@ -60,7 +60,11 @@ async def record_audit(
 ) -> None:
     """Record an audit log entry.
 
-    Call AFTER the main db.commit() for the action being audited.
+    Call BEFORE the main db.commit() for the action being audited.
+    The caller must commit the transaction after calling this function.
+
+    For CREATE operations, ensure db.flush() is called first so that
+    server-generated UUIDs are available for the record_id parameter.
 
     Args:
         db: Database session
@@ -88,7 +92,7 @@ async def record_audit(
         new_values=new_values,
     )
     db.add(entry)
-    await db.commit()
+    # No commit here - caller must commit to ensure atomicity
 
 
 class DefaultDict(dict):

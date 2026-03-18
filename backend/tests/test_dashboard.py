@@ -1,31 +1,29 @@
-import random
-import string
-
-import pytest
-from sqlalchemy import select
-
 from app.models.assignment import AssignmentType, SupervisorAssignment
 from app.models.rotation import StudentRotation
 from app.models.submission import SubmissionStatus
 from app.models.user import User, UserRole
 from tests.conftest import auth_header
-from tests.factories import create_category, create_department, create_submission
+from tests.factories import (
+    _random_suffix,
+    create_category,
+    create_department,
+    create_submission,
+)
 
 
-def _random_suffix() -> str:
-    """Generate a random suffix for unique names."""
-    return "".join(random.choices(string.ascii_lowercase, k=8))
-
-
-@pytest.mark.anyio
-async def test_student_dashboard_empty(client, student_user, student_token, db_session):
+async def test_student_dashboard_empty(client, fresh_student, db_session):
     """Student with no submissions should have 0% progress."""
+    from app.core.security import create_access_token
+
     dept = await create_department(db_session)
     await create_category(db_session, dept.id, required_count=10)
 
+    # Create token for fresh_student
+    fresh_token = create_access_token(subject=str(fresh_student.id), role="student")
+
     response = await client.get(
         "/api/dashboard/student",
-        headers=auth_header(student_token),
+        headers=auth_header(fresh_token),
     )
     assert response.status_code == 200
     data = response.json()
@@ -33,7 +31,6 @@ async def test_student_dashboard_empty(client, student_user, student_token, db_s
     assert data["total_completed"] == 0
 
 
-@pytest.mark.anyio
 async def test_student_dashboard_only_approved_count(
     client, student_user, student_token, db_session
 ):
@@ -86,7 +83,6 @@ async def test_student_dashboard_only_approved_count(
     assert data["total_required"] == baseline_required + 10
 
 
-@pytest.mark.anyio
 async def test_student_dashboard_multiple_categories(
     client, student_user, student_token, db_session
 ):
@@ -143,7 +139,6 @@ async def test_student_dashboard_multiple_categories(
     assert abs(data["overall_completion_percentage"] - expected_pct) < 0.1
 
 
-@pytest.mark.anyio
 async def test_supervisor_dashboard_student_classification(
     client, supervisor_user, supervisor_token, db_session
 ):
@@ -187,35 +182,23 @@ async def test_supervisor_dashboard_student_classification(
     assert student_entry["status"] in ["on_track", "at_risk", "behind"]
 
 
-@pytest.mark.anyio
 async def test_supervisor_dashboard_classification_thresholds(
     client, supervisor_user, supervisor_token, db_session
 ):
-    """Supervisor dashboard should classify students at correct thresholds."""
-    # Get the global total required
-    from app.models.department import TaskCategory
+    """Supervisor dashboard should classify students at correct thresholds using known values."""
+    # Use known values: 100 required, test 10/40/70 cases (10%/40%/70% completion)
+    required_count = 100
 
-    cat_result = await db_session.execute(
-        select(TaskCategory).where(TaskCategory.is_active.is_(True))
-    )
-    all_cats = cat_result.scalars().all()
-    total_required_global = sum(c.required_count for c in all_cats)
-
-    # Calculate case thresholds based on actual global total
-    behind_cases = int(total_required_global * 0.1)  # < 30%
-    at_risk_cases = int(total_required_global * 0.4)  # 30-59%
-    on_track_cases = int(total_required_global * 0.7)  # >= 60%
-
-    # Create 3 students with different completion levels
-    for name, cases, expected_status in [
-        ("Behind Student", behind_cases, "behind"),
-        ("At Risk Student", at_risk_cases, "at_risk"),
-        ("On Track Student", on_track_cases, "on_track"),
+    # Create 3 students with specific completion levels
+    for cases, expected_status in [
+        (10, "behind"),  # 10% -> behind
+        (40, "at_risk"),  # 40% -> at_risk
+        (70, "on_track"),  # 70% -> on_track
     ]:
         student = User(
-            email=f"student_{name}_{_random_suffix()}@test.com",
+            email=f"student_{expected_status}_{_random_suffix()}@test.com",
             password_hash="$2b$12$dummy",
-            full_name=name,
+            full_name=f"{expected_status.title()} Student",
             role=UserRole.student,
             is_active=True,
         )
@@ -233,7 +216,7 @@ async def test_supervisor_dashboard_classification_thresholds(
         await db_session.commit()
 
         dept = await create_department(db_session)
-        cat = await create_category(db_session, dept.id, required_count=cases)
+        cat = await create_category(db_session, dept.id, required_count=required_count)
 
         await create_submission(
             db_session,
@@ -250,32 +233,43 @@ async def test_supervisor_dashboard_classification_thresholds(
     )
     data = response.json()
 
-    # Verify classifications - use actual completion percentage
-    for name, cases, expected_status in [
-        ("Behind Student", behind_cases, "behind"),
-        ("At Risk Student", at_risk_cases, "at_risk"),
-        ("On Track Student", on_track_cases, "on_track"),
-    ]:
+    # Verify each student's classification is consistent with the returned percentage.
+    # The total_required_global varies with test data so we verify the threshold
+    # logic (not specific percentages): < 30% → behind, 30–59% → at_risk, ≥ 60% → on_track.
+    status_labels = ["behind", "at_risk", "on_track"]
+    for _, label in [(10, "behind"), (40, "at_risk"), (70, "on_track")]:
         student_entry = next(
             (
                 s
                 for s in data["students"]
-                if s["student_name"].startswith(name.split()[0])
+                if s["student_name"] == f"{label.title()} Student"
             ),
             None,
         )
-        assert student_entry is not None, f"Could not find student {name}"
-        # Verify the status based on the actual percentage
-        actual_pct = student_entry["overall_completion_percentage"]
-        if actual_pct >= 60:
-            assert student_entry["status"] == "on_track"
-        elif actual_pct >= 30:
-            assert student_entry["status"] == "at_risk"
-        else:
-            assert student_entry["status"] == "behind"
+        assert student_entry is not None, f"Could not find {label} student"
+        pct = student_entry["overall_completion_percentage"]
+        expected = "on_track" if pct >= 60 else "at_risk" if pct >= 30 else "behind"
+        assert student_entry["status"] == expected, (
+            f"{label.title()} Student: {pct}% should be '{expected}', got '{student_entry['status']}'"
+        )
+
+    # Additionally verify relative ordering: more submissions → better or equal status
+    entries = {
+        label: next(
+            s
+            for s in data["students"]
+            if s["student_name"] == f"{label.title()} Student"
+        )
+        for label in ["behind", "at_risk", "on_track"]
+    }
+    assert status_labels.index(entries["behind"]["status"]) <= status_labels.index(
+        entries["at_risk"]["status"]
+    )
+    assert status_labels.index(entries["at_risk"]["status"]) <= status_labels.index(
+        entries["on_track"]["status"]
+    )
 
 
-@pytest.mark.anyio
 async def test_supervisor_dashboard_has_required_fields(
     client, supervisor_user, supervisor_token
 ):
@@ -299,7 +293,6 @@ async def test_supervisor_dashboard_has_required_fields(
     )
 
 
-@pytest.mark.anyio
 async def test_admin_dashboard_sees_all_students(client, admin_token, db_session):
     """Admin should see all students on supervisor dashboard."""
     response = await client.get(
@@ -312,7 +305,6 @@ async def test_admin_dashboard_sees_all_students(client, admin_token, db_session
     assert data["total_students"] >= 1
 
 
-@pytest.mark.anyio
 async def test_department_dashboard(
     client, supervisor_user, supervisor_token, admin_token, db_session
 ):
@@ -379,7 +371,6 @@ async def test_department_dashboard(
     assert student_entry["status"] == "at_risk"  # 50% is at_risk threshold
 
 
-@pytest.mark.anyio
 async def test_student_dashboard_current_rotation(
     client, student_user, student_token, db_session
 ):
@@ -404,7 +395,6 @@ async def test_student_dashboard_current_rotation(
     assert data["current_department"] == "Current Department"
 
 
-@pytest.mark.anyio
 async def test_student_dashboard_recent_submissions(
     client, student_user, student_token, db_session
 ):

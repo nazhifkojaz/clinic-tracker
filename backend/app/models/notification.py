@@ -3,7 +3,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, String, Text, text
+from sqlalchemy import DateTime, ForeignKey, Index, String, Text, text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -35,6 +35,13 @@ class Notification(Base):
     sent_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=text("now()"),
+        index=True,
+    )
+
+    # Composite indexes for common query patterns
+    __table_args__ = (
+        Index("ix_notifications_sender_sent", "sender_id", "sent_at"),
+        Index("ix_notifications_recipient_sent", "recipient_id", "sent_at"),
     )
 
     # Relationships

@@ -14,7 +14,7 @@ permissions:
 
 concurrency:
   group: "pages"
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   build:
@@ -41,6 +41,7 @@ jobs:
         run: pnpm build
         env:
           VITE_API_URL: https://clinic-tracker-api.fly.dev
+          VITE_BASE_PATH: /clinic-tracker/
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3

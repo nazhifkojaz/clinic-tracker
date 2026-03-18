@@ -4,6 +4,7 @@ Supervisors can send email notifications to students and view notification histo
 Admins can send to any student and view all notifications.
 """
 
+import logging
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -15,7 +16,8 @@ from app.api.dependencies import get_current_user, require_supervisor
 from app.core.database import get_db
 from app.models.assignment import AssignmentType, SupervisorAssignment
 from app.models.notification import NOTIFICATION_TEMPLATES, Notification
-from app.models.user import User, UserRole
+from app.models.rotation import StudentRotation
+from app.models.user import User, UserRole, display_name
 from app.schemas.notification import (
     NotificationResponse,
     NotificationSend,
@@ -23,6 +25,8 @@ from app.schemas.notification import (
 )
 from app.utils.audit import format_template
 from app.utils.email import is_mock_mode, sanitize_for_email, send_email
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/notifications", tags=["notifications"])
 
@@ -43,11 +47,13 @@ async def _get_student_names(
 ) -> dict[uuid.UUID, str]:
     """Fetch student names for a list of student IDs."""
     result = await db.execute(
-        select(User.id, User.full_name, User.email).where(
+        select(User.id, User.full_name, User.student_id, User.email).where(
             User.id.in_(student_ids), User.role == UserRole.student
         )
     )
-    return {row.id: (row.full_name or row.email) for row in result.all()}
+    return {
+        row.id: (row.full_name or row.student_id or row.email) for row in result.all()
+    }
 
 
 async def _validate_supervisor_assignments(
@@ -57,41 +63,49 @@ async def _validate_supervisor_assignments(
 ) -> None:
     """Validate that the supervisor is assigned to each recipient student.
 
+    Supervisors can only send notifications to:
+    1. Students they are the primary supervisor of
+    2. Students currently rotating in departments they supervise
+
     Raises:
         HTTPException: If supervisor is not assigned to a student.
     """
+    # 1. Get all primary-assigned student IDs
+    primary_query = select(SupervisorAssignment.student_id).where(
+        SupervisorAssignment.supervisor_id == supervisor_id,
+        SupervisorAssignment.assignment_type == AssignmentType.primary,
+        SupervisorAssignment.student_id.isnot(None),
+    )
+    primary_result = await db.execute(primary_query)
+    primary_ids = {row[0] for row in primary_result.all()}
+
+    # 2. Get all department-assigned student IDs (via StudentRotation join)
+    dept_query = select(SupervisorAssignment.department_id).where(
+        SupervisorAssignment.supervisor_id == supervisor_id,
+        SupervisorAssignment.assignment_type == AssignmentType.department,
+    )
+    dept_result = await db.execute(dept_query)
+    supervised_dept_ids = [row[0] for row in dept_result.all()]
+
+    dept_student_ids: set[uuid.UUID] = set()
+    if supervised_dept_ids:
+        rot_query = select(StudentRotation.student_id).where(
+            StudentRotation.department_id.in_(supervised_dept_ids),
+            StudentRotation.is_current.is_(True),
+        )
+        rot_result = await db.execute(rot_query)
+        dept_student_ids = {row[0] for row in rot_result.all()}
+
+    # 3. Combine allowed student IDs
+    allowed_student_ids = primary_ids | dept_student_ids
+
+    # 4. Validate all recipients are in allowed set
     for recipient_id in recipient_ids:
-        # Check if primary assignment exists
-        result = await db.execute(
-            select(SupervisorAssignment).where(
-                SupervisorAssignment.supervisor_id == supervisor_id,
-                SupervisorAssignment.student_id == recipient_id,
-                SupervisorAssignment.assignment_type == AssignmentType.primary,
-            )
-        )
-        if result.scalar_one_or_none():
-            continue
-
-        # Check if department assignment exists (student is currently rotating
-        # in a department supervised by this supervisor)
-        dept_result = await db.execute(
-            select(SupervisorAssignment).where(
-                SupervisorAssignment.supervisor_id == supervisor_id,
-                SupervisorAssignment.assignment_type == AssignmentType.department,
-            )
-        )
-        dept_assignments = dept_result.scalars().all()
-
-        # If no department assignments, deny access
-        if not dept_assignments:
+        if recipient_id not in allowed_student_ids:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail=f"You are not assigned to student {recipient_id}",
             )
-
-        # For now, allow supervisors with any department assignment to send to any student
-        # This is a simplification - in production, you'd want to check if the student
-        # is actually rotating in one of the supervisor's departments
 
 
 @router.post("/send", response_model=list[NotificationResponse])
@@ -143,7 +157,7 @@ async def send_notification(
             message = template["message"]
 
     # Get sender name
-    sender_name = user.full_name or user.email
+    sender_name = display_name(user)
 
     # Create notification records and send emails
     created_notifications = []
@@ -151,7 +165,7 @@ async def send_notification(
 
     for recipient_id in payload.recipient_ids:
         recipient = recipient_map[recipient_id]
-        recipient_name = recipient.full_name or recipient.email
+        recipient_name = display_name(recipient)
 
         # Personalize message with recipient info if using template vars
         personalized_subject = subject
@@ -189,23 +203,27 @@ async def send_notification(
         except Exception:
             # Log error but don't fail the request
             # Notification record is still created
-            pass
+            logger.exception(
+                "Failed to send email notification (recipient_id=%s, notification_id=%s)",
+                recipient_id,
+                notification.id,
+            )
 
         created_notifications.append(notification)
 
+    # Flush to get IDs without committing yet
+    await db.flush()
+    notification_ids = [n.id for n in created_notifications]
+
     await db.commit()
 
-    # Refresh all notifications to get their IDs
-    for notification in created_notifications:
-        await db.refresh(notification)
-
-    # Fetch full data for response
+    # Single query with eager loading (no N+1 refresh loop needed)
     result = await db.execute(
         select(Notification)
         .options(
             selectinload(Notification.sender), selectinload(Notification.recipient)
         )
-        .where(Notification.id.in_([n.id for n in created_notifications]))
+        .where(Notification.id.in_(notification_ids))
     )
     notifications = result.scalars().all()
 
@@ -213,9 +231,9 @@ async def send_notification(
         NotificationResponse(
             id=n.id,
             sender_id=n.sender_id,
-            sender_name=n.sender.full_name or n.sender.email,
+            sender_name=display_name(n.sender),
             recipient_id=n.recipient_id,
-            recipient_name=n.recipient.full_name or n.recipient.email,
+            recipient_name=display_name(n.recipient),
             subject=n.subject,
             message=n.message,
             sent_at=n.sent_at,
@@ -263,9 +281,9 @@ async def list_notifications(
         NotificationResponse(
             id=n.id,
             sender_id=n.sender_id,
-            sender_name=n.sender.full_name or n.sender.email,
+            sender_name=display_name(n.sender),
             recipient_id=n.recipient_id,
-            recipient_name=n.recipient.full_name or n.recipient.email,
+            recipient_name=display_name(n.recipient),
             subject=n.subject,
             message=n.message,
             sent_at=n.sent_at,

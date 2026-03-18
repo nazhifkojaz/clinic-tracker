@@ -1,7 +1,7 @@
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import select, union
+from sqlalchemy import func, select, union
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
@@ -16,21 +16,25 @@ from app.schemas.assignment import (
     AssignmentCreate,
     AssignmentResponse,
     AssignmentWithDetailsResponse,
+    MyStudentResponse,
 )
+from app.schemas.pagination import PaginatedResponse
 from app.utils.audit import record_audit
 
 router = APIRouter(prefix="/api/assignments", tags=["assignments"])
 
 
-@router.get("", response_model=list[AssignmentWithDetailsResponse])
+@router.get("", response_model=PaginatedResponse[AssignmentWithDetailsResponse])
 async def list_assignments(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
     assignment_type: AssignmentType | None = Query(None),
     supervisor_id: UUID | None = Query(None),
     student_id: UUID | None = Query(None),
+    limit: int = Query(50, ge=1, le=200, description="Items per page"),
+    offset: int = Query(0, ge=0, description="Items to skip"),
 ):
-    """List assignments. Admins see all; supervisors see their own."""
+    """List assignments with pagination. Admins see all; supervisors see their own."""
     # Build query with joined user names
     supervisor_alias = User.__table__.alias("sup")
     student_alias = User.__table__.alias("stu")
@@ -64,7 +68,15 @@ async def list_assignments(
     if student_id:
         query = query.where(SupervisorAssignment.student_id == student_id)
 
+    # Get total count
+    count_subquery = query.subquery()
+    count_query = select(func.count()).select_from(count_subquery)
+    total_result = await db.execute(count_query)
+    total = total_result.scalar() or 0
+
+    # Apply pagination and ordering
     query = query.order_by(SupervisorAssignment.created_at.desc())
+    query = query.limit(limit).offset(offset)
     result = await db.execute(query)
 
     assignments = []
@@ -83,7 +95,8 @@ async def list_assignments(
                 department_name=row.department_name,
             )
         )
-    return assignments
+
+    return PaginatedResponse.create(assignments, total, limit, offset)
 
 
 @router.post("", response_model=AssignmentResponse, status_code=status.HTTP_201_CREATED)
@@ -93,29 +106,7 @@ async def create_assignment(
     db: AsyncSession = Depends(get_db),
 ):
     """Create a supervisor assignment. Admin only."""
-    # Validate assignment_type + field consistency
-    if body.assignment_type == AssignmentType.primary:
-        if body.student_id is None:
-            raise HTTPException(
-                status_code=400,
-                detail="Primary assignments must have a student_id",
-            )
-        if body.department_id is not None:
-            raise HTTPException(
-                status_code=400,
-                detail="Primary assignments must not have a department_id",
-            )
-    elif body.assignment_type == AssignmentType.department:
-        if body.department_id is None:
-            raise HTTPException(
-                status_code=400,
-                detail="Department assignments must have a department_id",
-            )
-        if body.student_id is not None:
-            raise HTTPException(
-                status_code=400,
-                detail="Department assignments must not have a student_id",
-            )
+    # Note: assignment_type + field consistency validation is now in the AssignmentCreate schema
 
     # Validate supervisor exists and has supervisor/admin role
     sup_result = await db.execute(
@@ -159,29 +150,29 @@ async def create_assignment(
     db.add(assignment)
 
     try:
+        await db.flush()  # Get server-generated UUID before audit
+        await record_audit(
+            db,
+            user_id=admin.id,
+            action="create",
+            table_name="supervisor_assignments",
+            record_id=assignment.id,
+            new_values={
+                "supervisor_id": str(assignment.supervisor_id),
+                "student_id": str(assignment.student_id)
+                if assignment.student_id
+                else None,
+                "assignment_type": assignment.assignment_type.value,
+                "department_id": str(assignment.department_id)
+                if assignment.department_id
+                else None,
+            },
+        )
         await db.commit()
+        await db.refresh(assignment)
     except IntegrityError:
         await db.rollback()
         raise HTTPException(status_code=409, detail="This assignment already exists")
-
-    await db.refresh(assignment)
-
-    # Audit log
-    await record_audit(
-        db,
-        user_id=admin.id,
-        action="create",
-        table_name="supervisor_assignments",
-        record_id=assignment.id,
-        new_values={
-            "supervisor_id": str(assignment.supervisor_id),
-            "student_id": str(assignment.student_id) if assignment.student_id else None,
-            "assignment_type": assignment.assignment_type.value,
-            "department_id": str(assignment.department_id)
-            if assignment.department_id
-            else None,
-        },
-    )
 
     return assignment
 
@@ -211,9 +202,7 @@ async def delete_assignment(
     }
 
     await db.delete(assignment)
-    await db.commit()
-
-    # Audit log
+    await db.flush()  # Ensure delete is staged before audit
     await record_audit(
         db,
         user_id=admin.id,
@@ -222,9 +211,10 @@ async def delete_assignment(
         record_id=assignment_id,
         old_values=old_values,
     )
+    await db.commit()
 
 
-@router.get("/my-students", response_model=list[dict])
+@router.get("/my-students", response_model=list[MyStudentResponse])
 async def get_my_students(
     user: User = Depends(require_supervisor),
     db: AsyncSession = Depends(get_db),
@@ -324,15 +314,15 @@ async def get_my_students(
         seen_student_depts.add(student_dept_key)
 
         students.append(
-            {
-                "assignment_id": str(row.assignment_id),
-                "student_id": str(row.student_id),
-                "student_name": row.student_name,
-                "student_email": row.student_email,
-                "student_code": row.student_code,
-                "assignment_type": row.assignment_type,
-                "department_id": str(row.dept_id) if row.dept_id else None,
-                "department_name": row.dept_name,
-            }
+            MyStudentResponse(
+                assignment_id=str(row.assignment_id),
+                student_id=str(row.student_id),
+                student_name=row.student_name,
+                student_email=row.student_email,
+                student_code=row.student_code,
+                assignment_type=row.assignment_type,
+                department_id=str(row.dept_id) if row.dept_id else None,
+                department_name=row.dept_name,
+            )
         )
     return students

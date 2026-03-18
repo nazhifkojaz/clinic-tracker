@@ -1,6 +1,6 @@
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -9,6 +9,7 @@ from app.core.database import get_db
 from app.models.department import Department
 from app.models.rotation import StudentRotation
 from app.models.user import User
+from app.schemas.pagination import PaginatedResponse
 from app.schemas.rotation import RotationCreate, RotationResponse
 
 router = APIRouter(prefix="/api/rotations", tags=["rotations"])
@@ -68,18 +69,31 @@ async def set_rotation(
     return rotation
 
 
-@router.get("/history", response_model=list[RotationResponse])
+@router.get("/history", response_model=PaginatedResponse[RotationResponse])
 async def get_rotation_history(
     user: User = Depends(require_student),
     db: AsyncSession = Depends(get_db),
+    limit: int = Query(50, ge=1, le=200, description="Items per page"),
+    offset: int = Query(0, ge=0, description="Items to skip"),
 ):
-    """Get the student's full rotation history, newest first."""
-    result = await db.execute(
-        select(StudentRotation)
-        .where(StudentRotation.student_id == user.id)
-        .order_by(StudentRotation.started_at.desc())
-    )
-    return result.scalars().all()
+    """Get the student's rotation history with pagination, newest first."""
+    # Build query
+    query = select(StudentRotation).where(StudentRotation.student_id == user.id)
+
+    # Get total count
+    count_subquery = query.subquery()
+    count_query = select(func.count()).select_from(count_subquery)
+    total_result = await db.execute(count_query)
+    total = total_result.scalar() or 0
+
+    # Apply pagination and ordering (use id as tiebreaker for stable pagination)
+    query = query.order_by(StudentRotation.started_at.desc(), StudentRotation.id.desc())
+    query = query.limit(limit).offset(offset)
+    result = await db.execute(query)
+
+    rotations = result.scalars().all()
+
+    return PaginatedResponse.create(rotations, total, limit, offset)
 
 
 @router.get(

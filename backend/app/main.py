@@ -1,13 +1,12 @@
 import logging
-
-from starlette.middleware.base import BaseHTTPMiddleware
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
-from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
+from sqlalchemy import text
 
 from app.api.assignments import router as assignments_router
 from app.api.audit import router as audit_router
@@ -19,11 +18,48 @@ from app.api.rotations import router as rotations_router
 from app.api.submissions import router as submissions_router
 from app.api.users import router as users_router
 from app.core.config import settings
+from app.core.database import engine
 from app.core.rate_limit import limiter
+from app.middleware import LimitRequestSizeMiddleware
 
 logger = logging.getLogger(__name__)
 
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Manage application startup and shutdown.
+
+    Startup:
+    - Validate database connectivity
+    - Log application initialization
+
+    Shutdown:
+    - Dispose database connections gracefully
+    """
+    # Startup
+    logger.info("Starting %s...", settings.APP_NAME)
+
+    # Validate database connectivity
+    try:
+        async with engine.begin() as conn:
+            await conn.execute(text("SELECT 1"))
+        logger.info("Database connectivity validated")
+    except Exception as e:
+        logger.error("Database connection failed during startup: %s", e)
+        raise
+
+    yield
+
+    # Shutdown
+    logger.info("Shutting down %s...", settings.APP_NAME)
+
+    # Dispose database connections
+    await engine.dispose()
+    logger.info("Database connections disposed")
+
+
 app = FastAPI(
+    lifespan=lifespan,
     title=settings.APP_NAME,
     docs_url="/docs",
     redoc_url="/redoc",
@@ -34,18 +70,8 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 MAX_REQUEST_SIZE = 1_048_576  # 1 MB
 
-
-class LimitRequestSizeMiddleware(BaseHTTPMiddleware):
-    async def dispatch(self, request: Request, call_next):
-        content_length = request.headers.get("content-length")
-        if content_length and int(content_length) > MAX_REQUEST_SIZE:
-            return JSONResponse(
-                status_code=413, content={"detail": "Request body too large"}
-            )
-        return await call_next(request)
-
-
-app.add_middleware(LimitRequestSizeMiddleware)
+# Add pure ASGI middleware (more efficient than BaseHTTPMiddleware)
+app.add_middleware(LimitRequestSizeMiddleware, max_size=MAX_REQUEST_SIZE)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.CORS_ORIGINS,
@@ -53,18 +79,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-
-@app.exception_handler(RequestValidationError)
-async def validation_exception_handler(request: Request, exc: RequestValidationError):
-    """Return 422 validation errors in a consistent shape."""
-    return JSONResponse(
-        status_code=422,
-        content={
-            "detail": "Validation error",
-            "errors": exc.errors(),
-        },
-    )
 
 
 @app.exception_handler(Exception)
