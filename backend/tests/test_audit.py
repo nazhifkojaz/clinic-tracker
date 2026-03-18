@@ -1,6 +1,5 @@
 """Tests for audit logging atomicity."""
 
-import uuid
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -28,7 +27,7 @@ async def test_audit_and_main_operation_in_same_transaction(db_session: AsyncSes
     # Record audit before commit
     await record_audit(
         db_session,
-        user_id=uuid.uuid4(),  # Some admin user
+        user_id=user.id,  # Some admin user
         action="create",
         table_name="users",
         record_id=user.id,
@@ -76,7 +75,7 @@ async def test_audit_failure_rolls_back_main_operation(db_session: AsyncSession)
     # Record valid audit
     await record_audit(
         db_session,
-        user_id=uuid.uuid4(),
+        user_id=user.id,
         action="create",
         table_name="users",
         record_id=user.id,
@@ -134,9 +133,11 @@ async def test_flush_populates_id_before_commit(db_session: AsyncSession):
 
 
 @pytest.mark.asyncio
-async def test_session_state_after_audit_failure(db_session: AsyncSession):
-    """Verify that session remains usable after an audit operation fails."""
-    # Create first user successfully
+async def test_session_state_after_audit(db_session: AsyncSession):
+    """Verify that session remains usable after audit + flush (no commit)."""
+    from sqlalchemy import select
+
+    # First user + audit
     user1 = User(
         email="session-test-1@example.com",
         password_hash=hash_password("password123"),
@@ -148,15 +149,15 @@ async def test_session_state_after_audit_failure(db_session: AsyncSession):
 
     await record_audit(
         db_session,
-        user_id=uuid.uuid4(),
+        user_id=user1.id,
         action="create",
         table_name="users",
         record_id=user1.id,
         new_values={"email": user1.email},
     )
-    await db_session.commit()
+    await db_session.flush()
 
-    # Verify session is still usable by creating another user
+    # Second user + audit (session should still be usable)
     user2 = User(
         email="session-test-2@example.com",
         password_hash=hash_password("password123"),
@@ -168,95 +169,79 @@ async def test_session_state_after_audit_failure(db_session: AsyncSession):
 
     await record_audit(
         db_session,
-        user_id=uuid.uuid4(),
+        user_id=user2.id,
         action="create",
         table_name="users",
         record_id=user2.id,
         new_values={"email": user2.email},
     )
-    await db_session.commit()
+    await db_session.flush()
 
-    # Verify both users exist
-    from sqlalchemy import select
-
+    # Both should be visible in the same transaction
     result = await db_session.execute(
         select(User).where(User.email.like("session-test-%@example.com"))
     )
     users = result.scalars().all()
+    assert len(users) == 2, "Both users should be visible after flush"
 
-    assert len(users) == 2, "Both users should be created"
+    await db_session.rollback()
 
 
 @pytest.mark.asyncio
-async def test_create_user_creates_audit_entry(
-    db_session: AsyncSession, admin_token: str
-):
+async def test_create_user_creates_audit_entry(client, admin_token, db_session):
     """Integration test: creating a user via API creates an audit entry."""
-    from httpx import AsyncClient
-    from app.main import app
-    from app.core.database import async_session_maker
+    from sqlalchemy import select
+    from tests.factories import _random_suffix
 
-    async with AsyncClient(app=app, base_url="http://test") as client:
-        # Create a user
-        response = await client.post(
-            "/api/users",
-            json={
-                "email": "integration-audit@example.com",
-                "password": "password123",
-                "full_name": "Integration Audit User",
-                "role": "student",
-            },
-            headers={"Authorization": f"Bearer {admin_token}"},
-        )
+    suffix = _random_suffix()
+    response = await client.post(
+        "/api/users",
+        json={
+            "email": f"integration-audit-{suffix}@example.com",
+            "password": "password123",
+            "full_name": "Integration Audit User",
+            "role": "student",
+        },
+        headers={"Authorization": f"Bearer {admin_token}"},
+    )
+    assert response.status_code == 201
 
-        assert response.status_code == 201
+    # Verify audit entry via the same test session
+    result = await db_session.execute(
+        select(AuditLog)
+        .where(AuditLog.table_name == "users", AuditLog.action == "create")
+        .order_by(AuditLog.created_at.desc())
+    )
+    audit_entry = result.scalars().first()
 
-    # Verify audit entry was created (use fresh session)
-    async with async_session_maker() as verify_db:
-        from sqlalchemy import select
-
-        result = await verify_db.execute(
-            select(AuditLog)
-            .where(AuditLog.table_name == "users", AuditLog.action == "create")
-            .order_by(AuditLog.created_at.desc())
-        )
-        audit_entry = result.first()
-
-        assert audit_entry is not None
-        assert audit_entry.new_values["email"] == "integration-audit@example.com"
+    assert audit_entry is not None
+    assert audit_entry.new_values["email"] == f"integration-audit-{suffix}@example.com"
 
 
 @pytest.mark.asyncio
-async def test_create_department_creates_audit_entry(
-    db_session: AsyncSession, admin_token: str
-):
+async def test_create_department_creates_audit_entry(client, admin_token, db_session):
     """Integration test: creating a department via API creates an audit entry."""
-    from httpx import AsyncClient
-    from app.main import app
-    from app.core.database import async_session_maker
+    from sqlalchemy import select
+    from tests.factories import _random_suffix
 
-    async with AsyncClient(app=app, base_url="http://test") as client:
-        response = await client.post(
-            "/api/departments",
-            json={
-                "name": "Audit Test Department",
-                "description": "Test department for audit",
-            },
-            headers={"Authorization": f"Bearer {admin_token}"},
-        )
+    suffix = _random_suffix()
+    response = await client.post(
+        "/api/departments",
+        json={
+            "name": f"Audit Test Dept {suffix}",
+            "description": "Test department for audit",
+        },
+        headers={"Authorization": f"Bearer {admin_token}"},
+    )
+    assert response.status_code == 201
 
-        assert response.status_code == 201
+    # Verify audit entry via the same test session
+    result = await db_session.execute(
+        select(AuditLog)
+        .where(AuditLog.table_name == "departments", AuditLog.action == "create")
+        .order_by(AuditLog.created_at.desc())
+    )
+    audit_entry = result.scalars().first()
 
-    # Verify audit entry
-    async with async_session_maker() as verify_db:
-        from sqlalchemy import select
-
-        result = await verify_db.execute(
-            select(AuditLog)
-            .where(AuditLog.table_name == "departments", AuditLog.action == "create")
-            .order_by(AuditLog.created_at.desc())
-        )
-        audit_entry = result.first()
-
-        assert audit_entry is not None
-        assert audit_entry.new_values["name"] == "Audit Test Department"
+    assert audit_entry is not None
+    assert audit_entry.new_values["name"] == f"Audit Test Dept {suffix}"
