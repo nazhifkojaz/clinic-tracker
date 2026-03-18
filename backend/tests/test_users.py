@@ -31,9 +31,9 @@ async def test_list_users_pagination(client, admin_token):
 
 
 async def test_list_users_filters_by_role(client, admin_token, db_session):
-    """Test filtering users by role (current implementation returns all)."""
-    # Create users with different roles
+    """Test filtering users by role parameter."""
     suffix = _random_suffix()
+    # Create users with different roles
     student = User(
         email=f"filter_student_{suffix}@test.com",
         password_hash=hash_password("testpass123"),
@@ -52,18 +52,25 @@ async def test_list_users_filters_by_role(client, admin_token, db_session):
     db_session.add_all([student, supervisor])
     await db_session.commit()
 
+    # Filter by student role
     response = await client.get(
-        "/api/users",
+        "/api/users?role=student",
         headers=auth_header(admin_token),
     )
     assert response.status_code == 200
     data = response.json()
-    # Current implementation returns all users, client-side filtering would be needed
-    assert len(data) >= 5  # At least 3 seeded + 2 created
+    assert "items" in data
+    items = data["items"]
+    # All returned items should have role=student
+    assert all(item["role"] == "student" for item in items)
+    # Our created student should be in the results
+    assert any(item["email"] == f"filter_student_{suffix}@test.com" for item in items)
+    # Supervisor should NOT be in the results
+    assert not any(item["email"] == f"filter_supervisor_{suffix}@test.com" for item in items)
 
 
 async def test_list_users_filters_by_active(client, admin_token, db_session):
-    """Test filtering by active status (current implementation returns all)."""
+    """Test filtering users by is_active parameter."""
     suffix = _random_suffix()
     inactive = User(
         email=f"inactive_{suffix}@test.com",
@@ -76,14 +83,32 @@ async def test_list_users_filters_by_active(client, admin_token, db_session):
     db_session.add(inactive)
     await db_session.commit()
 
+    # Filter for active users only
     response = await client.get(
-        "/api/users",
+        "/api/users?is_active=true",
         headers=auth_header(admin_token),
     )
     assert response.status_code == 200
     data = response.json()
-    # Current implementation returns all users including inactive
-    assert len(data) >= 4  # At least 3 seeded + 1 inactive
+    assert "items" in data
+    items = data["items"]
+    # All returned items should be active
+    assert all(item["is_active"] is True for item in items)
+    # Inactive user should NOT be in the results
+    assert not any(item["email"] == f"inactive_{suffix}@test.com" for item in items)
+
+    # Filter for inactive users only
+    response = await client.get(
+        "/api/users?is_active=false",
+        headers=auth_header(admin_token),
+    )
+    assert response.status_code == 200
+    data = response.json()
+    items = data["items"]
+    # Our created inactive user should be in the results
+    assert any(item["email"] == f"inactive_{suffix}@test.com" for item in items)
+    # All returned items should be inactive
+    assert all(item["is_active"] is False for item in items)
 
 
 async def test_create_user_admin_only(client, student_token):

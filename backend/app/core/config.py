@@ -43,6 +43,7 @@ class Settings(BaseSettings):
     # Resend (email)
     RESEND_API_KEY: str = ""
     EMAIL_FROM: str = "noreply@example.com"
+    EMAIL_MOCK_MODE: bool = False  # Explicit flag for dev/test
 
 
 settings = Settings()

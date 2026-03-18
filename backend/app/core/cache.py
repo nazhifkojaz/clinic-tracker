@@ -60,6 +60,8 @@ class SimpleAsyncCache:
             value: Value to cache
             ttl: Time-to-live in seconds (uses default if not specified)
         """
+        if self._disabled:
+            return
         async with self._lock:
             expiry = asyncio.get_event_loop().time() + (ttl or self._ttl)
             self._cache[key] = (value, expiry)
@@ -70,17 +72,22 @@ class SimpleAsyncCache:
         Args:
             key: Cache key to invalidate
         """
+        if self._disabled:
+            return
         async with self._lock:
             self._cache.pop(key, None)
 
     async def clear(self) -> None:
         """Clear all cache entries."""
+        if self._disabled:
+            return
         async with self._lock:
             self._cache.clear()
 
     def disable(self) -> None:
-        """Disable caching (useful for tests)."""
+        """Disable caching and clear all existing entries (useful for tests)."""
         self._disabled = True
+        self._cache.clear()
 
     def enable(self) -> None:
         """Enable caching."""

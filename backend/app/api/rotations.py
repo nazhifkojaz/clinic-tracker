@@ -86,8 +86,8 @@ async def get_rotation_history(
     total_result = await db.execute(count_query)
     total = total_result.scalar() or 0
 
-    # Apply pagination and ordering
-    query = query.order_by(StudentRotation.started_at.desc())
+    # Apply pagination and ordering (use id as tiebreaker for stable pagination)
+    query = query.order_by(StudentRotation.started_at.desc(), StudentRotation.id.desc())
     query = query.limit(limit).offset(offset)
     result = await db.execute(query)
 

@@ -46,14 +46,30 @@ async def _check_token_role(
 
 async def require_admin_from_token(
     auth_data: tuple[UUID, UserRole] = Depends(_check_token_role),
+    db: AsyncSession = Depends(get_db),
 ) -> UUID:
-    """Require admin role using only token data (no DB query).
+    """Require admin role with DB revalidation.
 
-    Use this for endpoints that only need to verify admin role
-    without fetching the full user object.
+    Validates that the user exists, is active, and currently has admin role.
+    This prevents access after user deactivation or demotion.
     """
-    user_id, role = auth_data
-    if role != UserRole.admin:
+    user_id, _role = auth_data
+
+    # Revalidate against DB to check current user state
+    result = await db.execute(select(User).where(User.id == user_id))
+    user = result.scalar_one_or_none()
+
+    if user is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found",
+        )
+    if not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="User is inactive",
+        )
+    if user.role != UserRole.admin:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Admin access required",
@@ -63,14 +79,30 @@ async def require_admin_from_token(
 
 async def require_supervisor_from_token(
     auth_data: tuple[UUID, UserRole] = Depends(_check_token_role),
+    db: AsyncSession = Depends(get_db),
 ) -> UUID:
-    """Require supervisor or admin role using only token data (no DB query).
+    """Require supervisor or admin role with DB revalidation.
 
-    Use this for endpoints that only need to verify supervisor role
-    without fetching the full user object.
+    Validates that the user exists, is active, and currently has supervisor
+    or admin role. This prevents access after user deactivation or demotion.
     """
-    user_id, role = auth_data
-    if role not in (UserRole.supervisor, UserRole.admin):
+    user_id, _role = auth_data
+
+    # Revalidate against DB to check current user state
+    result = await db.execute(select(User).where(User.id == user_id))
+    user = result.scalar_one_or_none()
+
+    if user is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found",
+        )
+    if not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="User is inactive",
+        )
+    if user.role not in (UserRole.supervisor, UserRole.admin):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Supervisor access required",

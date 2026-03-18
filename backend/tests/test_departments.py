@@ -155,13 +155,12 @@ async def test_create_department_duplicate_name_returns_409(
     assert response.status_code == 409
 
 
-async def test_create_department_duplicate_with_inactive_allowed(
+async def test_create_department_duplicate_after_hard_delete(
     client, admin_token, db_session
 ):
-    """Can reuse a name from a soft-deleted department."""
-    # Create and soft-delete a department
+    """Can reuse a name after hard-deleting a department from database."""
+    # Create an inactive department and hard-delete it from DB
     dept = await create_department(db_session, name="Reusable Name", is_active=False)
-    # Delete it from DB so we can reuse the name
     await db_session.delete(dept)
     await db_session.commit()
 

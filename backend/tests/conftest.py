@@ -1,3 +1,9 @@
+# Must set environment variables BEFORE any app imports
+import os
+
+# Enable email mock mode for tests (no real emails sent)
+os.environ.setdefault("EMAIL_MOCK_MODE", "true")
+
 import asyncio
 from collections.abc import AsyncGenerator
 
@@ -13,9 +19,6 @@ from app.main import app
 from app.models.user import User, UserRole
 
 from tests.factories import _random_suffix
-
-# Use a dedicated test database URL — never the production one.
-import os
 
 TEST_DATABASE_URL = os.environ.get("TEST_DATABASE_URL")
 if not TEST_DATABASE_URL:

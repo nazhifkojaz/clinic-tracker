@@ -204,9 +204,9 @@ async def send_notification(
             # Log error but don't fail the request
             # Notification record is still created
             logger.exception(
-                "Failed to send email notification to %s (recipient_id=%s)",
-                recipient.email,
+                "Failed to send email notification (recipient_id=%s, notification_id=%s)",
                 recipient_id,
+                notification.id,
             )
 
         created_notifications.append(notification)

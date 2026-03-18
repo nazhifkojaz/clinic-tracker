@@ -22,13 +22,31 @@ from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
-# Mock mode flag
-_MOCK_MODE = not bool(settings.RESEND_API_KEY)
 
-# Initialize resend client only if API key is configured
+def _validate_email_config() -> None:
+    """Validate email configuration on module load.
+
+    Raises:
+        RuntimeError: If non-mock mode is enabled but RESEND_API_KEY is missing.
+    """
+    if not settings.EMAIL_MOCK_MODE and not settings.RESEND_API_KEY:
+        raise RuntimeError(
+            "RESEND_API_KEY is required when EMAIL_MOCK_MODE=False. "
+            "Either set RESEND_API_KEY or enable EMAIL_MOCK_MODE for development."
+        )
+
+
+_validate_email_config()
+
+# Mock mode is now explicitly configured
+_MOCK_MODE = settings.EMAIL_MOCK_MODE
+
+# Initialize resend client only if not in mock mode
 _resend_client = None
 
 if not _MOCK_MODE:
+    if not settings.RESEND_API_KEY:
+        raise RuntimeError("RESEND_API_KEY is required in non-mock mode")
     import resend
 
     resend.api_key = settings.RESEND_API_KEY
@@ -67,8 +85,7 @@ async def send_email(
         Use this for development without a Resend account.
     """
     if _MOCK_MODE:
-        logger.info(f"[MOCK EMAIL] To: {to} | Subject: {subject}")
-        logger.debug(f"[MOCK EMAIL] Body: {html[:500]}...")
+        logger.info("Email sent in mock mode (not actually sent)")
         return None
 
     recipients = to if isinstance(to, list) else [to]
@@ -82,10 +99,10 @@ async def send_email(
 
     try:
         response = _resend_client.Emails.send(params)
-        logger.info(f"Email sent to {recipients}: {response}")
+        logger.info(f"Email sent to {len(recipients)} recipient(s)")
         return response
     except Exception as e:
-        logger.error(f"Failed to send email to {recipients}: {e}")
+        logger.error(f"Failed to send email to {len(recipients)} recipient(s): {e}")
         raise
 
 

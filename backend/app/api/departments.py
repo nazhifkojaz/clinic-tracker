@@ -54,7 +54,7 @@ async def list_departments(
             name=dept.name,
             description=dept.description,
             is_active=dept.is_active,
-            category_count=count or 0,
+            category_count=count,
             created_at=dept.created_at,
             updated_at=dept.updated_at,
         )
@@ -77,7 +77,27 @@ async def get_department(
     department = result.scalar_one_or_none()
     if not department:
         raise HTTPException(status_code=404, detail="Department not found")
-    return department
+
+    # Compute active category count
+    count_result = await db.execute(
+        select(func.count(TaskCategory.id))
+        .where(
+            TaskCategory.department_id == department_id,
+            TaskCategory.is_active.is_(True),
+        )
+    )
+    category_count = count_result.scalar() or 0
+
+    return DepartmentWithCategoriesResponse(
+        id=department.id,
+        name=department.name,
+        description=department.description,
+        is_active=department.is_active,
+        category_count=category_count,
+        created_at=department.created_at,
+        updated_at=department.updated_at,
+        task_categories=department.task_categories,
+    )
 
 
 @router.post("", response_model=DepartmentResponse, status_code=status.HTTP_201_CREATED)
@@ -113,7 +133,16 @@ async def create_department(
     # Invalidate cache
     await departments_cache.invalidate("all_active_departments")
 
-    return department
+    # New department has 0 categories
+    return DepartmentResponse(
+        id=department.id,
+        name=department.name,
+        description=department.description,
+        is_active=department.is_active,
+        category_count=0,
+        created_at=department.created_at,
+        updated_at=department.updated_at,
+    )
 
 
 @router.patch("/{department_id}", response_model=DepartmentResponse)
@@ -168,7 +197,25 @@ async def update_department(
     # Invalidate cache
     await departments_cache.invalidate("all_active_departments")
 
-    return department
+    # Compute active category count
+    count_result = await db.execute(
+        select(func.count(TaskCategory.id))
+        .where(
+            TaskCategory.department_id == department_id,
+            TaskCategory.is_active.is_(True),
+        )
+    )
+    category_count = count_result.scalar() or 0
+
+    return DepartmentResponse(
+        id=department.id,
+        name=department.name,
+        description=department.description,
+        is_active=department.is_active,
+        category_count=category_count,
+        created_at=department.created_at,
+        updated_at=department.updated_at,
+    )
 
 
 # --- Task Category Endpoints ---
