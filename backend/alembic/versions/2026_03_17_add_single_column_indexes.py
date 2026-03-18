@@ -7,6 +7,7 @@ Create Date: 2026-03-17
 This migration adds single-column indexes for queries that filter on only
 one column without a leading column match in the composite indexes.
 """
+
 from typing import Sequence, Union
 
 from alembic import op

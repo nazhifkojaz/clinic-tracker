@@ -26,7 +26,9 @@ async def list_users(
     db: AsyncSession = Depends(get_db),
     role: str | None = Query(None, description="Filter by role"),
     is_active: bool | None = Query(None, description="Filter by active status"),
-    search: str | None = Query(None, description="Search by name, email, or student ID"),
+    search: str | None = Query(
+        None, description="Search by name, email, or student ID"
+    ),
     limit: int = Query(50, ge=1, le=200, description="Items per page"),
     offset: int = Query(0, ge=0, description="Items to skip"),
 ):

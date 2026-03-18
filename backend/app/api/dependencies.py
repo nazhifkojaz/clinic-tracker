@@ -78,7 +78,6 @@ async def require_supervisor_from_token(
     return user_id
 
 
-
 async def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(bearer_scheme),
     db: AsyncSession = Depends(get_db),

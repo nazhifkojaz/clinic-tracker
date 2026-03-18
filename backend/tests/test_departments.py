@@ -31,9 +31,7 @@ async def test_list_departments_includes_category_count(
     assert test_dept["category_count"] == 3
 
 
-async def test_list_departments_empty_category_count(
-    client, admin_token, db_session
-):
+async def test_list_departments_empty_category_count(client, admin_token, db_session):
     """Department with no categories should return count of 0."""
     await create_department(db_session, name="Empty Dept")
 

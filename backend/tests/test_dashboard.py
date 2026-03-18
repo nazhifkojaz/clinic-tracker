@@ -1,10 +1,14 @@
-
 from app.models.assignment import AssignmentType, SupervisorAssignment
 from app.models.rotation import StudentRotation
 from app.models.submission import SubmissionStatus
 from app.models.user import User, UserRole
 from tests.conftest import auth_header
-from tests.factories import _random_suffix, create_category, create_department, create_submission
+from tests.factories import (
+    _random_suffix,
+    create_category,
+    create_department,
+    create_submission,
+)
 
 
 async def test_student_dashboard_empty(client, fresh_student, db_session):
@@ -187,8 +191,8 @@ async def test_supervisor_dashboard_classification_thresholds(
 
     # Create 3 students with specific completion levels
     for cases, expected_status in [
-        (10, "behind"),    # 10% -> behind
-        (40, "at_risk"),   # 40% -> at_risk
+        (10, "behind"),  # 10% -> behind
+        (40, "at_risk"),  # 40% -> at_risk
         (70, "on_track"),  # 70% -> on_track
     ]:
         student = User(
@@ -235,7 +239,11 @@ async def test_supervisor_dashboard_classification_thresholds(
     status_labels = ["behind", "at_risk", "on_track"]
     for _, label in [(10, "behind"), (40, "at_risk"), (70, "on_track")]:
         student_entry = next(
-            (s for s in data["students"] if s["student_name"] == f"{label.title()} Student"),
+            (
+                s
+                for s in data["students"]
+                if s["student_name"] == f"{label.title()} Student"
+            ),
             None,
         )
         assert student_entry is not None, f"Could not find {label} student"
@@ -247,11 +255,19 @@ async def test_supervisor_dashboard_classification_thresholds(
 
     # Additionally verify relative ordering: more submissions → better or equal status
     entries = {
-        label: next(s for s in data["students"] if s["student_name"] == f"{label.title()} Student")
+        label: next(
+            s
+            for s in data["students"]
+            if s["student_name"] == f"{label.title()} Student"
+        )
         for label in ["behind", "at_risk", "on_track"]
     }
-    assert status_labels.index(entries["behind"]["status"]) <= status_labels.index(entries["at_risk"]["status"])
-    assert status_labels.index(entries["at_risk"]["status"]) <= status_labels.index(entries["on_track"]["status"])
+    assert status_labels.index(entries["behind"]["status"]) <= status_labels.index(
+        entries["at_risk"]["status"]
+    )
+    assert status_labels.index(entries["at_risk"]["status"]) <= status_labels.index(
+        entries["on_track"]["status"]
+    )
 
 
 async def test_supervisor_dashboard_has_required_fields(

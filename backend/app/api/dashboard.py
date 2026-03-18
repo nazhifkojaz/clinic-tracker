@@ -373,7 +373,9 @@ async def get_supervisor_dashboard(
     total_required_global = sum(c.required_count for c in all_categories)
 
     # Get all approved submission totals per student in one query
-    student_ids_list = [s[0] for s in students]  # s is now a tuple (id, full_name, email, student_id)
+    student_ids_list = [
+        s[0] for s in students
+    ]  # s is now a tuple (id, full_name, email, student_id)
     if student_ids_list:
         agg_query = (
             select(

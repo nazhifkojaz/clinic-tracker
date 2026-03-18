@@ -9,15 +9,13 @@ def test_database_ssl_setting():
 
     # Test explicit false
     settings_with_false = Settings(
-        DATABASE_URL="postgresql+asyncpg://localhost/test",
-        DATABASE_SSL=False
+        DATABASE_URL="postgresql+asyncpg://localhost/test", DATABASE_SSL=False
     )
     assert settings_with_false.DATABASE_SSL is False
 
     # Test explicit true
     settings_with_true = Settings(
-        DATABASE_URL="postgresql+asyncpg://localhost/test",
-        DATABASE_SSL=True
+        DATABASE_URL="postgresql+asyncpg://localhost/test", DATABASE_SSL=True
     )
     assert settings_with_true.DATABASE_SSL is True
 

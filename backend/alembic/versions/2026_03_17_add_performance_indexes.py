@@ -7,6 +7,7 @@ Create Date: 2026-03-17
 This migration adds composite indexes to optimize frequently-executed queries
 in the dashboard, notifications, and audit log endpoints.
 """
+
 from typing import Sequence, Union
 
 from alembic import op

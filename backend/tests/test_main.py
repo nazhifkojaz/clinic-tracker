@@ -1,5 +1,3 @@
-
-
 async def test_health_check(client):
     """Health endpoint should return 200 with status ok."""
     response = await client.get("/api/health")

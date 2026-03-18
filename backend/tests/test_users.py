@@ -1,4 +1,3 @@
-
 from app.models.user import User, UserRole
 from app.core.security import hash_password, verify_password
 from tests.conftest import auth_header
@@ -364,12 +363,23 @@ async def test_get_me_includes_correct_fields(client, student_token):
     )
     assert response.status_code == 200
     data = response.json()
-    expected_fields = ["id", "email", "full_name", "student_id", "role", "is_active", "created_at", "updated_at"]
+    expected_fields = [
+        "id",
+        "email",
+        "full_name",
+        "student_id",
+        "role",
+        "is_active",
+        "created_at",
+        "updated_at",
+    ]
     for field in expected_fields:
         assert field in data, f"Field {field} missing from response"
 
 
-async def test_change_password_requires_current_password(client, admin_token, db_session):
+async def test_change_password_requires_current_password(
+    client, admin_token, db_session
+):
     """Admin can update user password (no self-service change in current implementation)."""
     suffix = _random_suffix()
     user = User(

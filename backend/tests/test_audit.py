@@ -48,9 +48,8 @@ async def test_audit_and_main_operation_in_same_transaction(db: AsyncSession):
 
     # Check audit entry exists
     from sqlalchemy import select
-    result = await db.execute(
-        select(AuditLog).where(AuditLog.record_id == user.id)
-    )
+
+    result = await db.execute(select(AuditLog).where(AuditLog.record_id == user.id))
     audit_entry = result.scalar_one_or_none()
 
     assert audit_entry is not None
@@ -91,6 +90,7 @@ async def test_audit_failure_rolls_back_main_operation(db: AsyncSession):
 
     # Verify user was NOT persisted
     from sqlalchemy import select
+
     result = await db.execute(
         select(User).where(User.email == "rollback-test@example.com")
     )
@@ -176,6 +176,7 @@ async def test_session_state_after_audit_failure(db: AsyncSession):
 
     # Verify both users exist
     from sqlalchemy import select
+
     result = await db.execute(
         select(User).where(User.email.like("session-test-%@example.com"))
     )
@@ -201,7 +202,7 @@ async def test_create_user_creates_audit_entry(db: AsyncSession, admin_token: st
                 "full_name": "Integration Audit User",
                 "role": "student",
             },
-            headers={"Authorization": f"Bearer {admin_token}"}
+            headers={"Authorization": f"Bearer {admin_token}"},
         )
 
         assert response.status_code == 201
@@ -209,11 +210,11 @@ async def test_create_user_creates_audit_entry(db: AsyncSession, admin_token: st
     # Verify audit entry was created (use fresh session)
     async with async_session_maker() as verify_db:
         from sqlalchemy import select
+
         result = await verify_db.execute(
-            select(AuditLog).where(
-                AuditLog.table_name == "users",
-                AuditLog.action == "create"
-            ).order_by(AuditLog.created_at.desc())
+            select(AuditLog)
+            .where(AuditLog.table_name == "users", AuditLog.action == "create")
+            .order_by(AuditLog.created_at.desc())
         )
         audit_entry = result.first()
 
@@ -222,7 +223,9 @@ async def test_create_user_creates_audit_entry(db: AsyncSession, admin_token: st
 
 
 @pytest.mark.asyncio
-async def test_create_department_creates_audit_entry(db: AsyncSession, admin_token: str):
+async def test_create_department_creates_audit_entry(
+    db: AsyncSession, admin_token: str
+):
     """Integration test: creating a department via API creates an audit entry."""
     from httpx import AsyncClient
     from app.main import app
@@ -235,7 +238,7 @@ async def test_create_department_creates_audit_entry(db: AsyncSession, admin_tok
                 "name": "Audit Test Department",
                 "description": "Test department for audit",
             },
-            headers={"Authorization": f"Bearer {admin_token}"}
+            headers={"Authorization": f"Bearer {admin_token}"},
         )
 
         assert response.status_code == 201
@@ -243,11 +246,11 @@ async def test_create_department_creates_audit_entry(db: AsyncSession, admin_tok
     # Verify audit entry
     async with async_session_maker() as verify_db:
         from sqlalchemy import select
+
         result = await verify_db.execute(
-            select(AuditLog).where(
-                AuditLog.table_name == "departments",
-                AuditLog.action == "create"
-            ).order_by(AuditLog.created_at.desc())
+            select(AuditLog)
+            .where(AuditLog.table_name == "departments", AuditLog.action == "create")
+            .order_by(AuditLog.created_at.desc())
         )
         audit_entry = result.first()
 

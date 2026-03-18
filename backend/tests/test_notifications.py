@@ -138,9 +138,7 @@ async def test_supervisor_cannot_notify_student_not_in_their_department(
     assert "not assigned to student" in response.json()["detail"]
 
 
-async def test_admin_can_notify_any_student(
-    client, admin_token, db_session
-):
+async def test_admin_can_notify_any_student(client, admin_token, db_session):
     """Admins can send notifications to any student without assignment checks."""
     student = await _create_student(db_session)
 

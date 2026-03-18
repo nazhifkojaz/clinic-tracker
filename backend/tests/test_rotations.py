@@ -17,9 +17,7 @@ async def test_get_current_rotation_student_only(client, supervisor_token):
     assert response.status_code == 403
 
 
-async def test_get_current_rotation_returns_current(
-    client, db_session, fresh_student
-):
+async def test_get_current_rotation_returns_current(client, db_session, fresh_student):
     """Returns is_current=True rotation."""
     fresh_token = create_access_token(subject=str(fresh_student.id), role="student")
     dept = await create_department(db_session)
@@ -43,7 +41,9 @@ async def test_get_current_rotation_returns_current(
     assert data["department_id"] == str(dept.id)
 
 
-async def test_get_current_rotation_none_when_not_set(client, db_session, fresh_student):
+async def test_get_current_rotation_none_when_not_set(
+    client, db_session, fresh_student
+):
     """Returns null if no rotation is set."""
     fresh_token = create_access_token(subject=str(fresh_student.id), role="student")
     response = await client.get(
@@ -65,9 +65,7 @@ async def test_create_rotation_student_only(client, admin_token):
     assert response.status_code == 403
 
 
-async def test_create_rotation_success(
-    client, db_session, fresh_student
-):
+async def test_create_rotation_success(client, db_session, fresh_student):
     """Student creates rotation successfully."""
     fresh_token = create_access_token(subject=str(fresh_student.id), role="student")
     dept = await create_department(db_session)
@@ -85,9 +83,7 @@ async def test_create_rotation_success(
     assert data["started_at"] is not None
 
 
-async def test_create_rotation_closes_previous(
-    client, db_session, fresh_student
-):
+async def test_create_rotation_closes_previous(client, db_session, fresh_student):
     """Previous rotation's is_current set to False when creating new one."""
     fresh_token = create_access_token(subject=str(fresh_student.id), role="student")
     dept1 = await create_department(db_session)
@@ -135,9 +131,7 @@ async def test_get_rotation_history_admin_or_supervisor(client, student_token):
     assert response.status_code == 200
 
 
-async def test_get_rotation_history_returns_all(
-    client, db_session, fresh_student
-):
+async def test_get_rotation_history_returns_all(client, db_session, fresh_student):
     """Returns all rotations for the student."""
     fresh_token = create_access_token(subject=str(fresh_student.id), role="student")
     dept1 = await create_department(db_session)
@@ -145,9 +139,15 @@ async def test_get_rotation_history_returns_all(
     dept3 = await create_department(db_session)
 
     rotations = [
-        StudentRotation(student_id=fresh_student.id, department_id=dept1.id, is_current=False),
-        StudentRotation(student_id=fresh_student.id, department_id=dept2.id, is_current=False),
-        StudentRotation(student_id=fresh_student.id, department_id=dept3.id, is_current=True),
+        StudentRotation(
+            student_id=fresh_student.id, department_id=dept1.id, is_current=False
+        ),
+        StudentRotation(
+            student_id=fresh_student.id, department_id=dept2.id, is_current=False
+        ),
+        StudentRotation(
+            student_id=fresh_student.id, department_id=dept3.id, is_current=True
+        ),
     ]
     db_session.add_all(rotations)
     await db_session.commit()
