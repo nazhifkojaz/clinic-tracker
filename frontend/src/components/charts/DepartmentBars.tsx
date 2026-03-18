@@ -2,54 +2,90 @@
 
 import { useMemo } from "react";
 import {
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell,
+	Bar,
+	BarChart,
+	CartesianGrid,
+	Cell,
+	ResponsiveContainer,
+	Tooltip,
+	XAxis,
+	YAxis,
 } from "recharts";
+import {
+	useDestructiveColor,
+	useSuccessColor,
+	useWarningColor,
+} from "@/hooks/useThemeColor";
 import type { DepartmentProgress } from "@/types/dashboard";
-import { useSuccessColor, useWarningColor, useDestructiveColor } from "@/hooks/useThemeColor";
 
 interface DepartmentBarsProps {
-  departments: DepartmentProgress[];
+	departments: DepartmentProgress[];
 }
 
 export default function DepartmentBars({ departments }: DepartmentBarsProps) {
-  const successColor = useSuccessColor();
-  const warningColor = useWarningColor();
-  const destructiveColor = useDestructiveColor();
+	const successColor = useSuccessColor();
+	const warningColor = useWarningColor();
+	const destructiveColor = useDestructiveColor();
 
-  const getColor = useMemo(
-    () => (pct: number): string => {
-      if (pct >= 60) return successColor;
-      if (pct >= 30) return warningColor;
-      return destructiveColor;
-    },
-    [successColor, warningColor, destructiveColor]
-  );
+	const getColor = useMemo(
+		() =>
+			(pct: number): string => {
+				if (pct >= 60) return successColor;
+				if (pct >= 30) return warningColor;
+				return destructiveColor;
+			},
+		[successColor, warningColor, destructiveColor],
+	);
 
-  const data = useMemo(
-    () => departments.map((d) => ({
-      name: d.department_name,
-      completion: d.completion_percentage,
-    })),
-    [departments]
-  );
+	const data = useMemo(
+		() =>
+			departments.map((d) => ({
+				name: d.department_name,
+				completion: d.completion_percentage,
+			})),
+		[departments],
+	);
 
-  if (departments.length === 0) {
-    return <p className="text-sm text-muted-foreground py-8 text-center">No departments</p>;
-  }
+	if (departments.length === 0) {
+		return (
+			<p className="text-sm text-muted-foreground py-8 text-center">
+				No departments
+			</p>
+		);
+	}
 
-  return (
-    <ResponsiveContainer width="100%" height={Math.max(200, departments.length * 50)}>
-      <BarChart data={data} layout="vertical" margin={{ top: 5, right: 20, left: 10, bottom: 5 }}>
-        <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
-        <XAxis type="number" domain={[0, 100]} tick={{ fontSize: 12 }} unit="%" />
-        <YAxis type="category" dataKey="name" tick={{ fontSize: 12 }} width={120} />
-        <Tooltip formatter={(value) => [`${Number(value).toFixed(1)}%`, "Completion"]} />
-        <Bar dataKey="completion" radius={[0, 4, 4, 0]} barSize={24}>
-          {data.map((entry, index) => (
-            <Cell key={index} fill={getColor(entry.completion)} />
-          ))}
-        </Bar>
-      </BarChart>
-    </ResponsiveContainer>
-  );
+	return (
+		<ResponsiveContainer
+			width="100%"
+			height={Math.max(200, departments.length * 50)}
+		>
+			<BarChart
+				data={data}
+				layout="vertical"
+				margin={{ top: 5, right: 20, left: 10, bottom: 5 }}
+			>
+				<CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
+				<XAxis
+					type="number"
+					domain={[0, 100]}
+					tick={{ fontSize: 12 }}
+					unit="%"
+				/>
+				<YAxis
+					type="category"
+					dataKey="name"
+					tick={{ fontSize: 12 }}
+					width={120}
+				/>
+				<Tooltip
+					formatter={(value) => [`${Number(value).toFixed(1)}%`, "Completion"]}
+				/>
+				<Bar dataKey="completion" radius={[0, 4, 4, 0]} barSize={24}>
+					{data.map((entry, index) => (
+						<Cell key={index} fill={getColor(entry.completion)} />
+					))}
+				</Bar>
+			</BarChart>
+		</ResponsiveContainer>
+	);
 }

@@ -3,26 +3,26 @@ import type { User, UserCreate, UserUpdate } from "@/types/user";
 import api from "./api";
 
 export const userService = {
-  async list(
-    params?: PaginationParams & {
-      role?: string;
-      is_active?: boolean;
-      search?: string;
-    }
-  ): Promise<PaginatedResponse<User>> {
-    const { data } = await api.get<PaginatedResponse<User>>("/api/users", {
-      params,
-    });
-    return data;
-  },
+	async list(
+		params?: PaginationParams & {
+			role?: string;
+			is_active?: boolean;
+			search?: string;
+		},
+	): Promise<PaginatedResponse<User>> {
+		const { data } = await api.get<PaginatedResponse<User>>("/api/users", {
+			params,
+		});
+		return data;
+	},
 
-  async create(user: UserCreate): Promise<User> {
-    const { data } = await api.post<User>("/api/users", user);
-    return data;
-  },
+	async create(user: UserCreate): Promise<User> {
+		const { data } = await api.post<User>("/api/users", user);
+		return data;
+	},
 
-  async update(id: string, user: UserUpdate): Promise<User> {
-    const { data } = await api.patch<User>(`/api/users/${id}`, user);
-    return data;
-  },
+	async update(id: string, user: UserUpdate): Promise<User> {
+		const { data } = await api.patch<User>(`/api/users/${id}`, user);
+		return data;
+	},
 };
