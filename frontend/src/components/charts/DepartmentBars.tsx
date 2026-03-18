@@ -25,10 +25,6 @@ export default function DepartmentBars({ departments }: DepartmentBarsProps) {
     [successColor, warningColor, destructiveColor]
   );
 
-  if (departments.length === 0) {
-    return <p className="text-sm text-muted-foreground py-8 text-center">No departments</p>;
-  }
-
   const data = useMemo(
     () => departments.map((d) => ({
       name: d.department_name,
@@ -36,6 +32,10 @@ export default function DepartmentBars({ departments }: DepartmentBarsProps) {
     })),
     [departments]
   );
+
+  if (departments.length === 0) {
+    return <p className="text-sm text-muted-foreground py-8 text-center">No departments</p>;
+  }
 
   return (
     <ResponsiveContainer width="100%" height={Math.max(200, departments.length * 50)}>

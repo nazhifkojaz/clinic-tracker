@@ -117,7 +117,7 @@ export default function AuditLog() {
       try {
         const data = await auditService.getMetadata();
         setMetadata(data);
-      } catch (error) {
+      } catch {
         console.error("Failed to load audit metadata");
       }
     };

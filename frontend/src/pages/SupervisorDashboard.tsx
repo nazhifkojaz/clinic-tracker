@@ -77,7 +77,7 @@ export default function SupervisorDashboard() {
     } finally {
       setStudentLoading(false);
     }
-  }, [dashboardService]);
+  }, []); // dashboardService is a stable module-level import
 
   // Filter students with memoization (must be before early returns to satisfy Rules of Hooks)
   const filteredStudents = useMemo(

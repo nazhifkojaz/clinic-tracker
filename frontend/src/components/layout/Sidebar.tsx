@@ -51,9 +51,6 @@ interface SidebarProps {
 export default function Sidebar({ open = false, onClose }: SidebarProps) {
   const { user } = useAuthStore();
   const navigate = useNavigate();
-  if (!user) return null;
-
-  const items = navItems[user.role] || [];
 
   const handleNavClick = useCallback((path: string) => {
     navigate(path);
@@ -61,6 +58,10 @@ export default function Sidebar({ open = false, onClose }: SidebarProps) {
       onClose?.();
     }
   }, [navigate, onClose]);
+
+  if (!user) return null;
+
+  const items = navItems[user.role] || [];
 
   return (
     <aside
