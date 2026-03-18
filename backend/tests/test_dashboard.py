@@ -1,5 +1,3 @@
-import pytest
-from sqlalchemy import select
 
 from app.models.assignment import AssignmentType, SupervisorAssignment
 from app.models.rotation import StudentRotation

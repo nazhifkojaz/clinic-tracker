@@ -1,8 +1,6 @@
-import pytest
-from sqlalchemy import select
 
 from app.models.user import User, UserRole
-from app.core.security import hash_password, create_access_token, verify_password
+from app.core.security import hash_password, verify_password
 from tests.conftest import auth_header
 from tests.factories import _random_suffix
 

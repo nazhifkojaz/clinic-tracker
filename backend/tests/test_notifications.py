@@ -1,7 +1,6 @@
 import random
 import string
 
-import pytest
 from sqlalchemy import select
 
 from app.models.assignment import AssignmentType, SupervisorAssignment

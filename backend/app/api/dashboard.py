@@ -147,7 +147,6 @@ async def _build_student_dashboard(
         )
     )
     row = rot_result.one_or_none()
-    current_rotation = row[0] if row else None
     current_dept_name = row[1] if row else None
 
     # 7. Recent submissions (last 10)

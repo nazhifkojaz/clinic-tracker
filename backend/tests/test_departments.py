@@ -1,8 +1,6 @@
-import pytest
 from sqlalchemy import select
 
-from app.models.department import Department, TaskCategory
-from app.models.user import UserRole
+from app.models.department import Department
 from tests.conftest import auth_header
 from tests.factories import create_department, create_category
 
@@ -37,7 +35,7 @@ async def test_list_departments_empty_category_count(
     client, admin_token, db_session
 ):
     """Department with no categories should return count of 0."""
-    dept = await create_department(db_session, name="Empty Dept")
+    await create_department(db_session, name="Empty Dept")
 
     response = await client.get(
         "/api/departments",
@@ -224,7 +222,7 @@ async def test_update_department_duplicate_name_returns_409(
     client, admin_token, db_session
 ):
     """Duplicate names should be rejected on update."""
-    dept1 = await create_department(db_session, name="Dept One Dup")
+    await create_department(db_session, name="Dept One Dup")
     dept2 = await create_department(db_session, name="Dept Two Dup")
 
     response = await client.patch(

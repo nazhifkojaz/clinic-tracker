@@ -1,12 +1,11 @@
 import uuid
 
-import pytest
 from sqlalchemy import select
 
 from app.models.assignment import AssignmentType, SupervisorAssignment
 from app.models.rotation import StudentRotation
 from app.models.user import User, UserRole
-from app.core.security import hash_password, create_access_token
+from app.core.security import hash_password
 from tests.conftest import auth_header
 from tests.factories import _random_suffix, create_department
 
@@ -368,7 +367,7 @@ async def test_create_assignment_validates_type_specific_fields(
         },
         headers=auth_header(admin_token),
     )
-    assert response.status_code == 400
+    assert response.status_code == 422
 
     # Department without department_id should fail
     response = await client.post(
@@ -379,7 +378,7 @@ async def test_create_assignment_validates_type_specific_fields(
         },
         headers=auth_header(admin_token),
     )
-    assert response.status_code == 400
+    assert response.status_code == 422
 
 
 async def test_create_assignment_mutual_exclusivity(
@@ -411,7 +410,7 @@ async def test_create_assignment_mutual_exclusivity(
         },
         headers=auth_header(admin_token),
     )
-    assert response.status_code == 400
+    assert response.status_code == 422
 
     # Department with student_id should fail
     response = await client.post(
@@ -424,7 +423,7 @@ async def test_create_assignment_mutual_exclusivity(
         },
         headers=auth_header(admin_token),
     )
-    assert response.status_code == 400
+    assert response.status_code == 422
 
 
 async def test_create_assignment_duplicate_returns_409(

@@ -1,7 +1,5 @@
 import uuid
 
-import pytest
-from sqlalchemy import select
 
 from app.models.rotation import StudentRotation
 from app.models.user import User, UserRole
