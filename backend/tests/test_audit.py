@@ -11,7 +11,7 @@ from app.core.security import hash_password
 
 
 @pytest.mark.asyncio
-async def test_audit_and_main_operation_in_same_transaction(db: AsyncSession):
+async def test_audit_and_main_operation_in_same_transaction(db_session: AsyncSession):
     """Verify that audit entry and main operation are committed together."""
     # Create a user with audit
     user = User(
@@ -20,14 +20,14 @@ async def test_audit_and_main_operation_in_same_transaction(db: AsyncSession):
         full_name="Audit Test User",
         role=UserRole.student,
     )
-    db.add(user)
+    db_session.add(user)
 
     # Flush to get the server-generated UUID
-    await db.flush()
+    await db_session.flush()
 
     # Record audit before commit
     await record_audit(
-        db,
+        db_session,
         user_id=uuid.uuid4(),  # Some admin user
         action="create",
         table_name="users",
@@ -40,8 +40,8 @@ async def test_audit_and_main_operation_in_same_transaction(db: AsyncSession):
     )
 
     # Commit both together
-    await db.commit()
-    await db.refresh(user)
+    await db_session.commit()
+    await db_session.refresh(user)
 
     # Verify both user and audit exist
     assert user.id is not None
@@ -49,7 +49,9 @@ async def test_audit_and_main_operation_in_same_transaction(db: AsyncSession):
     # Check audit entry exists
     from sqlalchemy import select
 
-    result = await db.execute(select(AuditLog).where(AuditLog.record_id == user.id))
+    result = await db_session.execute(
+        select(AuditLog).where(AuditLog.record_id == user.id)
+    )
     audit_entry = result.scalar_one_or_none()
 
     assert audit_entry is not None
@@ -59,7 +61,7 @@ async def test_audit_and_main_operation_in_same_transaction(db: AsyncSession):
 
 
 @pytest.mark.asyncio
-async def test_audit_failure_rolls_back_main_operation(db: AsyncSession):
+async def test_audit_failure_rolls_back_main_operation(db_session: AsyncSession):
     """Verify that if audit fails, the main operation is also rolled back."""
     # Create a user
     user = User(
@@ -68,12 +70,12 @@ async def test_audit_failure_rolls_back_main_operation(db: AsyncSession):
         full_name="Rollback Test User",
         role=UserRole.student,
     )
-    db.add(user)
-    await db.flush()
+    db_session.add(user)
+    await db_session.flush()
 
     # Record valid audit
     await record_audit(
-        db,
+        db_session,
         user_id=uuid.uuid4(),
         action="create",
         table_name="users",
@@ -86,12 +88,12 @@ async def test_audit_failure_rolls_back_main_operation(db: AsyncSession):
     )
 
     # Before commit, roll back the transaction manually
-    await db.rollback()
+    await db_session.rollback()
 
     # Verify user was NOT persisted
     from sqlalchemy import select
 
-    result = await db.execute(
+    result = await db_session.execute(
         select(User).where(User.email == "rollback-test@example.com")
     )
     persisted_user = result.scalar_one_or_none()
@@ -99,7 +101,7 @@ async def test_audit_failure_rolls_back_main_operation(db: AsyncSession):
     assert persisted_user is None, "User should not exist after rollback"
 
     # Also verify no audit entry
-    audit_result = await db.execute(
+    audit_result = await db_session.execute(
         select(AuditLog).where(AuditLog.record_id == user.id)
     )
     audit_entry = audit_result.scalar_one_or_none()
@@ -108,7 +110,7 @@ async def test_audit_failure_rolls_back_main_operation(db: AsyncSession):
 
 
 @pytest.mark.asyncio
-async def test_flush_populates_id_before_commit(db: AsyncSession):
+async def test_flush_populates_id_before_commit(db_session: AsyncSession):
     """Verify that db.flush() makes server-generated UUID available before commit."""
     user = User(
         email="flush-test@example.com",
@@ -116,23 +118,23 @@ async def test_flush_populates_id_before_commit(db: AsyncSession):
         full_name="Flush Test User",
         role=UserRole.student,
     )
-    db.add(user)
+    db_session.add(user)
 
     # Before flush, ID should be None (server-generated)
     assert user.id is None, "ID should be None before flush"
 
     # Flush to get the ID from database
-    await db.flush()
+    await db_session.flush()
 
     # After flush, ID should be populated
     assert user.id is not None, "ID should be populated after flush"
 
     # Rollback to clean up
-    await db.rollback()
+    await db_session.rollback()
 
 
 @pytest.mark.asyncio
-async def test_session_state_after_audit_failure(db: AsyncSession):
+async def test_session_state_after_audit_failure(db_session: AsyncSession):
     """Verify that session remains usable after an audit operation fails."""
     # Create first user successfully
     user1 = User(
@@ -141,18 +143,18 @@ async def test_session_state_after_audit_failure(db: AsyncSession):
         full_name="Session Test User 1",
         role=UserRole.student,
     )
-    db.add(user1)
-    await db.flush()
+    db_session.add(user1)
+    await db_session.flush()
 
     await record_audit(
-        db,
+        db_session,
         user_id=uuid.uuid4(),
         action="create",
         table_name="users",
         record_id=user1.id,
         new_values={"email": user1.email},
     )
-    await db.commit()
+    await db_session.commit()
 
     # Verify session is still usable by creating another user
     user2 = User(
@@ -161,23 +163,23 @@ async def test_session_state_after_audit_failure(db: AsyncSession):
         full_name="Session Test User 2",
         role=UserRole.student,
     )
-    db.add(user2)
-    await db.flush()
+    db_session.add(user2)
+    await db_session.flush()
 
     await record_audit(
-        db,
+        db_session,
         user_id=uuid.uuid4(),
         action="create",
         table_name="users",
         record_id=user2.id,
         new_values={"email": user2.email},
     )
-    await db.commit()
+    await db_session.commit()
 
     # Verify both users exist
     from sqlalchemy import select
 
-    result = await db.execute(
+    result = await db_session.execute(
         select(User).where(User.email.like("session-test-%@example.com"))
     )
     users = result.scalars().all()
@@ -186,7 +188,9 @@ async def test_session_state_after_audit_failure(db: AsyncSession):
 
 
 @pytest.mark.asyncio
-async def test_create_user_creates_audit_entry(db: AsyncSession, admin_token: str):
+async def test_create_user_creates_audit_entry(
+    db_session: AsyncSession, admin_token: str
+):
     """Integration test: creating a user via API creates an audit entry."""
     from httpx import AsyncClient
     from app.main import app
@@ -224,7 +228,7 @@ async def test_create_user_creates_audit_entry(db: AsyncSession, admin_token: st
 
 @pytest.mark.asyncio
 async def test_create_department_creates_audit_entry(
-    db: AsyncSession, admin_token: str
+    db_session: AsyncSession, admin_token: str
 ):
     """Integration test: creating a department via API creates an audit entry."""
     from httpx import AsyncClient
