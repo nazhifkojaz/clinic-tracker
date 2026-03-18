@@ -80,8 +80,7 @@ async def get_department(
 
     # Compute active category count
     count_result = await db.execute(
-        select(func.count(TaskCategory.id))
-        .where(
+        select(func.count(TaskCategory.id)).where(
             TaskCategory.department_id == department_id,
             TaskCategory.is_active.is_(True),
         )
@@ -199,8 +198,7 @@ async def update_department(
 
     # Compute active category count
     count_result = await db.execute(
-        select(func.count(TaskCategory.id))
-        .where(
+        select(func.count(TaskCategory.id)).where(
             TaskCategory.department_id == department_id,
             TaskCategory.is_active.is_(True),
         )

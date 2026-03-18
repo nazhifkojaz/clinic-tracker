@@ -66,7 +66,9 @@ async def test_list_users_filters_by_role(client, admin_token, db_session):
     # Our created student should be in the results
     assert any(item["email"] == f"filter_student_{suffix}@test.com" for item in items)
     # Supervisor should NOT be in the results
-    assert not any(item["email"] == f"filter_supervisor_{suffix}@test.com" for item in items)
+    assert not any(
+        item["email"] == f"filter_supervisor_{suffix}@test.com" for item in items
+    )
 
 
 async def test_list_users_filters_by_active(client, admin_token, db_session):
