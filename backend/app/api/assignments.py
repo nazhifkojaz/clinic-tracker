@@ -1,7 +1,7 @@
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import func, select, union
+from sqlalchemy import func, select, union_all
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
@@ -290,9 +290,9 @@ async def get_my_students(
             )
         )
 
-    # Combine queries using subquery for proper ordering
+    # PERF-11: Combine queries using union_all (Python handles deduplication)
     if dept_students_query is not None:
-        combined = union(primary_query, dept_students_query)
+        combined = union_all(primary_query, dept_students_query)
         combined_subquery = combined.subquery()
         final_query = select(combined_subquery).order_by(
             combined_subquery.c.student_name
