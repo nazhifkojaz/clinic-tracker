@@ -9,6 +9,7 @@ import {
 	Loader2,
 	ThumbsDown,
 	ThumbsUp,
+	Trash2,
 	X,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -57,6 +58,7 @@ export default function SubmissionHistory() {
 		[],
 	);
 	const [isLoading, setIsLoading] = useState(true);
+	const [isDeptsLoading, setIsDeptsLoading] = useState(true);
 	const [error, setError] = useState("");
 
 	// Detail modal state
@@ -72,6 +74,9 @@ export default function SubmissionHistory() {
 	// Review state (supervisor only)
 	const [isReviewing, setIsReviewing] = useState(false);
 	const [reviewNotes, setReviewNotes] = useState("");
+
+	// Delete state
+	const [deletingId, setDeletingId] = useState<string | null>(null);
 
 	// Fetch departments and categories once on mount (independent of filters)
 	useEffect(() => {
@@ -96,6 +101,8 @@ export default function SubmissionHistory() {
 				setDepartments(deptsWithCategories);
 			} catch {
 				setError("Failed to load departments");
+			} finally {
+				setIsDeptsLoading(false);
 			}
 		};
 
@@ -180,6 +187,21 @@ export default function SubmissionHistory() {
 		setProofUrl("");
 		setReviewNotes("");
 		setIsReviewing(false);
+	};
+
+	const handleDelete = async (id: string) => {
+		if (!window.confirm("Are you sure you want to delete this submission? This action cannot be undone.")) {
+			return;
+		}
+		try {
+			setDeletingId(id);
+			await submissionService.delete(id);
+			await fetchData();
+		} catch {
+			setError("Failed to delete submission");
+		} finally {
+			setDeletingId(null);
+		}
 	};
 
 	const handleReview = async (status: "approved" | "rejected") => {
@@ -273,7 +295,7 @@ export default function SubmissionHistory() {
 				</div>
 			)}
 
-			{isLoading ? (
+			{isLoading || isDeptsLoading ? (
 				<TableSkeleton rows={5} cols={6} />
 			) : submissions.length === 0 ? (
 				<div className="flex min-h-[300px] flex-col items-center justify-center text-center">
@@ -342,13 +364,29 @@ export default function SubmissionHistory() {
 									<td className="px-4 py-3">{sub.case_count}</td>
 									<td className="px-4 py-3">{getStatusBadge(sub.status)}</td>
 									<td className="px-4 py-3">
-										<button
-											onClick={() => handleViewDetail(sub)}
-											className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium hover:bg-accent"
-										>
-											<Eye className="h-3 w-3" />
-											View
-										</button>
+										<div className="flex items-center gap-1">
+											<button
+												onClick={() => handleViewDetail(sub)}
+												className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium hover:bg-accent"
+											>
+												<Eye className="h-3 w-3" />
+												View
+											</button>
+											{sub.status === "pending" && (
+												<button
+													onClick={() => handleDelete(sub.id)}
+													disabled={deletingId === sub.id}
+													className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-destructive hover:bg-destructive/10 disabled:cursor-not-allowed disabled:opacity-50"
+												>
+													{deletingId === sub.id ? (
+														<Loader2 className="h-3 w-3 animate-spin" />
+													) : (
+														<Trash2 className="h-3 w-3" />
+													)}
+													Delete
+												</button>
+											)}
+										</div>
 									</td>
 								</tr>
 							))}

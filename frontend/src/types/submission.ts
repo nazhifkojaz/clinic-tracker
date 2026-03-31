@@ -26,6 +26,12 @@ export interface Submission {
 	review_notes: string | null;
 	created_at: string;
 	updated_at: string;
+	deleted_at: string | null;
+}
+
+export interface DeletedSubmission extends Submission {
+	deleted_by_id: string | null;
+	deleted_by_name: string | null;
 }
 
 export interface SubmissionCreate {

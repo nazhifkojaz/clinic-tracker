@@ -81,12 +81,16 @@ class CaseSubmission(Base):
         server_default=func.now(),
         onupdate=func.now(),
     )
+    deleted_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
     # Composite indexes for common query patterns
     __table_args__ = (
         Index("ix_submissions_student_status", "student_id", "status"),
         Index("ix_submissions_dept_status", "department_id", "status"),
         Index("ix_submissions_category_student", "task_category_id", "student_id"),
+        Index("ix_submissions_deleted_at", "deleted_at"),
     )
 
     # Relationships
