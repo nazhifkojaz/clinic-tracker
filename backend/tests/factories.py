@@ -16,11 +16,17 @@ async def create_department(
     name: str | None = None,
     description: str = "",
     is_active: bool = True,
+    rotation_duration_days: int | None = None,
 ) -> Department:
     """Create a test department."""
     if name is None:
         name = f"Test Department {_random_suffix()}"
-    dept = Department(name=name, description=description, is_active=is_active)
+    dept = Department(
+        name=name,
+        description=description,
+        is_active=is_active,
+        rotation_duration_days=rotation_duration_days,
+    )
     db.add(dept)
     await db.commit()
     await db.refresh(dept)
