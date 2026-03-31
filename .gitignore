@@ -35,3 +35,6 @@ alembic/versions/*.pyc
 # Build outputs
 backend/dist/
 frontend/dist/
+
+# Docs
+docs/
