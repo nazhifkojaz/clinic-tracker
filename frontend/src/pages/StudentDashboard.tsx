@@ -1,6 +1,6 @@
 // frontend/src/pages/StudentDashboard.tsx
 
-import { AlertCircle, ChevronDown, ChevronRight } from "lucide-react";
+import { AlertCircle, AlertTriangle, ChevronDown, ChevronRight } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import DepartmentBars from "@/components/charts/DepartmentBars";
 import ProgressGauge from "@/components/charts/ProgressGauge";
@@ -64,6 +64,30 @@ export default function StudentDashboard() {
 						Current Rotation:
 					</span>{" "}
 					<span className="font-semibold">{data.current_department}</span>
+				</div>
+			)}
+
+			{/* Unassigned warning */}
+			{!data.current_department && (
+				<div className="flex items-center gap-3 rounded-lg border border-yellow-300 bg-yellow-50 px-4 py-3 text-yellow-800">
+					<AlertTriangle className="h-5 w-5 shrink-0" />
+					<div className="text-sm">
+						<p className="font-medium">No Department Assigned</p>
+						<p className="mt-1">
+							Please go to the Rotation Tracker page and select your
+							current department to begin tracking your progress.
+						</p>
+					</div>
+				</div>
+			)}
+
+			{/* Rotation warning banner */}
+			{data.show_rotation_warning && (
+				<div className="flex items-center gap-3 rounded-lg border border-yellow-300 bg-yellow-50 px-4 py-3 text-yellow-800">
+					<AlertTriangle className="h-5 w-5 shrink-0" />
+					<span className="text-sm font-medium">
+						You are past the halfway point of your current rotation but below 60% case completion. Review your submissions and catch up before the rotation ends.
+					</span>
 				</div>
 			)}
 

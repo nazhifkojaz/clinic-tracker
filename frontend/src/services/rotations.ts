@@ -1,5 +1,9 @@
 import type { PaginatedResponse, PaginationParams } from "@/types/pagination";
-import type { Rotation, RotationCreate } from "@/types/rotation";
+import type {
+	DepartmentOverrideRequest,
+	Rotation,
+	RotationCreate,
+} from "@/types/rotation";
 import api from "./api";
 
 export const rotationService = {
@@ -26,6 +30,17 @@ export const rotationService = {
 	async getStudentCurrent(studentId: string): Promise<Rotation | null> {
 		const { data } = await api.get<Rotation | null>(
 			`/api/rotations/students/${studentId}/current`,
+		);
+		return data;
+	},
+
+	async overrideDepartment(
+		studentId: string,
+		body: DepartmentOverrideRequest,
+	): Promise<Rotation> {
+		const { data } = await api.post<Rotation>(
+			`/api/rotations/students/${studentId}/override-department`,
+			body,
 		);
 		return data;
 	},

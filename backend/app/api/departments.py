@@ -30,7 +30,6 @@ router = APIRouter(prefix="/api/departments", tags=["departments"])
 
 @router.get("", response_model=list[DepartmentResponse])
 async def list_departments(
-    _user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """List all active departments with category counts."""
@@ -54,6 +53,7 @@ async def list_departments(
             name=dept.name,
             description=dept.description,
             is_active=dept.is_active,
+            rotation_duration_days=dept.rotation_duration_days,
             category_count=count,
             created_at=dept.created_at,
             updated_at=dept.updated_at,
@@ -95,6 +95,7 @@ async def get_department(
         name=department.name,
         description=department.description,
         is_active=department.is_active,
+        rotation_duration_days=department.rotation_duration_days,
         category_count=category_count,
         created_at=department.created_at,
         updated_at=department.updated_at,
@@ -141,6 +142,7 @@ async def create_department(
         name=department.name,
         description=department.description,
         is_active=department.is_active,
+        rotation_duration_days=department.rotation_duration_days,
         category_count=0,
         created_at=department.created_at,
         updated_at=department.updated_at,
@@ -213,6 +215,7 @@ async def update_department(
         name=department.name,
         description=department.description,
         is_active=department.is_active,
+        rotation_duration_days=department.rotation_duration_days,
         category_count=category_count,
         created_at=department.created_at,
         updated_at=department.updated_at,

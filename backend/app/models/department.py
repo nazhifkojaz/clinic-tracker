@@ -21,6 +21,9 @@ class Department(Base):
     is_active: Mapped[bool] = mapped_column(
         Boolean, nullable=False, server_default=text("true")
     )
+    rotation_duration_days: Mapped[int] = mapped_column(
+        Integer, nullable=False, server_default=text("30")
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )

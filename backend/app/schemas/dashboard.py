@@ -64,6 +64,7 @@ class StudentDashboardResponse(BaseModel):
     departments: list[DepartmentProgress]
     recent_submissions: list[RecentSubmission]
     progress_over_time: list[ProgressDataPoint]
+    show_rotation_warning: bool = False
 
 
 class StudentSummary(BaseModel):
@@ -109,3 +110,38 @@ class DepartmentDashboardResponse(BaseModel):
     total_students: int  # students with submissions or current rotation
     average_completion: float
     students: list[DepartmentStudentProgress]
+
+
+# --- Rotation Tracker Schemas ---
+
+
+class DepartmentTrackerEntry(BaseModel):
+    """Per-department rotation tracker card."""
+
+    department_id: uuid.UUID
+    department_name: str
+    is_current: bool
+
+    # Case progress
+    total_required: int
+    total_completed: int
+    total_pending: int
+    case_completion_percentage: float
+    case_status_color: str  # "red" | "yellow" | "green"
+
+    # Time progress
+    rotation_duration_days: int
+    days_active: int
+    time_completion_percentage: float
+
+    # Rotation metadata
+    started_at: datetime | None
+    rotation_id: uuid.UUID | None
+
+
+class DepartmentTrackerResponse(BaseModel):
+    """Full tracker data for the student tracker page."""
+
+    current_department_id: uuid.UUID | None
+    entries: list[DepartmentTrackerEntry]
+    show_warning: bool

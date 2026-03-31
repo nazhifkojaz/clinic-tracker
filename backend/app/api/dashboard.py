@@ -1,6 +1,7 @@
 # backend/app/api/dashboard.py
 
 import asyncio
+from datetime import datetime, timezone
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -20,6 +21,8 @@ from app.schemas.dashboard import (
     DepartmentDashboardResponse,
     DepartmentProgress,
     DepartmentStudentProgress,
+    DepartmentTrackerEntry,
+    DepartmentTrackerResponse,
     ProgressDataPoint,
     RecentSubmission,
     StudentDashboardResponse,
@@ -69,7 +72,10 @@ async def _build_student_dashboard(
             CaseSubmission.status,
             func.sum(CaseSubmission.case_count).label("total"),
         )
-        .where(CaseSubmission.student_id == student.id)
+        .where(
+            CaseSubmission.student_id == student.id,
+            CaseSubmission.deleted_at.is_(None),
+        )
         .group_by(CaseSubmission.task_category_id, CaseSubmission.status)
     )
     sub_result = await db.execute(sub_query)
@@ -149,6 +155,30 @@ async def _build_student_dashboard(
     row = rot_result.one_or_none()
     current_dept_name = row[1] if row else None
 
+    # 6b. Compute rotation warning
+    show_rotation_warning = False
+    if row:
+        current_rotation = row[0]
+        current_dept = await db.get(Department, current_rotation.department_id)
+        if current_dept and current_dept.rotation_duration_days > 0:
+            now_utc = datetime.now(timezone.utc)
+            elapsed = max(
+                0, int((now_utc - current_rotation.started_at).total_seconds() // 86400)
+            )
+            days_active = current_rotation.days_offset + elapsed
+            time_pct = (days_active / current_dept.rotation_duration_days) * 100
+            # Case progress for current department
+            current_dept_approved = sum(
+                counts.get((cat.id, SubmissionStatus.approved), 0)
+                for cat in dept_categories.get(current_dept.id, [])
+            )
+            current_dept_required = sum(
+                cat.required_count for cat in dept_categories.get(current_dept.id, [])
+            )
+            if current_dept_required > 0:
+                case_pct = (current_dept_approved / current_dept_required) * 100
+                show_rotation_warning = time_pct >= 50 and case_pct < 60
+
     # 7. Recent submissions (last 10)
     recent_query = (
         select(
@@ -161,7 +191,10 @@ async def _build_student_dashboard(
         )
         .join(Department, CaseSubmission.department_id == Department.id)
         .join(TaskCategory, CaseSubmission.task_category_id == TaskCategory.id)
-        .where(CaseSubmission.student_id == student.id)
+        .where(
+            CaseSubmission.student_id == student.id,
+            CaseSubmission.deleted_at.is_(None),
+        )
         .order_by(CaseSubmission.created_at.desc())
         .limit(10)
     )
@@ -187,6 +220,7 @@ async def _build_student_dashboard(
         .where(
             CaseSubmission.student_id == student.id,
             CaseSubmission.status == SubmissionStatus.approved,
+            CaseSubmission.deleted_at.is_(None),
         )
         .group_by(func.date(CaseSubmission.created_at))
         .order_by(func.date(CaseSubmission.created_at))
@@ -215,6 +249,7 @@ async def _build_student_dashboard(
         departments=department_progresses,
         recent_submissions=recent_subs,
         progress_over_time=progress_points,
+        show_rotation_warning=show_rotation_warning,
     )
 
 
@@ -341,7 +376,7 @@ async def get_supervisor_dashboard(
     if user.role == UserRole.admin:
         # Admins see all students - select only needed columns
         all_students_result = await db.execute(
-            select(User.id, User.full_name, User.email, User.student_id).where(
+            select(User.id, User.full_name, User.email, User.institutional_id).where(
                 User.role == UserRole.student,
                 User.is_active.is_(True),
             )
@@ -358,7 +393,7 @@ async def get_supervisor_dashboard(
                 students=[],
             )
         students_result = await db.execute(
-            select(User.id, User.full_name, User.email, User.student_id).where(
+            select(User.id, User.full_name, User.email, User.institutional_id).where(
                 User.id.in_(student_ids),
                 User.is_active.is_(True),
             )
@@ -385,6 +420,7 @@ async def get_supervisor_dashboard(
             .where(
                 CaseSubmission.student_id.in_(student_ids_list),
                 CaseSubmission.status == SubmissionStatus.approved,
+                CaseSubmission.deleted_at.is_(None),
             )
             .group_by(CaseSubmission.student_id)
         )
@@ -496,7 +532,10 @@ async def get_department_dashboard(
     # Find all students with submissions in this department or currently rotating here
     sub_student_ids = (
         select(CaseSubmission.student_id)
-        .where(CaseSubmission.department_id == department_id)
+        .where(
+            CaseSubmission.department_id == department_id,
+            CaseSubmission.deleted_at.is_(None),
+        )
         .distinct()
     )
 
@@ -524,6 +563,7 @@ async def get_department_dashboard(
                 CaseSubmission.student_id.in_([s.id for s in students]),
                 CaseSubmission.department_id == department_id,
                 CaseSubmission.status == SubmissionStatus.approved,
+                CaseSubmission.deleted_at.is_(None),
             )
             .group_by(CaseSubmission.student_id)
         )
@@ -563,4 +603,131 @@ async def get_department_dashboard(
         total_students=len(students),
         average_completion=round(avg_completion, 1),
         students=student_progresses,
+    )
+
+
+@router.get("/tracker", response_model=DepartmentTrackerResponse)
+async def get_rotation_tracker(
+    user: User = Depends(require_student),
+    db: AsyncSession = Depends(get_db),
+):
+    """Per-department rotation tracker for the student. Student-only."""
+    now = datetime.now(timezone.utc)
+
+    # 1. All active departments
+    dept_result = await db.execute(
+        select(Department).where(Department.is_active.is_(True))
+    )
+    departments = dept_result.scalars().all()
+
+    # 2. All active task categories grouped by department
+    cat_result = await db.execute(
+        select(TaskCategory).where(TaskCategory.is_active.is_(True))
+    )
+    all_cats = cat_result.scalars().all()
+    dept_required: dict[UUID, int] = {}
+    for cat in all_cats:
+        dept_required[cat.department_id] = (
+            dept_required.get(cat.department_id, 0) + cat.required_count
+        )
+
+    # 3. Student's submission counts per department
+    sub_result = await db.execute(
+        select(
+            CaseSubmission.department_id,
+            CaseSubmission.status,
+            func.sum(CaseSubmission.case_count).label("total"),
+        )
+        .where(
+            CaseSubmission.student_id == user.id,
+            CaseSubmission.deleted_at.is_(None),
+        )
+        .group_by(CaseSubmission.department_id, CaseSubmission.status)
+    )
+    approved_map: dict[UUID, int] = {}
+    pending_map: dict[UUID, int] = {}
+    for row in sub_result.all():
+        if row.status == SubmissionStatus.approved:
+            approved_map[row.department_id] = int(row.total)
+        elif row.status == SubmissionStatus.pending:
+            pending_map[row.department_id] = int(row.total)
+
+    # 4. Student's rotation records (most recent per department)
+    rot_result = await db.execute(
+        select(StudentRotation)
+        .where(StudentRotation.student_id == user.id)
+        .order_by(StudentRotation.started_at.desc())
+    )
+    all_rotations = rot_result.scalars().all()
+    rotation_by_dept: dict[UUID, StudentRotation] = {}
+    for rot in all_rotations:
+        if rot.department_id not in rotation_by_dept:
+            rotation_by_dept[rot.department_id] = rot
+
+    # 5. Current department
+    current_dept_id = next(
+        (r.department_id for r in all_rotations if r.is_current), None
+    )
+
+    # 6. Build entries
+    entries: list[DepartmentTrackerEntry] = []
+    show_warning = False
+
+    for dept in departments:
+        required = dept_required.get(dept.id, 0)
+        if required == 0:
+            continue
+
+        approved = approved_map.get(dept.id, 0)
+        pending = pending_map.get(dept.id, 0)
+        case_pct = min((approved / required) * 100, 100.0) if required > 0 else 0.0
+
+        if case_pct < 40:
+            color = "red"
+        elif case_pct < 60:
+            color = "yellow"
+        else:
+            color = "green"
+
+        rot = rotation_by_dept.get(dept.id)
+        days_active = 0
+        time_pct = 0.0
+        if rot:
+            elapsed = max(0, int((now - rot.started_at).total_seconds() // 86400))
+            days_active = rot.days_offset + elapsed
+            time_pct = (
+                min((days_active / dept.rotation_duration_days) * 100, 100.0)
+                if dept.rotation_duration_days > 0
+                else 0.0
+            )
+
+        is_current = dept.id == current_dept_id
+
+        if is_current and time_pct >= 50 and case_pct < 60:
+            show_warning = True
+
+        entries.append(
+            DepartmentTrackerEntry(
+                department_id=dept.id,
+                department_name=dept.name,
+                is_current=is_current,
+                total_required=required,
+                total_completed=approved,
+                total_pending=pending,
+                case_completion_percentage=round(case_pct, 1),
+                case_status_color=color,
+                rotation_duration_days=dept.rotation_duration_days,
+                days_active=days_active,
+                time_completion_percentage=round(time_pct, 1),
+                started_at=rot.started_at if rot else None,
+                rotation_id=rot.id if rot else None,
+            )
+        )
+
+    entries.sort(key=lambda e: (0 if e.is_current else 1, e.department_name))
+
+    return DepartmentTrackerResponse(
+        current_department_id=current_dept_id,
+        entries=entries,
+        show_warning=show_warning,
     )

@@ -3,6 +3,7 @@ export interface Department {
 	name: string;
 	description: string | null;
 	is_active: boolean;
+	rotation_duration_days: number;
 	category_count?: number;
 	created_at: string;
 	updated_at: string;
@@ -15,12 +16,14 @@ export interface DepartmentWithCategories extends Department {
 export interface DepartmentCreate {
 	name: string;
 	description?: string | null;
+	rotation_duration_days?: number;
 }
 
 export interface DepartmentUpdate {
 	name?: string;
 	description?: string | null;
 	is_active?: boolean;
+	rotation_duration_days?: number;
 }
 
 export interface TaskCategory {
