@@ -624,13 +624,19 @@ async def get_department_dashboard(
         StudentRotation.is_current.is_(True),
     )
 
+    # PERF-09: Select only required User columns to reduce data transfer
     student_result = await db.execute(
-        select(User).where(
+        select(
+            User.id,
+            User.full_name,
+            User.email,
+            User.institutional_id,
+        ).where(
             User.id.in_(sub_student_ids) | User.id.in_(rot_student_ids),
             User.is_active.is_(True),
         )
     )
-    students = student_result.scalars().all()
+    students = student_result.all()  # Returns tuples instead of User objects
 
     # Get approved submission totals per student for this department
     if students:
@@ -658,15 +664,18 @@ async def get_department_dashboard(
     student_progresses: list[DepartmentStudentProgress] = []
     total_completion_sum = 0.0
 
-    for student in students:
-        completed = completed_map.get(student.id, 0)
+    # PERF-09: Process student tuples (id, full_name, email, institutional_id)
+    for student_id, full_name, email, institutional_id in students:
+        completed = completed_map.get(student_id, 0)
         pct = (
             (completed / dept_total_required * 100) if dept_total_required > 0 else 0.0
         )
+        # Build display name from available fields (consistent with display_name())
+        student_name = full_name or institutional_id or email
         student_progresses.append(
             DepartmentStudentProgress(
-                student_id=student.id,
-                student_name=display_name(student),
+                student_id=student_id,
+                student_name=student_name,
                 total_required=dept_total_required,
                 total_completed=completed,
                 completion_percentage=round(pct, 1),
@@ -694,17 +703,27 @@ async def get_rotation_tracker(
     """Per-department rotation tracker for the student. Student-only."""
     now = datetime.now(timezone.utc)
 
-    # 1. All active departments
-    dept_result = await db.execute(
-        select(Department).where(Department.is_active.is_(True))
-    )
-    departments = dept_result.scalars().all()
+    # PERF-08: 1. Get all active departments (with cache, consistent with student dashboard)
+    CACHE_KEY_DEPTS = "all_active_departments"
+    departments = await departments_cache.get(CACHE_KEY_DEPTS)
 
-    # 2. All active task categories grouped by department
-    cat_result = await db.execute(
-        select(TaskCategory).where(TaskCategory.is_active.is_(True))
-    )
-    all_cats = cat_result.scalars().all()
+    if departments is None:
+        dept_result = await db.execute(
+            select(Department).where(Department.is_active.is_(True))
+        )
+        departments = dept_result.scalars().all()
+        await departments_cache.set(CACHE_KEY_DEPTS, departments)
+
+    # PERF-08: 2. Get all active task categories (with cache, consistent with student dashboard)
+    CACHE_KEY_CATS = "all_active_categories"
+    all_cats = await categories_cache.get(CACHE_KEY_CATS)
+
+    if all_cats is None:
+        cat_result = await db.execute(
+            select(TaskCategory).where(TaskCategory.is_active.is_(True))
+        )
+        all_cats = cat_result.scalars().all()
+        await categories_cache.set(CACHE_KEY_CATS, all_cats)
     dept_required: dict[UUID, int] = {}
     for cat in all_cats:
         dept_required[cat.department_id] = (
