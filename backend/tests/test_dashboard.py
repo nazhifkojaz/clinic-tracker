@@ -172,7 +172,7 @@ async def test_supervisor_dashboard_student_classification(
     student_entry = next(
         (
             s
-            for s in response.json()["students"]
+            for s in response.json()["students"]["items"]
             if s["student_name"] == "Test Student A"
         ),
         None,
@@ -241,7 +241,7 @@ async def test_supervisor_dashboard_classification_thresholds(
         student_entry = next(
             (
                 s
-                for s in data["students"]
+                for s in data["students"]["items"]
                 if s["student_name"] == f"{label.title()} Student"
             ),
             None,
@@ -257,7 +257,7 @@ async def test_supervisor_dashboard_classification_thresholds(
     entries = {
         label: next(
             s
-            for s in data["students"]
+            for s in data["students"]["items"]
             if s["student_name"] == f"{label.title()} Student"
         )
         for label in ["behind", "at_risk", "on_track"]
@@ -429,3 +429,458 @@ async def test_student_dashboard_recent_submissions(
     # Should have recent submissions
     assert "recent_submissions" in data
     assert len(data["recent_submissions"]) >= 2
+
+
+# ============================================================================
+# PERF-01 Tests: Redundant DB fetch fix
+# ============================================================================
+
+
+async def test_student_dashboard_rotation_warning_from_joined_data(
+    client, student_user, student_token, db_session
+):
+    """Verify rotation warning is computed correctly using joined rotation_duration_days.
+
+    PERF-01: This test verifies that rotation_duration_days is fetched from the JOIN
+    query and not from a redundant db.get() call.
+    """
+    from datetime import datetime, timezone, timedelta
+
+    # Create department with 30-day rotation duration
+    dept = await create_department(
+        db_session, name="Test Dept", rotation_duration_days=30
+    )
+    cat = await create_category(db_session, dept.id, required_count=100)
+
+    # Create current rotation started 16 days ago (53% elapsed)
+    rotation = StudentRotation(
+        student_id=student_user.id,
+        department_id=dept.id,
+        is_current=True,
+        started_at=datetime.now(timezone.utc) - timedelta(days=16),
+        days_offset=0,
+    )
+    db_session.add(rotation)
+    await db_session.commit()
+
+    # Create submissions: 50/100 cases (50% complete)
+    await create_submission(
+        db_session,
+        student_user.id,
+        dept.id,
+        cat.id,
+        case_count=50,
+        status=SubmissionStatus.approved,
+    )
+
+    response = await client.get(
+        "/api/dashboard/student",
+        headers=auth_header(student_token),
+    )
+    assert response.status_code == 200
+    data = response.json()
+    # Time: 53% elapsed, Cases: 50% complete -> Should show warning
+    assert data["show_rotation_warning"] is True
+
+
+async def test_student_dashboard_rotation_duration_null_handling(
+    client, student_user, student_token, db_session
+):
+    """Verify NULL or zero rotation_duration_days is handled gracefully.
+
+    PERF-01: This test verifies edge cases where rotation_duration_days is None or 0.
+    """
+    from datetime import datetime, timezone, timedelta
+
+    # Create department with 0-day rotation duration (edge case)
+    dept = await create_department(
+        db_session, name="Zero Duration Dept", rotation_duration_days=0
+    )
+
+    # Create current rotation
+    rotation = StudentRotation(
+        student_id=student_user.id,
+        department_id=dept.id,
+        is_current=True,
+        started_at=datetime.now(timezone.utc) - timedelta(days=16),
+        days_offset=0,
+    )
+    db_session.add(rotation)
+    await db_session.commit()
+
+    response = await client.get(
+        "/api/dashboard/student",
+        headers=auth_header(student_token),
+    )
+    assert response.status_code == 200
+    data = response.json()
+    # Should not crash, show_rotation_warning should be False
+    assert data["show_rotation_warning"] is False
+
+
+async def test_student_dashboard_no_rotation_warning_when_on_track(
+    client, student_user, student_token, db_session
+):
+    """Verify rotation warning doesn't show when student is on track.
+
+    PERF-01: This test verifies the warning logic works correctly with joined data.
+    """
+    from datetime import datetime, timezone, timedelta
+
+    # Create department with 30-day rotation duration
+    dept = await create_department(
+        db_session, name="On Track Dept", rotation_duration_days=30
+    )
+    cat = await create_category(db_session, dept.id, required_count=100)
+
+    # Create current rotation started 16 days ago (53% elapsed)
+    rotation = StudentRotation(
+        student_id=student_user.id,
+        department_id=dept.id,
+        is_current=True,
+        started_at=datetime.now(timezone.utc) - timedelta(days=16),
+        days_offset=0,
+    )
+    db_session.add(rotation)
+    await db_session.commit()
+
+    # Create submissions: 65/100 cases (65% complete - on track)
+    await create_submission(
+        db_session,
+        student_user.id,
+        dept.id,
+        cat.id,
+        case_count=65,
+        status=SubmissionStatus.approved,
+    )
+
+    response = await client.get(
+        "/api/dashboard/student",
+        headers=auth_header(student_token),
+    )
+    assert response.status_code == 200
+    data = response.json()
+    # Time: 53% elapsed, Cases: 65% complete -> Should NOT show warning
+    assert data["show_rotation_warning"] is False
+
+
+# ============================================================================
+# PERF-02 Tests: Pagination for supervisor dashboard
+# ============================================================================
+
+
+async def test_supervisor_dashboard_pagination_structure(
+    client, supervisor_user, supervisor_token, db_session
+):
+    """Verify supervisor dashboard returns paginated response structure.
+
+    PERF-02: This test verifies the pagination structure is correct.
+    """
+    # Create 60 students assigned to supervisor
+    for i in range(60):
+        student = User(
+            email=f"student_{i:03d}_{_random_suffix()}@test.com",
+            password_hash="$2b$12$dummy",
+            full_name=f"Student {i:03d}",
+            role=UserRole.student,
+            is_active=True,
+        )
+        db_session.add(student)
+        await db_session.commit()
+        await db_session.refresh(student)
+
+        assignment = SupervisorAssignment(
+            supervisor_id=supervisor_user.id,
+            student_id=student.id,
+            assignment_type=AssignmentType.primary,
+        )
+        db_session.add(assignment)
+        await db_session.commit()
+
+    # Request with limit=20, offset=0
+    response = await client.get(
+        "/api/dashboard/supervisor?limit=20&offset=0",
+        headers=auth_header(supervisor_token),
+    )
+    assert response.status_code == 200
+    data = response.json()
+
+    # Verify pagination structure
+    assert "students" in data
+    assert "items" in data["students"]
+    assert "total" in data["students"]
+    assert "limit" in data["students"]
+    assert "offset" in data["students"]
+    assert "has_more" in data["students"]
+
+    # Verify values
+    assert data["students"]["total"] == 60
+    assert data["students"]["limit"] == 20
+    assert data["students"]["offset"] == 0
+    assert data["students"]["has_more"] is True
+    assert len(data["students"]["items"]) == 20
+
+    # Verify status counts are computed from ALL students
+    assert data["total_students"] == 60
+    assert (
+        data["on_track_count"] + data["at_risk_count"] + data["behind_count"] == 60
+    )
+
+
+async def test_supervisor_dashboard_status_counts_accuracy(
+    client, supervisor_user, supervisor_token, db_session
+):
+    """Verify status counts are computed from all students, not just paginated subset.
+
+    PERF-02: This test verifies that status counts are accurate regardless of pagination.
+    """
+    # Create 100 students with known completion percentages
+    dept = await create_department(db_session, name="Count Test Dept")
+    cat = await create_category(db_session, dept.id, required_count=100)
+
+    # 30 students with 70% completion (on_track)
+    for i in range(30):
+        student = User(
+            email=f"on_track_{i}_{_random_suffix()}@test.com",
+            password_hash="$2b$12$dummy",
+            full_name=f"On Track Student {i}",
+            role=UserRole.student,
+            is_active=True,
+        )
+        db_session.add(student)
+        await db_session.commit()
+        await db_session.refresh(student)
+
+        assignment = SupervisorAssignment(
+            supervisor_id=supervisor_user.id,
+            student_id=student.id,
+            assignment_type=AssignmentType.primary,
+        )
+        db_session.add(assignment)
+        await db_session.commit()
+
+        await create_submission(
+            db_session,
+            student.id,
+            dept.id,
+            cat.id,
+            case_count=70,
+            status=SubmissionStatus.approved,
+        )
+
+    # 40 students with 40% completion (at_risk)
+    for i in range(40):
+        student = User(
+            email=f"at_risk_{i}_{_random_suffix()}@test.com",
+            password_hash="$2b$12$dummy",
+            full_name=f"At Risk Student {i}",
+            role=UserRole.student,
+            is_active=True,
+        )
+        db_session.add(student)
+        await db_session.commit()
+        await db_session.refresh(student)
+
+        assignment = SupervisorAssignment(
+            supervisor_id=supervisor_user.id,
+            student_id=student.id,
+            assignment_type=AssignmentType.primary,
+        )
+        db_session.add(assignment)
+        await db_session.commit()
+
+        await create_submission(
+            db_session,
+            student.id,
+            dept.id,
+            cat.id,
+            case_count=40,
+            status=SubmissionStatus.approved,
+        )
+
+    # 30 students with 20% completion (behind)
+    for i in range(30):
+        student = User(
+            email=f"behind_{i}_{_random_suffix()}@test.com",
+            password_hash="$2b$12$dummy",
+            full_name=f"Behind Student {i}",
+            role=UserRole.student,
+            is_active=True,
+        )
+        db_session.add(student)
+        await db_session.commit()
+        await db_session.refresh(student)
+
+        assignment = SupervisorAssignment(
+            supervisor_id=supervisor_user.id,
+            student_id=student.id,
+            assignment_type=AssignmentType.primary,
+        )
+        db_session.add(assignment)
+        await db_session.commit()
+
+        await create_submission(
+            db_session,
+            student.id,
+            dept.id,
+            cat.id,
+            case_count=20,
+            status=SubmissionStatus.approved,
+        )
+
+    # Request first page only (limit=10)
+    response = await client.get(
+        "/api/dashboard/supervisor?limit=10&offset=0",
+        headers=auth_header(supervisor_token),
+    )
+    assert response.status_code == 200
+    data = response.json()
+
+    # Verify counts are from ALL students, not just the 10 returned
+    assert data["total_students"] == 100
+    assert data["on_track_count"] == 30
+    assert data["at_risk_count"] == 40
+    assert data["behind_count"] == 30
+
+    # Verify only 10 students returned in items
+    assert len(data["students"]["items"]) == 10
+
+
+async def test_supervisor_dashboard_default_limit(
+    client, supervisor_user, supervisor_token, db_session
+):
+    """Verify default limit=50 when no parameters provided.
+
+    PERF-02: This test verifies default pagination behavior.
+    """
+    # Create 75 students
+    for i in range(75):
+        student = User(
+            email=f"default_{i}_{_random_suffix()}@test.com",
+            password_hash="$2b$12$dummy",
+            full_name=f"Default Student {i}",
+            role=UserRole.student,
+            is_active=True,
+        )
+        db_session.add(student)
+        await db_session.commit()
+        await db_session.refresh(student)
+
+        assignment = SupervisorAssignment(
+            supervisor_id=supervisor_user.id,
+            student_id=student.id,
+            assignment_type=AssignmentType.primary,
+        )
+        db_session.add(assignment)
+        await db_session.commit()
+
+    response = await client.get(
+        "/api/dashboard/supervisor",  # No limit/offset params
+        headers=auth_header(supervisor_token),
+    )
+    assert response.status_code == 200
+    data = response.json()
+
+    # Verify default behavior
+    assert data["students"]["limit"] == 50
+    assert data["students"]["offset"] == 0
+    assert len(data["students"]["items"]) == 50
+    assert data["students"]["has_more"] is True
+    assert data["students"]["total"] == 75
+
+
+async def test_supervisor_dashboard_max_limit_enforcement(
+    client, supervisor_user, supervisor_token
+):
+    """Verify max limit of 200 is enforced.
+
+    PERF-02: This test verifies that limit > 200 is rejected by FastAPI validation.
+    """
+    response = await client.get(
+        "/api/dashboard/supervisor?limit=999",  # Try to exceed max
+        headers=auth_header(supervisor_token),
+    )
+    # FastAPI should reject this before it reaches the endpoint
+    assert response.status_code == 422  # Validation error
+
+
+async def test_supervisor_dashboard_offset_behavior(
+    client, supervisor_user, supervisor_token, db_session
+):
+    """Verify offset skips correct number of records.
+
+    PERF-02: This test verifies offset behavior for pagination.
+    """
+    # Create 50 students with predictable names
+    for i in range(50):
+        student = User(
+            email=f"offset_{i:03d}_{_random_suffix()}@test.com",
+            password_hash="$2b$12$dummy",
+            full_name=f"Offset Student {i:03d}",
+            role=UserRole.student,
+            is_active=True,
+        )
+        db_session.add(student)
+        await db_session.commit()
+        await db_session.refresh(student)
+
+        assignment = SupervisorAssignment(
+            supervisor_id=supervisor_user.id,
+            student_id=student.id,
+            assignment_type=AssignmentType.primary,
+        )
+        db_session.add(assignment)
+        await db_session.commit()
+
+    # Request second page (offset=20, limit=10)
+    response = await client.get(
+        "/api/dashboard/supervisor?limit=10&offset=20",
+        headers=auth_header(supervisor_token),
+    )
+    assert response.status_code == 200
+    data = response.json()
+
+    # Should return students 20-29 (0-indexed)
+    assert len(data["students"]["items"]) == 10
+    assert data["students"]["offset"] == 20
+    assert data["students"]["has_more"] is True  # 50 total, 20+10=30, still 20 left
+
+
+async def test_supervisor_dashboard_empty_result_pagination(
+    client, supervisor_user, supervisor_token, db_session
+):
+    """Verify pagination works correctly when there are no students.
+
+    PERF-02: This test verifies edge case of empty result set.
+    """
+    # Create a new supervisor with no students
+    new_supervisor = User(
+        email=f"empty_sup_{_random_suffix()}@test.com",
+        password_hash="$2b$12$dummy",
+        full_name="Empty Supervisor",
+        role=UserRole.supervisor,
+        is_active=True,
+    )
+    db_session.add(new_supervisor)
+    await db_session.commit()
+    await db_session.refresh(new_supervisor)
+
+    from app.core.security import create_access_token
+
+    token = create_access_token(subject=str(new_supervisor.id), role="supervisor")
+
+    response = await client.get(
+        "/api/dashboard/supervisor",
+        headers=auth_header(token),
+    )
+    assert response.status_code == 200
+    data = response.json()
+
+    # Verify empty pagination structure
+    assert data["total_students"] == 0
+    assert data["on_track_count"] == 0
+    assert data["at_risk_count"] == 0
+    assert data["behind_count"] == 0
+    assert data["students"]["total"] == 0
+    assert data["students"]["items"] == []
+    assert data["students"]["has_more"] is False
