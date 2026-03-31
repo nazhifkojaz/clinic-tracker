@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, func, text
+from sqlalchemy import Boolean, DateTime, ForeignKey, Index, Integer, String, Text, func, text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -39,6 +39,11 @@ class Department(Base):
         back_populates="department", cascade="all, delete-orphan"
     )
 
+    __table_args__ = (
+        # PERF-06: Index for filtering active departments
+        Index("ix_departments_is_active", "is_active"),
+    )
+
 
 class TaskCategory(Base):
     __tablename__ = "task_categories"
@@ -72,3 +77,8 @@ class TaskCategory(Base):
 
     # Relationships
     department: Mapped["Department"] = relationship(back_populates="task_categories")
+
+    __table_args__ = (
+        # PERF-05: Composite index for filtering categories by department and active status
+        Index("ix_task_categories_dept_is_active", "department_id", "is_active"),
+    )

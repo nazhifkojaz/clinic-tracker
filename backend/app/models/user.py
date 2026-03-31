@@ -2,7 +2,7 @@ import enum
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, Enum, ForeignKey, String, func, text
+from sqlalchemy import Boolean, DateTime, Enum, ForeignKey, Index, String, func, text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -49,6 +49,18 @@ class User(Base):
     )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+    __table_args__ = (
+        # PERF-03: Single-column indexes for role and is_active filters
+        Index("ix_users_role", "role"),
+        Index("ix_users_is_active", "is_active"),
+        # PERF-03: Composite index for dashboard queries filtering both columns
+        Index("ix_users_role_is_active", "role", "is_active"),
+        # PERF-04: Trigram indexes for search (requires pg_trgm extension)
+        Index("ix_users_full_name_trgm", "full_name", postgresql_using="gin", postgresql_ops={"full_name": "gin_trgm_ops"}),
+        Index("ix_users_email_trgm", "email", postgresql_using="gin", postgresql_ops={"email": "gin_trgm_ops"}),
+        Index("ix_users_institutional_id_trgm", "institutional_id", postgresql_using="gin", postgresql_ops={"institutional_id": "gin_trgm_ops"}),
     )
 
 
