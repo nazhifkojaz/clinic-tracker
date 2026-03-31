@@ -5,7 +5,12 @@ from sqlalchemy import select
 from app.models.assignment import AssignmentType, SupervisorAssignment
 from app.models.submission import SubmissionStatus
 from tests.conftest import auth_header
-from tests.factories import _random_suffix, create_category, create_department, create_submission
+from tests.factories import (
+    _random_suffix,
+    create_category,
+    create_department,
+    create_submission,
+)
 
 
 async def test_create_submission(client, student_user, student_token, db_session):
@@ -678,8 +683,9 @@ async def test_get_proof_url_empty_returns_404(
 
 async def test_get_upload_url_student_only(client, supervisor_token):
     """Only students can get upload URLs."""
-    response = await client.get(
+    response = await client.post(
         "/api/submissions/upload-url",
+        json={"filename": "proof.jpg", "content_type": "image/jpeg"},
         headers=auth_header(supervisor_token),
     )
     assert response.status_code == 403
@@ -687,28 +693,30 @@ async def test_get_upload_url_student_only(client, supervisor_token):
 
 async def test_get_upload_url_returns_presigned_url(client, student_token):
     """Upload URL endpoint returns a valid presigned URL."""
-    response = await client.get(
+    response = await client.post(
         "/api/submissions/upload-url",
+        json={"filename": "proof.jpg", "content_type": "image/jpeg"},
         headers=auth_header(student_token),
     )
     assert response.status_code == 200
     data = response.json()
     assert "upload_url" in data
-    assert "key" in data
+    assert "object_key" in data
     assert isinstance(data["upload_url"], str)
-    assert isinstance(data["key"], str)
+    assert isinstance(data["object_key"], str)
 
 
 async def test_get_upload_url_includes_unique_key(client, student_token):
     """Upload URL key includes a unique identifier."""
-    response = await client.get(
+    response = await client.post(
         "/api/submissions/upload-url",
+        json={"filename": "proof.jpg", "content_type": "image/jpeg"},
         headers=auth_header(student_token),
     )
     assert response.status_code == 200
     data = response.json()
     # Key should be a string with some length (UUID-based)
-    assert len(data["key"]) > 0
+    assert len(data["object_key"]) > 0
 
 
 # ---------------------------------------------------------------------------
@@ -946,9 +954,7 @@ async def test_admin_can_restore_deleted_submission(
     )
 
     # Confirm gone from normal list
-    list_resp = await client.get(
-        "/api/submissions", headers=auth_header(admin_token)
-    )
+    list_resp = await client.get("/api/submissions", headers=auth_header(admin_token))
     ids = {s["id"] for s in list_resp.json()["items"]}
     assert str(sub.id) not in ids
 
@@ -960,9 +966,7 @@ async def test_admin_can_restore_deleted_submission(
     assert restore_resp.json()["deleted_at"] is None
 
     # Now visible again
-    list_after = await client.get(
-        "/api/submissions", headers=auth_header(admin_token)
-    )
+    list_after = await client.get("/api/submissions", headers=auth_header(admin_token))
     ids_after = {s["id"] for s in list_after.json()["items"]}
     assert str(sub.id) in ids_after
 

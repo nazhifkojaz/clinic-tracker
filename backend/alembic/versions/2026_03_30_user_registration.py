@@ -52,9 +52,7 @@ def upgrade() -> None:
 
     # Normalize empty strings to NULL before creating the unique index
     op.execute(
-        sa.text(
-            "UPDATE users SET institutional_id = NULL WHERE institutional_id = ''"
-        )
+        sa.text("UPDATE users SET institutional_id = NULL WHERE institutional_id = ''")
     )
 
     # Partial unique index on institutional_id where not null

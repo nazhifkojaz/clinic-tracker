@@ -18,7 +18,12 @@ from app.core.security import (
 )
 from app.models.department import Department
 from app.models.user import User
-from app.schemas.auth import LoginRequest, RefreshRequest, RegisterResponse, TokenResponse
+from app.schemas.auth import (
+    LoginRequest,
+    RefreshRequest,
+    RegisterResponse,
+    TokenResponse,
+)
 from app.schemas.user import UserRegisterRequest
 from app.utils.audit import record_audit
 from app.utils.email import send_verification_email

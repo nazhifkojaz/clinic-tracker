@@ -1,5 +1,4 @@
 from datetime import datetime, timezone
-from typing import Union
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status

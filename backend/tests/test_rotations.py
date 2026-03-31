@@ -102,7 +102,9 @@ async def test_create_rotation_with_days_offset(client, db_session, fresh_studen
     assert data["days_offset"] == 5
 
 
-async def test_create_rotation_default_days_offset_zero(client, db_session, fresh_student):
+async def test_create_rotation_default_days_offset_zero(
+    client, db_session, fresh_student
+):
     """days_offset defaults to 0 when not provided."""
     fresh_token = create_access_token(subject=str(fresh_student.id), role="student")
     dept = await create_department(db_session)
@@ -117,7 +119,9 @@ async def test_create_rotation_default_days_offset_zero(client, db_session, fres
     assert data["days_offset"] == 0
 
 
-async def test_create_rotation_days_offset_negative_rejected(client, db_session, fresh_student):
+async def test_create_rotation_days_offset_negative_rejected(
+    client, db_session, fresh_student
+):
     """Negative days_offset is rejected by validation."""
     fresh_token = create_access_token(subject=str(fresh_student.id), role="student")
     dept = await create_department(db_session)
@@ -130,7 +134,9 @@ async def test_create_rotation_days_offset_negative_rejected(client, db_session,
     assert response.status_code == 422
 
 
-async def test_create_rotation_locked_when_already_assigned(client, db_session, fresh_student):
+async def test_create_rotation_locked_when_already_assigned(
+    client, db_session, fresh_student
+):
     """Student cannot switch departments once assigned — returns 400."""
     fresh_token = create_access_token(subject=str(fresh_student.id), role="student")
     dept1 = await create_department(db_session)
@@ -161,7 +167,9 @@ async def test_create_rotation_locked_when_already_assigned(client, db_session, 
     assert current.json()["department_id"] == str(dept1.id)
 
 
-async def test_create_rotation_same_department_idempotent(client, db_session, fresh_student):
+async def test_create_rotation_same_department_idempotent(
+    client, db_session, fresh_student
+):
     """Re-selecting the same department returns the existing rotation."""
     fresh_token = create_access_token(subject=str(fresh_student.id), role="student")
     dept = await create_department(db_session)
@@ -272,7 +280,9 @@ async def test_get_rotation_history_includes_inactive(
     assert any(not r["is_current"] for r in data["items"])
 
 
-async def test_get_student_rotation_supervisor_can_access(client, supervisor_token, db_session):
+async def test_get_student_rotation_supervisor_can_access(
+    client, supervisor_token, db_session
+):
     """Supervisors can access student rotation endpoint."""
     suffix = _random_suffix()
     student = User(
@@ -310,7 +320,9 @@ async def test_get_student_rotation_not_found(client, supervisor_token):
 # ---------------------------------------------------------------------------
 
 
-async def test_admin_override_department_success(client, db_session, fresh_student, admin_token):
+async def test_admin_override_department_success(
+    client, db_session, fresh_student, admin_token
+):
     """Admin can change a student's department."""
     fresh_token = create_access_token(subject=str(fresh_student.id), role="student")
     dept1 = await create_department(db_session)
@@ -344,7 +356,9 @@ async def test_admin_override_department_success(client, db_session, fresh_stude
     assert current.json()["department_id"] == str(dept2.id)
 
 
-async def test_admin_override_preserves_history(client, db_session, fresh_student, admin_token):
+async def test_admin_override_preserves_history(
+    client, db_session, fresh_student, admin_token
+):
     """Admin override deactivates old rotation (preserving it in history)."""
     fresh_token = create_access_token(subject=str(fresh_student.id), role="student")
     dept1 = await create_department(db_session)
@@ -405,7 +419,9 @@ async def test_admin_override_student_only(client, db_session, admin_token):
     assert "Student not found" in response.json()["detail"]
 
 
-async def test_admin_override_requires_admin(client, db_session, fresh_student, supervisor_token):
+async def test_admin_override_requires_admin(
+    client, db_session, fresh_student, supervisor_token
+):
     """Non-admin users cannot access override endpoint."""
     dept = await create_department(db_session)
     response = await client.post(
@@ -416,7 +432,9 @@ async def test_admin_override_requires_admin(client, db_session, fresh_student, 
     assert response.status_code == 403
 
 
-async def test_admin_override_inactive_department_rejected(client, db_session, fresh_student, admin_token):
+async def test_admin_override_inactive_department_rejected(
+    client, db_session, fresh_student, admin_token
+):
     """Cannot override to an inactive department."""
     dept = await create_department(db_session, is_active=False)
     response = await client.post(
@@ -428,7 +446,9 @@ async def test_admin_override_inactive_department_rejected(client, db_session, f
     assert "Department not found" in response.json()["detail"]
 
 
-async def test_admin_override_no_existing_rotation(client, db_session, fresh_student, admin_token):
+async def test_admin_override_no_existing_rotation(
+    client, db_session, fresh_student, admin_token
+):
     """Admin can assign department even if student has no current rotation."""
     dept = await create_department(db_session)
     response = await client.post(

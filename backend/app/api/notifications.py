@@ -52,7 +52,8 @@ async def _get_student_names(
         )
     )
     return {
-        row.id: (row.full_name or row.institutional_id or row.email) for row in result.all()
+        row.id: (row.full_name or row.institutional_id or row.email)
+        for row in result.all()
     }
 
 

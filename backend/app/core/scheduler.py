@@ -110,7 +110,9 @@ async def run_rotation_reminders() -> None:
             # 5. System sender
             sender_id = await _get_system_sender_id(db)
             if not sender_id:
-                logger.warning("No admin user found; cannot create Notification records")
+                logger.warning(
+                    "No admin user found; cannot create Notification records"
+                )
                 return
 
             # 6. Evaluate each rotation
@@ -121,9 +123,7 @@ async def run_rotation_reminders() -> None:
                 if required == 0:
                     continue
 
-                elapsed = max(
-                    0, int((now - rot.started_at).total_seconds() // 86400)
-                )
+                elapsed = max(0, int((now - rot.started_at).total_seconds() // 86400))
                 days_active = rot.days_offset + elapsed
                 time_pct = (
                     (days_active / dept.rotation_duration_days) * 100
@@ -134,9 +134,7 @@ async def run_rotation_reminders() -> None:
                 if time_pct < 50:
                     continue
 
-                approved = approved_map.get(
-                    (str(rot.student_id), str(dept.id)), 0
-                )
+                approved = approved_map.get((str(rot.student_id), str(dept.id)), 0)
                 case_pct = (approved / required) * 100 if required > 0 else 0
 
                 if case_pct >= 60:
@@ -151,7 +149,9 @@ async def run_rotation_reminders() -> None:
                     continue
 
                 student_name = display_name(student)
-                subject = f"{REMINDER_SUBJECT_PREFIX} Progress update needed in {dept.name}"
+                subject = (
+                    f"{REMINDER_SUBJECT_PREFIX} Progress update needed in {dept.name}"
+                )
                 message = (
                     f"Dear {student_name},\n\n"
                     f"You are currently on Day {days_active} of "

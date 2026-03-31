@@ -27,7 +27,8 @@ async def list_users(
     role: str | None = Query(None, description="Filter by role"),
     is_active: bool | None = Query(None, description="Filter by active status"),
     pending_approval: bool | None = Query(
-        None, description="Filter users awaiting admin approval (email verified, not active)"
+        None,
+        description="Filter users awaiting admin approval (email verified, not active)",
     ),
     search: str | None = Query(
         None, description="Search by name, email, or institutional ID"

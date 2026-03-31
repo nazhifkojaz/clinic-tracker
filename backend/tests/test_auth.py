@@ -334,7 +334,6 @@ async def test_verify_email_success(client, db_session):
     """Valid verification token sets email_verified=True."""
     from tests.factories import _random_suffix
     from app.core.security import create_email_verification_token, hash_password as _hp
-    from sqlalchemy import select
 
     suffix = _random_suffix()
     user = User(

@@ -21,9 +21,7 @@ def upgrade() -> None:
         "case_submissions",
         sa.Column("deleted_at", sa.DateTime(timezone=True), nullable=True),
     )
-    op.create_index(
-        "ix_submissions_deleted_at", "case_submissions", ["deleted_at"]
-    )
+    op.create_index("ix_submissions_deleted_at", "case_submissions", ["deleted_at"])
 
 
 def downgrade() -> None:

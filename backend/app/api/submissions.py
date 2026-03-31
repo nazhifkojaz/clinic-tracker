@@ -149,9 +149,11 @@ async def list_submissions(
     offset: int = Query(0, ge=0, description="Items to skip"),
 ):
     """List submissions with pagination. Students see their own; supervisors/admins see all."""
-    query = select(CaseSubmission, User).join(
-        User, CaseSubmission.student_id == User.id
-    ).where(CaseSubmission.deleted_at.is_(None))
+    query = (
+        select(CaseSubmission, User)
+        .join(User, CaseSubmission.student_id == User.id)
+        .where(CaseSubmission.deleted_at.is_(None))
+    )
 
     # Role-based filtering
     if user.role == UserRole.student:
@@ -288,7 +290,9 @@ async def list_deleted_submissions(
             )
             deleter_users = {u.id: u for u in users_result.scalars().all()}
         for audit_row in audit_rows:
-            deleter = deleter_users.get(audit_row.user_id) if audit_row.user_id else None
+            deleter = (
+                deleter_users.get(audit_row.user_id) if audit_row.user_id else None
+            )
             deleted_by_map[audit_row.record_id] = (
                 audit_row.user_id,
                 display_name(deleter) if deleter else None,
