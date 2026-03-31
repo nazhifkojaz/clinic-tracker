@@ -5,6 +5,8 @@ from datetime import datetime
 
 from pydantic import BaseModel
 
+from app.schemas.pagination import PaginatedResponse
+
 
 class CategoryProgress(BaseModel):
     """Progress for a single task category within a department."""
@@ -88,7 +90,7 @@ class SupervisorDashboardResponse(BaseModel):
     on_track_count: int
     at_risk_count: int
     behind_count: int
-    students: list[StudentSummary]
+    students: PaginatedResponse[StudentSummary]
 
 
 class DepartmentStudentProgress(BaseModel):
