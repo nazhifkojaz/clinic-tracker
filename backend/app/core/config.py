@@ -18,9 +18,11 @@ class Settings(BaseSettings):
     DATABASE_SSL: bool = (
         True  # Default to secure for production, set false for local dev
     )
-    # Connection pool settings (small for auto-sleep compatibility on fly.io/Neon free tier)
-    DATABASE_POOL_SIZE: int = 2  # Small pool to minimize stale connections
-    DATABASE_MAX_OVERFLOW: int = 1  # Allow brief bursts
+    # Connection pool settings (configurable via environment for different deployment scenarios)
+    # For production: Use larger pools for better concurrency
+    # For free-tier: Override with smaller values to minimize stale connections
+    DATABASE_POOL_SIZE: int = 5  # Increased for moderate concurrent load
+    DATABASE_MAX_OVERFLOW: int = 10  # Allow bursts up to 15 total connections
     DATABASE_POOL_RECYCLE: int = 300  # Recycle after 5 min (before sleep timeout)
     DATABASE_POOL_TIMEOUT: int = 30
 
