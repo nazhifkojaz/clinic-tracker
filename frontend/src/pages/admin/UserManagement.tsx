@@ -1,10 +1,21 @@
-import { ChevronLeft, ChevronRight, Loader2, Pencil, Plus } from "lucide-react";
+import {
+	ChevronLeft,
+	ChevronRight,
+	Loader2,
+	Pencil,
+	Plus,
+	RotateCw,
+} from "lucide-react";
 import { useEffect, useState } from "react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { departmentService } from "@/services/departments";
+import { rotationService } from "@/services/rotations";
 import { userService } from "@/services/users";
+import type { Department } from "@/types/department";
 import type { User, UserCreate, UserRole } from "@/types/user";
 
 const PAGE_SIZE = 25;
@@ -16,17 +27,30 @@ export default function UserManagement() {
 	const [hasMore, setHasMore] = useState(false);
 	const [isLoading, setIsLoading] = useState(false);
 
+	const [pendingUsers, setPendingUsers] = useState<User[]>([]);
+	const [isApprovingId, setIsApprovingId] = useState<string | null>(null);
+
 	const [isModalOpen, setIsModalOpen] = useState(false);
 	const [editingUser, setEditingUser] = useState<User | null>(null);
 	const [formData, setFormData] = useState({
 		email: "",
 		password: "",
 		full_name: "",
-		student_id: "",
+		institutional_id: "",
 		role: "student" as UserRole,
 	});
 	const [error, setError] = useState("");
 	const [isSubmitting, setIsSubmitting] = useState(false);
+
+	const [isDeptModalOpen, setIsDeptModalOpen] = useState(false);
+	const [deptOverrideUserId, setDeptOverrideUserId] = useState<string | null>(
+		null,
+	);
+	const [deptOverrideUserName, setDeptOverrideUserName] = useState("");
+	const [departments, setDepartments] = useState<Department[]>([]);
+	const [selectedDeptId, setSelectedDeptId] = useState("");
+	const [isDeptSubmitting, setIsDeptSubmitting] = useState(false);
+	const [deptError, setDeptError] = useState("");
 
 	const fetchUsers = async (page: number = currentPage) => {
 		try {
@@ -38,17 +62,32 @@ export default function UserManagement() {
 			setUsers(response.items);
 			setTotalCount(response.total);
 			setHasMore(response.has_more);
-			setError(""); // Clear any previous error
-		} catch (err) {
-			console.error("Failed to load users:", err);
+			setError("");
+		} catch {
 			setError("Failed to load users. Please refresh the page.");
 		} finally {
 			setIsLoading(false);
 		}
 	};
 
+	const fetchPendingUsers = async () => {
+		try {
+			const response = await userService.list({
+				pending_approval: true,
+				limit: 200,
+			});
+			setPendingUsers(response.items);
+		} catch {
+			// Non-critical, don't show error
+		}
+	};
+
 	useEffect(() => {
 		fetchUsers();
+		fetchPendingUsers();
+		departmentService.list().then((depts) => {
+			setDepartments(depts.filter((d) => d.is_active));
+		});
 		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, []);
 
@@ -57,13 +96,26 @@ export default function UserManagement() {
 		fetchUsers(newPage);
 	};
 
+	const handleApprove = async (userId: string) => {
+		setIsApprovingId(userId);
+		try {
+			await userService.update(userId, { is_active: true });
+			toast.success("User approved successfully");
+			await Promise.all([fetchPendingUsers(), fetchUsers(currentPage)]);
+		} catch {
+			toast.error("Failed to approve user");
+		} finally {
+			setIsApprovingId(null);
+		}
+	};
+
 	const openCreateModal = () => {
 		setEditingUser(null);
 		setFormData({
 			email: "",
 			password: "",
 			full_name: "",
-			student_id: "",
+			institutional_id: "",
 			role: "student",
 		});
 		setError("");
@@ -76,7 +128,7 @@ export default function UserManagement() {
 			email: user.email,
 			password: "",
 			full_name: user.full_name,
-			student_id: user.student_id || "",
+			institutional_id: user.institutional_id || "",
 			role: user.role,
 		});
 		setError("");
@@ -93,7 +145,7 @@ export default function UserManagement() {
 				const updateData: Record<string, unknown> = {
 					email: formData.email,
 					full_name: formData.full_name,
-					student_id: formData.student_id || null,
+					institutional_id: formData.institutional_id || null,
 					role: formData.role,
 				};
 				if (formData.password) updateData.password = formData.password;
@@ -107,12 +159,43 @@ export default function UserManagement() {
 			setError(
 				editingUser
 					? "Failed to update user."
-					: "Failed to create user. Email may already exist.",
+					: "Failed to create user. Email or ID may already exist.",
 			);
 		} finally {
 			setIsSubmitting(false);
 		}
 	};
+
+	const openDeptOverrideModal = (user: User) => {
+		setDeptOverrideUserId(user.id);
+		setDeptOverrideUserName(user.full_name);
+		setSelectedDeptId("");
+		setDeptError("");
+		setIsDeptModalOpen(true);
+	};
+
+	const handleDeptOverride = async (e: React.FormEvent) => {
+		e.preventDefault();
+		if (!deptOverrideUserId || !selectedDeptId) return;
+
+		setIsDeptSubmitting(true);
+		setDeptError("");
+		try {
+			await rotationService.overrideDepartment(deptOverrideUserId, {
+				department_id: selectedDeptId,
+			});
+			toast.success("Department updated successfully");
+			setIsDeptModalOpen(false);
+			fetchUsers(currentPage);
+		} catch {
+			setDeptError("Failed to update department.");
+		} finally {
+			setIsDeptSubmitting(false);
+		}
+	};
+
+	const idLabel = (role: UserRole) =>
+		role === "student" ? "Student ID" : "Staff ID";
 
 	const roleBadgeColor: Record<UserRole, string> = {
 		admin: "bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300",
@@ -130,6 +213,72 @@ export default function UserManagement() {
 					Create User
 				</Button>
 			</div>
+
+			{/* Pending Approval Section */}
+			{pendingUsers.length > 0 && (
+				<Card>
+					<CardHeader>
+						<CardTitle>
+							Pending Approval ({pendingUsers.length})
+						</CardTitle>
+					</CardHeader>
+					<CardContent className="p-0">
+						<div className="overflow-x-auto">
+							<table className="w-full min-w-[600px]">
+								<thead>
+									<tr className="border-b text-left text-sm text-muted-foreground">
+										<th className="p-4">Name</th>
+										<th className="p-4">Email</th>
+										<th className="p-4">Role</th>
+										<th className="p-4">ID</th>
+										<th className="p-4">Registered</th>
+										<th className="p-4">Actions</th>
+									</tr>
+								</thead>
+								<tbody>
+									{pendingUsers.map((user) => (
+										<tr key={user.id} className="border-b last:border-0">
+											<td className="p-4 font-medium">{user.full_name}</td>
+											<td className="p-4 text-muted-foreground">
+												{user.email}
+											</td>
+											<td className="p-4">
+												<span
+													className={`rounded-full px-2 py-1 text-xs font-medium capitalize ${roleBadgeColor[user.role]}`}
+												>
+													{user.role}
+												</span>
+											</td>
+											<td className="p-4 text-muted-foreground">
+												{user.institutional_id || "—"}
+											</td>
+											<td className="p-4 text-muted-foreground">
+												{new Date(user.created_at).toLocaleDateString()}
+											</td>
+											<td className="p-4">
+												<Button
+													size="sm"
+													onClick={() => handleApprove(user.id)}
+													disabled={isApprovingId === user.id}
+												>
+													{isApprovingId === user.id ? (
+														<>
+															<Loader2 className="mr-1 h-3 w-3 animate-spin" />
+															Approving...
+														</>
+													) : (
+														"Approve"
+													)}
+												</Button>
+											</td>
+										</tr>
+									))}
+								</tbody>
+							</table>
+						</div>
+					</CardContent>
+				</Card>
+			)}
 
 			<Card>
 				<CardContent className="p-0">
@@ -164,13 +313,25 @@ export default function UserManagement() {
 											</span>
 										</td>
 										<td className="p-4">
-											<Button
-												variant="ghost"
-												size="icon-sm"
-												onClick={() => openEditModal(user)}
-											>
-												<Pencil className="h-4 w-4" />
-											</Button>
+											<div className="flex items-center gap-1">
+												{user.role === "student" && (
+													<Button
+														variant="ghost"
+														size="sm"
+														onClick={() => openDeptOverrideModal(user)}
+														title="Change Department"
+													>
+														<RotateCw className="h-4 w-4" />
+													</Button>
+												)}
+												<Button
+													variant="ghost"
+													size="icon-sm"
+													onClick={() => openEditModal(user)}
+												>
+													<Pencil className="h-4 w-4" />
+												</Button>
+											</div>
 										</td>
 									</tr>
 								))}
@@ -178,7 +339,6 @@ export default function UserManagement() {
 						</table>
 					</div>
 
-					{/* Pagination Controls */}
 					{totalCount > 0 && (
 						<div className="flex items-center justify-between border-t px-4 py-3">
 							<div className="text-sm text-muted-foreground">
@@ -188,7 +348,9 @@ export default function UserManagement() {
 							</div>
 							<div className="flex items-center gap-2">
 								<button
-									onClick={() => handlePageChange(Math.max(0, currentPage - 1))}
+									onClick={() =>
+										handlePageChange(Math.max(0, currentPage - 1))
+									}
 									disabled={currentPage === 0 || isLoading}
 									className="inline-flex items-center gap-1 rounded-md border px-3 py-2 text-sm font-medium hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50"
 								>
@@ -196,7 +358,8 @@ export default function UserManagement() {
 									Previous
 								</button>
 								<span className="text-sm">
-									Page {currentPage + 1} of {Math.ceil(totalCount / PAGE_SIZE)}
+									Page {currentPage + 1} of{" "}
+									{Math.ceil(totalCount / PAGE_SIZE)}
 								</span>
 								<button
 									onClick={() => handlePageChange(currentPage + 1)}
@@ -212,12 +375,14 @@ export default function UserManagement() {
 				</CardContent>
 			</Card>
 
-			{/* Modal Overlay */}
+			{/* Edit/Create User Modal */}
 			{isModalOpen && (
 				<div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
 					<Card className="w-full max-w-md">
 						<CardHeader>
-							<CardTitle>{editingUser ? "Edit User" : "Create User"}</CardTitle>
+							<CardTitle>
+								{editingUser ? "Edit User" : "Create User"}
+							</CardTitle>
 						</CardHeader>
 						<CardContent>
 							<form onSubmit={handleSubmit} className="space-y-4">
@@ -251,7 +416,8 @@ export default function UserManagement() {
 								</div>
 								<div className="space-y-2">
 									<Label htmlFor="modal_password">
-										Password {editingUser && "(leave blank to keep current)"}
+										Password{" "}
+										{editingUser && "(leave blank to keep current)"}
 									</Label>
 									<Input
 										id="modal_password"
@@ -281,18 +447,21 @@ export default function UserManagement() {
 										<option value="admin">Admin</option>
 									</select>
 								</div>
-								{formData.role === "student" && (
-									<div className="space-y-2">
-										<Label htmlFor="student_id">Student ID</Label>
-										<Input
-											id="student_id"
-											value={formData.student_id}
-											onChange={(e) =>
-												setFormData({ ...formData, student_id: e.target.value })
-											}
-										/>
-									</div>
-								)}
+								<div className="space-y-2">
+									<Label htmlFor="institutional_id">
+										{idLabel(formData.role)}
+									</Label>
+									<Input
+										id="institutional_id"
+										value={formData.institutional_id}
+										onChange={(e) =>
+											setFormData({
+												...formData,
+												institutional_id: e.target.value,
+											})
+										}
+									/>
+								</div>
 								<div className="flex justify-end gap-2">
 									<Button
 										type="button"
@@ -311,6 +480,68 @@ export default function UserManagement() {
 											"Update"
 										) : (
 											"Create"
+										)}
+									</Button>
+								</div>
+							</form>
+						</CardContent>
+					</Card>
+				</div>
+			)}
+
+			{/* Department Override Modal */}
+			{isDeptModalOpen && (
+				<div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+					<Card className="w-full max-w-md">
+						<CardHeader>
+							<CardTitle>Change Department — {deptOverrideUserName}</CardTitle>
+						</CardHeader>
+						<CardContent>
+							<form onSubmit={handleDeptOverride} className="space-y-4">
+								{deptError && (
+									<div className="rounded-md bg-destructive/10 p-3 text-sm text-destructive">
+										{deptError}
+									</div>
+								)}
+								<div className="space-y-2">
+									<Label htmlFor="dept-select">New Department</Label>
+									<select
+										id="dept-select"
+										className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm"
+										value={selectedDeptId}
+										onChange={(e) => setSelectedDeptId(e.target.value)}
+										required
+									>
+										<option value="" disabled>
+											Select a department
+										</option>
+										{departments.map((dept) => (
+											<option key={dept.id} value={dept.id}>
+												{dept.name}
+											</option>
+										))}
+									</select>
+								</div>
+								<p className="text-xs text-muted-foreground">
+									This will deactivate the student's current rotation and assign them to the
+									selected department. Previous case progress is preserved.
+								</p>
+								<div className="flex justify-end gap-2">
+									<Button
+										type="button"
+										variant="outline"
+										onClick={() => setIsDeptModalOpen(false)}
+									>
+										Cancel
+									</Button>
+									<Button type="submit" disabled={isDeptSubmitting || !selectedDeptId}>
+										{isDeptSubmitting ? (
+											<>
+												<Loader2 className="mr-2 h-4 w-4 animate-spin" />
+												Updating...
+											</>
+										) : (
+											"Change Department"
 										)}
 									</Button>
 								</div>

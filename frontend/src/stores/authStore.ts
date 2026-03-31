@@ -8,7 +8,7 @@ interface AuthState {
 	isInitialized: boolean;
 	isLoading: boolean;
 
-	login: (email: string, password: string) => Promise<void>;
+	login: (identifier: string, password: string) => Promise<void>;
 	logout: () => void;
 	initialize: () => Promise<void>;
 }
@@ -19,10 +19,10 @@ export const useAuthStore = create<AuthState>((set) => ({
 	isInitialized: false,
 	isLoading: false,
 
-	login: async (email: string, password: string) => {
+	login: async (identifier: string, password: string) => {
 		set({ isLoading: true });
 		try {
-			const tokens = await authService.login({ email, password });
+			const tokens = await authService.login({ identifier, password });
 			localStorage.setItem("access_token", tokens.access_token);
 			localStorage.setItem("refresh_token", tokens.refresh_token);
 

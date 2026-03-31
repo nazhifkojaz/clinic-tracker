@@ -1,5 +1,5 @@
 export interface LoginRequest {
-	email: string;
+	identifier: string; // accepts email address or institutional_id
 	password: string;
 }
 

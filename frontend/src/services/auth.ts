@@ -1,5 +1,5 @@
 import type { LoginRequest, TokenResponse } from "@/types/auth";
-import type { User } from "@/types/user";
+import type { User, UserRegisterRequest } from "@/types/user";
 import api from "./api";
 
 export const authService = {
@@ -13,6 +13,22 @@ export const authService = {
 
 	async getMe(): Promise<User> {
 		const { data } = await api.get<User>("/api/users/me");
+		return data;
+	},
+
+	async register(body: UserRegisterRequest): Promise<{ message: string }> {
+		const { data } = await api.post<{ message: string }>(
+			"/api/auth/register",
+			body,
+		);
+		return data;
+	},
+
+	async verifyEmail(token: string): Promise<{ message: string }> {
+		const { data } = await api.get<{ message: string }>(
+			"/api/auth/verify-email",
+			{ params: { token } },
+		);
 		return data;
 	},
 };

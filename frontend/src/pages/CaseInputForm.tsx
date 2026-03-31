@@ -284,7 +284,7 @@ export default function CaseInputForm() {
 					</div>
 					<div>
 						<span className="text-muted-foreground">Student ID: </span>
-						<span className="font-medium">{user?.student_id || "N/A"}</span>
+						<span className="font-medium">{user?.institutional_id || "N/A"}</span>
 					</div>
 					<div>
 						<span className="text-muted-foreground">Email: </span>
