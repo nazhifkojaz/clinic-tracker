@@ -50,3 +50,30 @@ def create_refresh_token(subject: str) -> str:
 def decode_token(token: str) -> dict:
     """Decode and validate a JWT token. Raises JWTError on failure."""
     return jwt.decode(token, settings.SECRET_KEY, algorithms=[ALGORITHM])
+
+
+def create_email_verification_token(user_id: str) -> str:
+    """Create a short-lived JWT for email address verification. Expires in 24 hours."""
+    expire = datetime.now(timezone.utc) + timedelta(hours=24)
+    payload = {
+        "sub": user_id,
+        "type": "email_verify",
+        "exp": expire,
+    }
+    return jwt.encode(payload, settings.SECRET_KEY, algorithm=ALGORITHM)
+
+
+def verify_email_verification_token(token: str) -> str:
+    """Decode email verification token. Returns user_id string.
+
+    Raises:
+        JWTError: If the token is invalid or expired.
+        ValueError: If the token type is wrong or subject is missing.
+    """
+    payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[ALGORITHM])
+    if payload.get("type") != "email_verify":
+        raise ValueError("Invalid token type")
+    user_id = payload.get("sub")
+    if user_id is None:
+        raise ValueError("Missing subject in token")
+    return user_id

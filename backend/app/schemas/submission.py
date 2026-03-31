@@ -57,6 +57,7 @@ class SubmissionResponse(BaseModel):
     review_notes: str | None
     created_at: datetime
     updated_at: datetime
+    deleted_at: datetime | None = None
 
     model_config = {"from_attributes": True}
 
@@ -70,6 +71,7 @@ class SubmissionListResponse(BaseModel):
     department_id: uuid.UUID
     task_category_id: uuid.UUID
     case_count: int
+    proof_key: str
     notes: str | None
     status: SubmissionStatus
     reviewed_by: uuid.UUID | None
@@ -77,6 +79,14 @@ class SubmissionListResponse(BaseModel):
     review_notes: str | None
     created_at: datetime
     updated_at: datetime
+    deleted_at: datetime | None = None
+
+
+class DeletedSubmissionListResponse(SubmissionListResponse):
+    """Submission list entry for the deleted submissions admin page."""
+
+    deleted_by_id: uuid.UUID | None
+    deleted_by_name: str | None
 
 
 class SubmissionWithDetailsResponse(SubmissionResponse):
@@ -93,6 +103,11 @@ class SubmissionReview(BaseModel):
     review_notes: str | None = None
 
 
+class UploadUrlRequest(BaseModel):
+    filename: str = Field(..., min_length=1, max_length=255)
+    content_type: str = Field(..., min_length=1, max_length=100)
+
+
 class UploadUrlResponse(BaseModel):
     upload_url: str
-    key: str
+    object_key: str

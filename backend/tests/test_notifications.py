@@ -24,7 +24,7 @@ async def _create_student(db_session) -> User:
         email=f"student_{_random_suffix()}@test.com",
         password_hash=hash_password("testpass123"),
         full_name="Test Student",
-        student_id=f"TS{_random_suffix()}",
+        institutional_id=f"TS{_random_suffix()}",
         role=UserRole.student,
         is_active=True,
     )

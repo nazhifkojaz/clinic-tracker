@@ -368,7 +368,7 @@ export default function AssignmentManagement() {
 											{students.map((s) => (
 												<option key={s.id} value={s.id}>
 													{s.full_name}
-													{s.student_id ? ` (${s.student_id})` : ""} — {s.email}
+													{s.institutional_id ? ` (${s.institutional_id})` : ""} — {s.email}
 												</option>
 											))}
 										</select>

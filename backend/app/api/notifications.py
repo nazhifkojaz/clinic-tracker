@@ -47,12 +47,13 @@ async def _get_student_names(
 ) -> dict[uuid.UUID, str]:
     """Fetch student names for a list of student IDs."""
     result = await db.execute(
-        select(User.id, User.full_name, User.student_id, User.email).where(
+        select(User.id, User.full_name, User.institutional_id, User.email).where(
             User.id.in_(student_ids), User.role == UserRole.student
         )
     )
     return {
-        row.id: (row.full_name or row.student_id or row.email) for row in result.all()
+        row.id: (row.full_name or row.institutional_id or row.email)
+        for row in result.all()
     }
 
 

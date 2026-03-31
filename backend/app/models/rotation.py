@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, func, text, Index
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, func, text, Index
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -42,6 +42,12 @@ class StudentRotation(Base):
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
     ended_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    days_offset: Mapped[int] = mapped_column(
+        Integer, nullable=False, server_default=text("0")
+    )
+    last_reminder_sent: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
 

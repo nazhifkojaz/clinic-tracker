@@ -4,20 +4,20 @@ import { MemoryRouter } from "react-router-dom";
 import Login from "@/pages/Login";
 
 describe("Login", () => {
-	it("renders email and password fields", () => {
+	it("renders identifier and password fields", () => {
 		render(
 			<MemoryRouter>
 				<Login />
 			</MemoryRouter>,
 		);
-		expect(screen.getByLabelText(/email/i)).toBeInTheDocument();
+		expect(screen.getByLabelText(/email or id/i)).toBeInTheDocument();
 		expect(screen.getByLabelText(/password/i)).toBeInTheDocument();
 		expect(
 			screen.getByRole("button", { name: /sign in/i }),
 		).toBeInTheDocument();
 	});
 
-	it("allows typing in email and password", async () => {
+	it("allows typing in identifier and password", async () => {
 		const user = userEvent.setup();
 		render(
 			<MemoryRouter>
@@ -25,13 +25,13 @@ describe("Login", () => {
 			</MemoryRouter>,
 		);
 
-		const emailInput = screen.getByLabelText(/email/i);
+		const identifierInput = screen.getByLabelText(/email or id/i);
 		const passwordInput = screen.getByLabelText(/password/i);
 
-		await user.type(emailInput, "test@example.com");
+		await user.type(identifierInput, "test@example.com");
 		await user.type(passwordInput, "password123");
 
-		expect(emailInput).toHaveValue("test@example.com");
+		expect(identifierInput).toHaveValue("test@example.com");
 		expect(passwordInput).toHaveValue("password123");
 	});
 });

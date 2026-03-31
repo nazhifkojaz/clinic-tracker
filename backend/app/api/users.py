@@ -26,35 +26,39 @@ async def list_users(
     db: AsyncSession = Depends(get_db),
     role: str | None = Query(None, description="Filter by role"),
     is_active: bool | None = Query(None, description="Filter by active status"),
+    pending_approval: bool | None = Query(
+        None,
+        description="Filter users awaiting admin approval (email verified, not active)",
+    ),
     search: str | None = Query(
-        None, description="Search by name, email, or student ID"
+        None, description="Search by name, email, or institutional ID"
     ),
     limit: int = Query(50, ge=1, le=200, description="Items per page"),
     offset: int = Query(0, ge=0, description="Items to skip"),
 ):
     """List all users with pagination and filters (admin only)."""
-    # Build base query
     query = select(User)
 
-    # Apply filters
-    if role:
-        query = query.where(User.role == role)
-    if is_active is not None:
-        query = query.where(User.is_active == is_active)
+    if pending_approval is True:
+        query = query.where(User.email_verified.is_(True), User.is_active.is_(False))
+    else:
+        if role:
+            query = query.where(User.role == role)
+        if is_active is not None:
+            query = query.where(User.is_active == is_active)
+
     if search:
         query = query.where(
             (User.full_name.ilike(f"%{search}%"))
             | (User.email.ilike(f"%{search}%"))
-            | (User.student_id.ilike(f"%{search}%"))
+            | (User.institutional_id.ilike(f"%{search}%"))
         )
 
-    # Get total count
     count_subquery = query.subquery()
     count_query = select(func.count()).select_from(count_subquery)
     total_result = await db.execute(count_query)
     total = total_result.scalar() or 0
 
-    # Apply pagination and ordering
     query = query.order_by(User.created_at.desc())
     query = query.limit(limit).offset(offset)
     result = await db.execute(query)
@@ -70,17 +74,20 @@ async def create_user(
     admin: User = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
-    """Create a new user (admin only)."""
+    """Create a new user (admin only). Created users are immediately active."""
     user = User(
         email=body.email,
         password_hash=hash_password(body.password),
         full_name=body.full_name,
-        student_id=body.student_id,
+        institutional_id=body.institutional_id,
+        department_id=body.department_id,
         role=body.role,
+        is_active=True,
+        email_verified=True,
     )
     db.add(user)
     try:
-        await db.flush()  # Get server-generated UUID before audit
+        await db.flush()
         await record_audit(
             db,
             user_id=admin.id,
@@ -90,17 +97,17 @@ async def create_user(
             new_values={
                 "email": user.email,
                 "full_name": user.full_name,
-                "student_id": user.student_id,
+                "institutional_id": user.institutional_id,
                 "role": user.role.value,
             },
         )
-        await db.commit()  # Single atomic commit for user + audit
+        await db.commit()
         await db.refresh(user)
     except IntegrityError:
         await db.rollback()
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="A user with this email already exists",
+            detail="A user with this email or institutional ID already exists",
         )
 
     return user
@@ -121,12 +128,12 @@ async def update_user(
             status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
         )
 
-    # Store old values for audit
     old_values = {
         "email": user.email,
         "full_name": user.full_name,
-        "student_id": user.student_id,
+        "institutional_id": user.institutional_id,
         "role": user.role.value if user.role else None,
+        "is_active": user.is_active,
     }
 
     update_data = body.model_dump(exclude_unset=True)
@@ -136,16 +143,16 @@ async def update_user(
     for field, value in update_data.items():
         setattr(user, field, value)
 
-    # New values for audit
     new_values = {
         "email": user.email,
         "full_name": user.full_name,
-        "student_id": user.student_id,
+        "institutional_id": user.institutional_id,
         "role": user.role.value if user.role else None,
+        "is_active": user.is_active,
     }
 
     try:
-        await db.flush()  # Ensure changes are staged
+        await db.flush()
         await record_audit(
             db,
             user_id=admin.id,
@@ -161,7 +168,7 @@ async def update_user(
         await db.rollback()
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="A user with this email already exists",
+            detail="A user with this email or institutional ID already exists",
         )
 
     return user

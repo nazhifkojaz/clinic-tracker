@@ -69,7 +69,7 @@ export default function DepartmentManagement() {
 
 	const openCreateDeptModal = () => {
 		setEditingDepartment(null);
-		setDeptFormData({ name: "", description: "" });
+		setDeptFormData({ name: "", description: "", rotation_duration_days: 30 });
 		setError("");
 		setIsDeptModalOpen(true);
 	};
@@ -79,6 +79,7 @@ export default function DepartmentManagement() {
 		setDeptFormData({
 			name: dept.name,
 			description: dept.description || "",
+			rotation_duration_days: dept.rotation_duration_days ?? 30,
 		});
 		setError("");
 		setIsDeptModalOpen(true);
@@ -239,6 +240,7 @@ export default function DepartmentManagement() {
 									<th className="p-4">Name</th>
 									<th className="p-4">Description</th>
 									<th className="p-4">Categories</th>
+									<th className="p-4">Rotation Duration</th>
 									<th className="p-4">Status</th>
 									<th className="p-4">Actions</th>
 								</tr>
@@ -268,6 +270,9 @@ export default function DepartmentManagement() {
 												<span className="text-sm">
 													{dept.category_count ?? "—"}
 												</span>
+											</td>
+											<td className="p-4 text-muted-foreground">
+												{dept.rotation_duration_days ?? "—"} days
 											</td>
 											<td className="p-4">
 												<span
@@ -301,7 +306,7 @@ export default function DepartmentManagement() {
 										</tr>
 										{expandedDeptId === dept.id && (
 											<tr>
-												<td colSpan={6} className="p-4 bg-muted/30">
+												<td colSpan={7} className="p-4 bg-muted/30">
 													<div className="space-y-3">
 														<div className="flex items-center justify-between">
 															<h3 className="text-sm font-semibold">
@@ -445,6 +450,22 @@ export default function DepartmentManagement() {
 										}
 									/>
 								</div>
+										<div className="space-y-2">
+											<Label htmlFor="rotation_duration">Rotation Duration (days)</Label>
+											<Input
+												id="rotation_duration"
+												type="number"
+												min="1"
+												value={deptFormData.rotation_duration_days ?? 30}
+												onChange={(e) =>
+													setDeptFormData({
+														...deptFormData,
+														rotation_duration_days: parseInt(e.target.value) || 30,
+													})
+												}
+												required
+											/>
+										</div>
 								<div className="flex justify-end gap-2">
 									<Button
 										type="button"

@@ -39,12 +39,14 @@ class TaskCategoryResponse(BaseModel):
 class DepartmentCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=255)
     description: str | None = None
+    rotation_duration_days: int = Field(30, gt=0)
 
 
 class DepartmentUpdate(BaseModel):
     name: str | None = Field(None, min_length=1, max_length=255)
     description: str | None = None
     is_active: bool | None = None
+    rotation_duration_days: int | None = Field(None, gt=0)
 
 
 class DepartmentResponse(BaseModel):
@@ -52,6 +54,7 @@ class DepartmentResponse(BaseModel):
     name: str
     description: str | None
     is_active: bool
+    rotation_duration_days: int
     category_count: int | None = None
     created_at: datetime
     updated_at: datetime

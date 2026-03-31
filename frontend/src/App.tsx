@@ -8,8 +8,11 @@ import { useAuthStore } from "@/stores/authStore";
 
 // Lazy load all route components
 const Login = lazy(() => import("@/pages/Login"));
+const Register = lazy(() => import("@/pages/Register"));
+const VerifyEmail = lazy(() => import("@/pages/VerifyEmail"));
 const DashboardRouter = lazy(() => import("@/pages/DashboardRouter"));
 const CaseInputForm = lazy(() => import("@/pages/CaseInputForm"));
+const RotationTracker = lazy(() => import("@/pages/RotationTracker"));
 const SubmissionHistory = lazy(() => import("@/pages/SubmissionHistory"));
 const SendNotification = lazy(() => import("@/pages/SendNotification"));
 const NotificationHistory = lazy(() => import("@/pages/NotificationHistory"));
@@ -21,6 +24,9 @@ const AssignmentManagement = lazy(
 	() => import("@/pages/admin/AssignmentManagement"),
 );
 const AuditLog = lazy(() => import("@/pages/admin/AuditLog"));
+const DeletedSubmissions = lazy(
+	() => import("@/pages/admin/DeletedSubmissions"),
+);
 const NotFound = lazy(() => import("@/pages/NotFound"));
 
 // Simple loading spinner
@@ -52,10 +58,13 @@ function App() {
 			<Suspense fallback={<LoadingSpinner />}>
 				<Routes>
 					<Route path="/login" element={<Login />} />
+					<Route path="/register" element={<Register />} />
+					<Route path="/verify-email" element={<VerifyEmail />} />
 					<Route element={<ProtectedRoute />}>
 						<Route element={<AppLayout />}>
 							<Route path="/" element={<DashboardRouter />} />
 							<Route path="/cases/new" element={<CaseInputForm />} />
+							<Route path="/rotation-tracker" element={<RotationTracker />} />
 							<Route path="/submissions" element={<SubmissionHistory />} />
 							<Route
 								path="/notifications/send"
@@ -73,6 +82,10 @@ function App() {
 									element={<AssignmentManagement />}
 								/>
 								<Route path="/admin/audit-log" element={<AuditLog />} />
+								<Route
+									path="/admin/deleted-submissions"
+									element={<DeletedSubmissions />}
+								/>
 								<Route
 									path="/admin/settings"
 									element={<div>Settings (coming in Phase 2)</div>}

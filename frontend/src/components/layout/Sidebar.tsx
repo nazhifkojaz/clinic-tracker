@@ -8,6 +8,8 @@ import {
 	ScrollText,
 	Send,
 	Settings,
+	Timer,
+	Trash2,
 	Users,
 	X,
 } from "lucide-react";
@@ -20,6 +22,7 @@ const navItems = {
 	student: [
 		{ to: "/", label: "Dashboard", icon: LayoutDashboard },
 		{ to: "/cases/new", label: "Submit Case", icon: FilePlus },
+		{ to: "/rotation-tracker", label: "Rotation Tracker", icon: Timer },
 		{ to: "/submissions", label: "My Submissions", icon: ClipboardList },
 	],
 	supervisor: [
@@ -37,6 +40,11 @@ const navItems = {
 		{ to: "/admin/departments", label: "Departments", icon: Building2 },
 		{ to: "/admin/assignments", label: "Assignments", icon: Link2 },
 		{ to: "/admin/audit-log", label: "Audit Log", icon: ScrollText },
+		{
+			to: "/admin/deleted-submissions",
+			label: "Deleted Submissions",
+			icon: Trash2,
+		},
 		{ to: "/admin/settings", label: "Settings", icon: Settings },
 	],
 };

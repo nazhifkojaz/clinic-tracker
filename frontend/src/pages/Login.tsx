@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import {
 	Card,
@@ -15,7 +15,7 @@ import { useAuthStore } from "@/stores/authStore";
 export default function Login() {
 	const navigate = useNavigate();
 	const { login, isLoading } = useAuthStore();
-	const [email, setEmail] = useState("");
+	const [identifier, setIdentifier] = useState("");
 	const [password, setPassword] = useState("");
 	const [error, setError] = useState("");
 
@@ -23,10 +23,13 @@ export default function Login() {
 		e.preventDefault();
 		setError("");
 		try {
-			await login(email, password);
+			await login(identifier, password);
 			navigate("/");
-		} catch {
-			setError("Invalid email or password. Please try again.");
+		} catch (err: unknown) {
+			const msg =
+				(err as { response?: { data?: { detail?: string } } })?.response?.data
+					?.detail ?? "Invalid credentials. Please try again.";
+			setError(msg);
 		}
 	};
 
@@ -45,13 +48,13 @@ export default function Login() {
 							</div>
 						)}
 						<div className="space-y-2">
-							<Label htmlFor="email">Email</Label>
+							<Label htmlFor="identifier">Email or ID</Label>
 							<Input
-								id="email"
-								type="email"
-								placeholder="you@example.com"
-								value={email}
-								onChange={(e) => setEmail(e.target.value)}
+								id="identifier"
+								type="text"
+								placeholder="Email or institutional ID"
+								value={identifier}
+								onChange={(e) => setIdentifier(e.target.value)}
 								required
 							/>
 						</div>
@@ -68,6 +71,15 @@ export default function Login() {
 						<Button type="submit" className="w-full" disabled={isLoading}>
 							{isLoading ? "Signing in..." : "Sign in"}
 						</Button>
+						<p className="text-center text-sm text-muted-foreground">
+							Don't have an account?{" "}
+							<Link
+								to="/register"
+								className="font-medium text-primary hover:underline"
+							>
+								Register
+							</Link>
+						</p>
 					</form>
 				</CardContent>
 			</Card>

@@ -2,6 +2,7 @@
 
 import type {
 	DepartmentDashboardData,
+	DepartmentTrackerData,
 	StudentDashboardData,
 	SupervisorDashboardData,
 } from "@/types/dashboard";
@@ -36,6 +37,13 @@ export const dashboardService = {
 	): Promise<DepartmentDashboardData> {
 		const { data } = await api.get<DepartmentDashboardData>(
 			`/api/dashboard/department/${departmentId}`,
+		);
+		return data;
+	},
+
+	async getRotationTracker(): Promise<DepartmentTrackerData> {
+		const { data } = await api.get<DepartmentTrackerData>(
+			"/api/dashboard/tracker",
 		);
 		return data;
 	},

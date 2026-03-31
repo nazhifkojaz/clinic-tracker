@@ -109,3 +109,20 @@ async def send_email(
 def is_mock_mode() -> bool:
     """Check if email is running in mock mode."""
     return _MOCK_MODE
+
+
+async def send_verification_email(
+    to: str, full_name: str, verification_link: str
+) -> dict | None:
+    """Send an email verification link to a newly registered user."""
+    safe_name = sanitize_for_email(full_name)
+    safe_link = sanitize_for_email(verification_link)
+    subject = "Verify your Smart Clinic Tracker account"
+    html_body = f"""
+    <p>Hi {safe_name},</p>
+    <p>Please verify your email address by clicking the link below:</p>
+    <p><a href="{safe_link}">{safe_link}</a></p>
+    <p>This link expires in 24 hours.</p>
+    <p>If you did not create this account, please ignore this email.</p>
+    """
+    return await send_email(to=to, subject=subject, html=html_body)

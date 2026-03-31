@@ -84,9 +84,10 @@ async def _run_setup():
                 "email": "student@test.com",
                 "password_hash": hash_password("testpass123"),
                 "full_name": "Test Student",
-                "student_id": "STU001",
+                "institutional_id": "STU001",
                 "role": UserRole.student,
                 "is_active": True,
+                "email_verified": True,
             },
             {
                 "email": "supervisor@test.com",
@@ -225,9 +226,10 @@ async def inactive_user(db_session: AsyncSession) -> User:
         email=f"inactive_{suffix}@test.com",
         password_hash=hash_password("testpass123"),
         full_name="Inactive User",
-        student_id=f"INACTIVE{suffix}",
+        institutional_id=f"INACTIVE{suffix}",
         role=UserRole.student,
         is_active=False,
+        email_verified=False,
     )
     db_session.add(user)
     await db_session.commit()
@@ -243,9 +245,10 @@ async def fresh_student(db_session: AsyncSession) -> User:
         email=f"fresh_{suffix}@test.com",
         password_hash=hash_password("testpass123"),
         full_name="Fresh Student",
-        student_id=f"FRESH{suffix}",
+        institutional_id=f"FRESH{suffix}",
         role=UserRole.student,
         is_active=True,
+        email_verified=True,
     )
     db_session.add(user)
     await db_session.commit()

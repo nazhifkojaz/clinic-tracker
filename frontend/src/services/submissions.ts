@@ -1,5 +1,6 @@
 import type { PaginatedResponse, PaginationParams } from "@/types/pagination";
 import type {
+	DeletedSubmission,
 	Submission,
 	SubmissionCreate,
 	SubmissionReview,
@@ -54,5 +55,26 @@ export const submissionService = {
 			`/api/submissions/${id}/proof-url`,
 		);
 		return data.url;
+	},
+
+	async delete(id: string): Promise<void> {
+		await api.delete(`/api/submissions/${id}`);
+	},
+
+	async listDeleted(
+		params?: PaginationParams,
+	): Promise<PaginatedResponse<DeletedSubmission>> {
+		const { data } = await api.get<PaginatedResponse<DeletedSubmission>>(
+			"/api/submissions/deleted",
+			{ params },
+		);
+		return data;
+	},
+
+	async restore(id: string): Promise<Submission> {
+		const { data } = await api.post<Submission>(
+			`/api/submissions/${id}/restore`,
+		);
+		return data;
 	},
 };

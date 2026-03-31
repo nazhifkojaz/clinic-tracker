@@ -32,6 +32,7 @@ class Settings(BaseSettings):
     # CORS
     CORS_ORIGINS: list[str] = [
         "http://localhost:5173",  # Vite dev server
+        "http://localhost:5174",  # Vite dev server (alternate)
     ]
 
     # Cloudflare R2 (S3-compatible)
@@ -44,6 +45,9 @@ class Settings(BaseSettings):
     RESEND_API_KEY: str = ""
     EMAIL_FROM: str = "noreply@example.com"
     EMAIL_MOCK_MODE: bool = False  # Explicit flag for dev/test
+
+    # Frontend URL (used for building email verification links)
+    FRONTEND_URL: str = "http://localhost:5173"
 
 
 settings = Settings()

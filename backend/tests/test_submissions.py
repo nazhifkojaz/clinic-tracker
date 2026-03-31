@@ -5,7 +5,12 @@ from sqlalchemy import select
 from app.models.assignment import AssignmentType, SupervisorAssignment
 from app.models.submission import SubmissionStatus
 from tests.conftest import auth_header
-from tests.factories import _random_suffix, create_category, create_department
+from tests.factories import (
+    _random_suffix,
+    create_category,
+    create_department,
+    create_submission,
+)
 
 
 async def test_create_submission(client, student_user, student_token, db_session):
@@ -273,9 +278,10 @@ async def test_supervisor_can_only_see_assigned_students_submissions(
         email=f"test_student_{_random_suffix()}@test.com",
         password_hash=hash_password("testpass123"),
         full_name="Test Student For Supervisor",
-        student_id=f"TS{_random_suffix()}",
+        institutional_id=f"TS{_random_suffix()}",
         role=UserRole.student,
         is_active=True,
+        email_verified=True,
     )
     db_session.add(new_student)
     await db_session.commit()
@@ -516,9 +522,10 @@ async def test_get_submission_by_id_student_own_only(
         email=f"other_student_{_random_suffix()}@test.com",
         password_hash=hash_password("testpass123"),
         full_name="Other Student",
-        student_id=f"OS{_random_suffix()}",
+        institutional_id=f"OS{_random_suffix()}",
         role=UserRole.student,
         is_active=True,
+        email_verified=True,
     )
     db_session.add(other_student)
     await db_session.commit()
@@ -676,8 +683,9 @@ async def test_get_proof_url_empty_returns_404(
 
 async def test_get_upload_url_student_only(client, supervisor_token):
     """Only students can get upload URLs."""
-    response = await client.get(
+    response = await client.post(
         "/api/submissions/upload-url",
+        json={"filename": "proof.jpg", "content_type": "image/jpeg"},
         headers=auth_header(supervisor_token),
     )
     assert response.status_code == 403
@@ -685,25 +693,353 @@ async def test_get_upload_url_student_only(client, supervisor_token):
 
 async def test_get_upload_url_returns_presigned_url(client, student_token):
     """Upload URL endpoint returns a valid presigned URL."""
-    response = await client.get(
+    response = await client.post(
         "/api/submissions/upload-url",
+        json={"filename": "proof.jpg", "content_type": "image/jpeg"},
         headers=auth_header(student_token),
     )
     assert response.status_code == 200
     data = response.json()
     assert "upload_url" in data
-    assert "key" in data
+    assert "object_key" in data
     assert isinstance(data["upload_url"], str)
-    assert isinstance(data["key"], str)
+    assert isinstance(data["object_key"], str)
 
 
 async def test_get_upload_url_includes_unique_key(client, student_token):
     """Upload URL key includes a unique identifier."""
-    response = await client.get(
+    response = await client.post(
         "/api/submissions/upload-url",
+        json={"filename": "proof.jpg", "content_type": "image/jpeg"},
         headers=auth_header(student_token),
     )
     assert response.status_code == 200
     data = response.json()
     # Key should be a string with some length (UUID-based)
-    assert len(data["key"]) > 0
+    assert len(data["object_key"]) > 0
+
+
+# ---------------------------------------------------------------------------
+# Soft-delete and restore tests
+# ---------------------------------------------------------------------------
+
+
+async def test_student_can_delete_own_pending_submission(
+    client, student_user, student_token, db_session
+):
+    """Student can soft-delete their own pending submission."""
+    dept = await create_department(db_session)
+    cat = await create_category(db_session, dept.id)
+    sub = await create_submission(db_session, student_user.id, dept.id, cat.id)
+
+    response = await client.delete(
+        f"/api/submissions/{sub.id}",
+        headers=auth_header(student_token),
+    )
+    assert response.status_code == 204
+
+    # Submission is no longer accessible
+    get_resp = await client.get(
+        f"/api/submissions/{sub.id}",
+        headers=auth_header(student_token),
+    )
+    assert get_resp.status_code == 404
+
+
+async def test_student_cannot_delete_approved_submission(
+    client, student_user, student_token, supervisor_token, db_session
+):
+    """Student cannot delete an already-approved submission."""
+    dept = await create_department(db_session)
+    cat = await create_category(db_session, dept.id)
+
+    create_resp = await client.post(
+        "/api/submissions",
+        json={
+            "department_id": str(dept.id),
+            "task_category_id": str(cat.id),
+            "case_count": 1,
+            "proof_key": "submissions/proof.jpg",
+        },
+        headers=auth_header(student_token),
+    )
+    sub_id = create_resp.json()["id"]
+
+    # Approve it
+    await client.patch(
+        f"/api/submissions/{sub_id}/review",
+        json={"status": "approved"},
+        headers=auth_header(supervisor_token),
+    )
+
+    # Student tries to delete approved submission
+    response = await client.delete(
+        f"/api/submissions/{sub_id}",
+        headers=auth_header(student_token),
+    )
+    assert response.status_code == 400
+
+
+async def test_student_cannot_delete_others_submission(
+    client, student_user, student_token, db_session
+):
+    """Student cannot delete another student's submission."""
+    from app.core.security import hash_password, create_access_token
+    from app.models.user import User, UserRole
+
+    other = User(
+        email=f"del_other_{_random_suffix()}@test.com",
+        password_hash=hash_password("testpass123"),
+        full_name="Other Student",
+        institutional_id=f"DELOTH{_random_suffix()}",
+        role=UserRole.student,
+        is_active=True,
+        email_verified=True,
+    )
+    db_session.add(other)
+    await db_session.commit()
+    await db_session.refresh(other)
+    other_token = create_access_token(subject=str(other.id), role="student")
+
+    dept = await create_department(db_session)
+    cat = await create_category(db_session, dept.id)
+
+    create_resp = await client.post(
+        "/api/submissions",
+        json={
+            "department_id": str(dept.id),
+            "task_category_id": str(cat.id),
+            "case_count": 1,
+            "proof_key": "submissions/proof.jpg",
+        },
+        headers=auth_header(other_token),
+    )
+    sub_id = create_resp.json()["id"]
+
+    # Original student tries to delete other's submission
+    response = await client.delete(
+        f"/api/submissions/{sub_id}",
+        headers=auth_header(student_token),
+    )
+    assert response.status_code == 403
+
+
+async def test_supervisor_can_delete_pending_submission(
+    client, student_user, student_token, supervisor_token, db_session
+):
+    """Supervisor can delete any pending submission."""
+    dept = await create_department(db_session)
+    cat = await create_category(db_session, dept.id)
+
+    create_resp = await client.post(
+        "/api/submissions",
+        json={
+            "department_id": str(dept.id),
+            "task_category_id": str(cat.id),
+            "case_count": 1,
+            "proof_key": "submissions/proof.jpg",
+        },
+        headers=auth_header(student_token),
+    )
+    sub_id = create_resp.json()["id"]
+
+    response = await client.delete(
+        f"/api/submissions/{sub_id}",
+        headers=auth_header(supervisor_token),
+    )
+    assert response.status_code == 204
+
+
+async def test_admin_can_delete_any_pending_submission(
+    client, student_user, student_token, admin_token, db_session
+):
+    """Admin can delete any pending submission."""
+    dept = await create_department(db_session)
+    cat = await create_category(db_session, dept.id)
+
+    create_resp = await client.post(
+        "/api/submissions",
+        json={
+            "department_id": str(dept.id),
+            "task_category_id": str(cat.id),
+            "case_count": 1,
+            "proof_key": "submissions/proof.jpg",
+        },
+        headers=auth_header(student_token),
+    )
+    sub_id = create_resp.json()["id"]
+
+    response = await client.delete(
+        f"/api/submissions/{sub_id}",
+        headers=auth_header(admin_token),
+    )
+    assert response.status_code == 204
+
+
+async def test_deleted_submission_excluded_from_list(
+    client, student_user, student_token, db_session
+):
+    """Soft-deleted submissions do not appear in the normal list."""
+    dept = await create_department(db_session)
+    cat = await create_category(db_session, dept.id)
+    sub = await create_submission(db_session, student_user.id, dept.id, cat.id)
+
+    # Confirm it's visible before delete
+    list_before = await client.get(
+        "/api/submissions", headers=auth_header(student_token)
+    )
+    ids_before = {s["id"] for s in list_before.json()["items"]}
+    assert str(sub.id) in ids_before
+
+    # Delete
+    await client.delete(
+        f"/api/submissions/{sub.id}", headers=auth_header(student_token)
+    )
+
+    # No longer in list
+    list_after = await client.get(
+        "/api/submissions", headers=auth_header(student_token)
+    )
+    ids_after = {s["id"] for s in list_after.json()["items"]}
+    assert str(sub.id) not in ids_after
+
+
+async def test_admin_can_list_deleted_submissions(
+    client, student_user, student_token, admin_token, db_session
+):
+    """Admin can see soft-deleted submissions via /deleted endpoint."""
+    dept = await create_department(db_session)
+    cat = await create_category(db_session, dept.id)
+    sub = await create_submission(db_session, student_user.id, dept.id, cat.id)
+
+    # Delete it as student
+    await client.delete(
+        f"/api/submissions/{sub.id}", headers=auth_header(student_token)
+    )
+
+    response = await client.get(
+        "/api/submissions/deleted", headers=auth_header(admin_token)
+    )
+    assert response.status_code == 200
+    ids = {s["id"] for s in response.json()["items"]}
+    assert str(sub.id) in ids
+
+    # deleted_at should be populated
+    deleted_sub = next(s for s in response.json()["items"] if s["id"] == str(sub.id))
+    assert deleted_sub["deleted_at"] is not None
+
+
+async def test_non_admin_cannot_list_deleted_submissions(
+    client, student_token, supervisor_token
+):
+    """Students and supervisors cannot access /deleted endpoint."""
+    for token in (student_token, supervisor_token):
+        response = await client.get(
+            "/api/submissions/deleted", headers=auth_header(token)
+        )
+        assert response.status_code == 403
+
+
+async def test_admin_can_restore_deleted_submission(
+    client, student_user, student_token, admin_token, db_session
+):
+    """Admin can restore a soft-deleted submission; it reappears in the normal list."""
+    dept = await create_department(db_session)
+    cat = await create_category(db_session, dept.id)
+    sub = await create_submission(db_session, student_user.id, dept.id, cat.id)
+
+    # Delete
+    await client.delete(
+        f"/api/submissions/{sub.id}", headers=auth_header(student_token)
+    )
+
+    # Confirm gone from normal list
+    list_resp = await client.get("/api/submissions", headers=auth_header(admin_token))
+    ids = {s["id"] for s in list_resp.json()["items"]}
+    assert str(sub.id) not in ids
+
+    # Restore
+    restore_resp = await client.post(
+        f"/api/submissions/{sub.id}/restore", headers=auth_header(admin_token)
+    )
+    assert restore_resp.status_code == 200
+    assert restore_resp.json()["deleted_at"] is None
+
+    # Now visible again
+    list_after = await client.get("/api/submissions", headers=auth_header(admin_token))
+    ids_after = {s["id"] for s in list_after.json()["items"]}
+    assert str(sub.id) in ids_after
+
+
+async def test_non_admin_cannot_restore_submission(
+    client, student_user, student_token, supervisor_token, db_session
+):
+    """Supervisor cannot restore a deleted submission."""
+    dept = await create_department(db_session)
+    cat = await create_category(db_session, dept.id)
+    sub = await create_submission(db_session, student_user.id, dept.id, cat.id)
+
+    await client.delete(
+        f"/api/submissions/{sub.id}", headers=auth_header(student_token)
+    )
+
+    response = await client.post(
+        f"/api/submissions/{sub.id}/restore", headers=auth_header(supervisor_token)
+    )
+    assert response.status_code == 403
+
+
+async def test_delete_creates_audit_log(
+    client, student_user, student_token, db_session
+):
+    """Soft-deleting a submission creates an audit log entry with action='delete'."""
+    from app.models.audit_log import AuditLog
+
+    dept = await create_department(db_session)
+    cat = await create_category(db_session, dept.id)
+    sub = await create_submission(db_session, student_user.id, dept.id, cat.id)
+
+    await client.delete(
+        f"/api/submissions/{sub.id}", headers=auth_header(student_token)
+    )
+
+    result = await db_session.execute(
+        select(AuditLog).where(
+            AuditLog.table_name == "case_submissions",
+            AuditLog.record_id == sub.id,
+            AuditLog.action == "delete",
+        )
+    )
+    entry = result.scalar_one_or_none()
+    assert entry is not None
+    assert entry.user_id == student_user.id
+
+
+async def test_restore_creates_audit_log(
+    client, student_user, student_token, admin_user, admin_token, db_session
+):
+    """Restoring a submission creates an audit log entry with action='update'."""
+    from app.models.audit_log import AuditLog
+
+    dept = await create_department(db_session)
+    cat = await create_category(db_session, dept.id)
+    sub = await create_submission(db_session, student_user.id, dept.id, cat.id)
+
+    await client.delete(
+        f"/api/submissions/{sub.id}", headers=auth_header(student_token)
+    )
+    await client.post(
+        f"/api/submissions/{sub.id}/restore", headers=auth_header(admin_token)
+    )
+
+    result = await db_session.execute(
+        select(AuditLog).where(
+            AuditLog.table_name == "case_submissions",
+            AuditLog.record_id == sub.id,
+            AuditLog.action == "update",
+        )
+    )
+    entries = result.scalars().all()
+    # At least one update entry from restore (there may also be a review update)
+    restore_entries = [e for e in entries if e.user_id == admin_user.id]
+    assert len(restore_entries) >= 1

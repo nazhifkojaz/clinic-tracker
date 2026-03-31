@@ -24,6 +24,11 @@ from app.middleware import LimitRequestSizeMiddleware
 
 logger = logging.getLogger(__name__)
 
+# Lazy scheduler import to avoid crash if apscheduler is not installed
+_scheduler = None
+
+logger = logging.getLogger(__name__)
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -48,10 +53,25 @@ async def lifespan(app: FastAPI):
         logger.error("Database connection failed during startup: %s", e)
         raise
 
+    # Start APScheduler for rotation reminders
+    try:
+        from app.core.scheduler import create_scheduler
+
+        _scheduler = create_scheduler()
+        _scheduler.start()
+        logger.info("APScheduler started (rotation reminders at 05:00 UTC)")
+    except Exception as e:
+        logger.warning("APScheduler could not be started: %s", e)
+
     yield
 
     # Shutdown
     logger.info("Shutting down %s...", settings.APP_NAME)
+
+    # Stop scheduler
+    if _scheduler:
+        _scheduler.shutdown(wait=False)
+        logger.info("APScheduler stopped")
 
     # Dispose database connections
     await engine.dispose()

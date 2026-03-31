@@ -42,6 +42,7 @@ export interface StudentDashboardData {
 	departments: DepartmentProgress[];
 	recent_submissions: RecentSubmission[];
 	progress_over_time: ProgressDataPoint[];
+	show_rotation_warning: boolean;
 }
 
 export type StudentStatus = "on_track" | "at_risk" | "behind";
@@ -81,4 +82,30 @@ export interface DepartmentDashboardData {
 	total_students: number;
 	average_completion: number;
 	students: DepartmentStudentProgress[];
+}
+
+// --- Rotation Tracker Types ---
+
+export type CaseStatusColor = "red" | "yellow" | "green";
+
+export interface DepartmentTrackerEntry {
+	department_id: string;
+	department_name: string;
+	is_current: boolean;
+	total_required: number;
+	total_completed: number;
+	total_pending: number;
+	case_completion_percentage: number;
+	case_status_color: CaseStatusColor;
+	rotation_duration_days: number;
+	days_active: number;
+	time_completion_percentage: number;
+	started_at: string | null;
+	rotation_id: string | null;
+}
+
+export interface DepartmentTrackerData {
+	current_department_id: string | null;
+	entries: DepartmentTrackerEntry[];
+	show_warning: boolean;
 }

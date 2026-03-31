@@ -7,6 +7,7 @@ export const userService = {
 		params?: PaginationParams & {
 			role?: string;
 			is_active?: boolean;
+			pending_approval?: boolean;
 			search?: string;
 		},
 	): Promise<PaginatedResponse<User>> {
