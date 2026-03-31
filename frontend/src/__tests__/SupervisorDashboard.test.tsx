@@ -24,7 +24,13 @@ vi.mock("@/services/dashboard", () => ({
 				on_track_count: 1,
 				at_risk_count: 0,
 				behind_count: 0,
-				students: mockStudents,
+				students: {
+					items: mockStudents,
+					total: 1,
+					limit: 50,
+					offset: 0,
+					has_more: false,
+				},
 			}),
 		),
 		getStudentDashboardById: vi.fn(() =>
