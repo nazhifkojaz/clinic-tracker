@@ -1,38 +1,50 @@
 """
-Email utility for sending notifications via Resend.
+Email utility for sending notifications via Gmail SMTP.
 
-In local development (when RESEND_API_KEY is not configured),
+In local development (when GMAIL_USER/GMAIL_APP_PASSWORD are not configured),
 this module runs in MOCK mode and logs emails instead of sending.
 
-SETUP GUIDE FOR RESEND:
-1. Create a Resend account: https://resend.com/
-2. Get your API key from https://resend.com/api-keys
-3. Verify your sending domain
-4. Add these to your .env file:
-   RESEND_API_KEY=re_xxxxxxxxxxxxx
-   EMAIL_FROM=your-name@yourdomain.com
+SETUP GUIDE FOR GMAIL SMTP:
+1. Go to https://myaccount.google.com/security
+2. Enable 2-Step Verification (required for App Passwords)
+3. Go to https://myaccount.google.com/apppasswords
+4. Create a new App Password (select "Mail" → "Other", name it "Smart Clinic Tracker")
+5. Copy the 16-character password
+6. Add these to your .env file:
+   GMAIL_USER=yourname@gmail.com
+   GMAIL_APP_PASSWORD=xxxx xxxx xxxx xxxx
+   EMAIL_MOCK_MODE=False
 
-5. The resend package is already in dependencies.
+Free tier: 500 emails/day via Gmail SMTP.
 """
 
+import asyncio
 import html
 import logging
+import smtplib
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
 
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
+
+_SMTP_SERVER = "smtp.gmail.com"
+_SMTP_PORT = 587
 
 
 def _validate_email_config() -> None:
     """Validate email configuration on module load.
 
     Raises:
-        RuntimeError: If non-mock mode is enabled but RESEND_API_KEY is missing.
+        RuntimeError: If non-mock mode is enabled but Gmail credentials are missing.
     """
-    if not settings.EMAIL_MOCK_MODE and not settings.RESEND_API_KEY:
+    if not settings.EMAIL_MOCK_MODE and (
+        not settings.GMAIL_USER or not settings.GMAIL_APP_PASSWORD
+    ):
         raise RuntimeError(
-            "RESEND_API_KEY is required when EMAIL_MOCK_MODE=False. "
-            "Either set RESEND_API_KEY or enable EMAIL_MOCK_MODE for development."
+            "GMAIL_USER and GMAIL_APP_PASSWORD are required when EMAIL_MOCK_MODE=False. "
+            "Either set Gmail credentials or enable EMAIL_MOCK_MODE for development."
         )
 
 
@@ -41,16 +53,11 @@ _validate_email_config()
 # Mock mode is now explicitly configured
 _MOCK_MODE = settings.EMAIL_MOCK_MODE
 
-# Initialize resend client only if not in mock mode
-_resend_client = None
-
-if not _MOCK_MODE:
-    if not settings.RESEND_API_KEY:
-        raise RuntimeError("RESEND_API_KEY is required in non-mock mode")
-    import resend
-
-    resend.api_key = settings.RESEND_API_KEY
-    _resend_client = resend
+# Resolve EMAIL_FROM: use GMAIL_USER if EMAIL_FROM is still the default
+if settings.EMAIL_FROM == "noreply@example.com" and settings.GMAIL_USER:
+    _EMAIL_FROM = settings.GMAIL_USER
+else:
+    _EMAIL_FROM = settings.EMAIL_FROM
 
 
 def sanitize_for_email(content: str) -> str:
@@ -65,12 +72,26 @@ def sanitize_for_email(content: str) -> str:
     return html.escape(content)
 
 
+def _send_smtp(to: list[str], subject: str, html_body: str) -> None:
+    """Synchronous SMTP send — called via asyncio.to_thread."""
+    msg = MIMEMultipart("alternative")
+    msg["From"] = _EMAIL_FROM
+    msg["To"] = ", ".join(to)
+    msg["Subject"] = subject
+    msg.attach(MIMEText(html_body, "html", "utf-8"))
+
+    with smtplib.SMTP(_SMTP_SERVER, _SMTP_PORT) as server:
+        server.starttls()
+        server.login(settings.GMAIL_USER, settings.GMAIL_APP_PASSWORD)
+        server.sendmail(_EMAIL_FROM, to, msg.as_string())
+
+
 async def send_email(
     to: str | list[str],
     subject: str,
     html: str,
 ) -> dict | None:
-    """Send an email via Resend.
+    """Send an email via Gmail SMTP.
 
     Args:
         to: Recipient email address or list of addresses
@@ -78,11 +99,11 @@ async def send_email(
         html: Email body as HTML
 
     Returns:
-        The Resend API response dict, or None if in mock mode.
+        None (Gmail SMTP doesn't return a tracking ID like Resend).
 
     Mock mode (local dev):
         Logs the email details instead of sending.
-        Use this for development without a Resend account.
+        Use this for development without Gmail credentials.
     """
     if _MOCK_MODE:
         logger.info("Email sent in mock mode (not actually sent)")
@@ -90,20 +111,14 @@ async def send_email(
 
     recipients = to if isinstance(to, list) else [to]
 
-    params = {
-        "from": settings.EMAIL_FROM,
-        "to": recipients,
-        "subject": subject,
-        "html": html,
-    }
-
     try:
-        response = _resend_client.Emails.send(params)
+        await asyncio.to_thread(_send_smtp, recipients, subject, html)
         logger.info(f"Email sent to {len(recipients)} recipient(s)")
-        return response
     except Exception as e:
         logger.error(f"Failed to send email to {len(recipients)} recipient(s): {e}")
         raise
+
+    return None
 
 
 def is_mock_mode() -> bool:

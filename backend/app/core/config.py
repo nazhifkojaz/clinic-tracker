@@ -43,9 +43,10 @@ class Settings(BaseSettings):
     R2_SECRET_ACCESS_KEY: str = ""
     R2_BUCKET_NAME: str = "clinic-tracker"
 
-    # Resend (email)
-    RESEND_API_KEY: str = ""
-    EMAIL_FROM: str = "noreply@example.com"
+    # Gmail SMTP (email)
+    GMAIL_USER: str = ""  # Your Gmail address (e.g. yourname@gmail.com)
+    GMAIL_APP_PASSWORD: str = ""  # 16-char App Password from Google
+    EMAIL_FROM: str = "noreply@example.com"  # Defaults to GMAIL_USER if not set
     EMAIL_MOCK_MODE: bool = False  # Explicit flag for dev/test
 
     # Frontend URL (used for building email verification links)
