@@ -80,10 +80,12 @@ def _send_smtp(to: list[str], subject: str, html_body: str) -> None:
     msg["Subject"] = subject
     msg.attach(MIMEText(html_body, "html", "utf-8"))
 
-    with smtplib.SMTP(_SMTP_SERVER, _SMTP_PORT) as server:
+    with smtplib.SMTP(_SMTP_SERVER, _SMTP_PORT, timeout=30) as server:
         server.starttls()
         server.login(settings.GMAIL_USER, settings.GMAIL_APP_PASSWORD)
-        server.sendmail(_EMAIL_FROM, to, msg.as_string())
+        refused = server.sendmail(_EMAIL_FROM, to, msg.as_string())
+        if refused:
+            raise smtplib.SMTPRecipientsRefused(refused)
 
 
 async def send_email(

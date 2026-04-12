@@ -424,7 +424,9 @@ async def get_supervisor_dashboard(
         ).where(User.id.in_(student_ids), User.is_active.is_(True))
 
     # Apply pagination
-    students_query = students_query.order_by(User.full_name).limit(limit).offset(offset)
+    students_query = (
+        students_query.order_by(User.full_name, User.id).limit(limit).offset(offset)
+    )
     students_result = await db.execute(students_query)
     students = students_result.all()
 

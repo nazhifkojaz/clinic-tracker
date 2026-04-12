@@ -150,12 +150,13 @@ class TestSendSmtp:
     def test_smtp_flow(self, mock_smtp_cls):
         """_send_smtp should connect, start TLS, login, and send."""
         mock_server = MagicMock()
+        mock_server.sendmail.return_value = {}  # Empty dict = all recipients accepted
         mock_smtp_cls.return_value.__enter__ = MagicMock(return_value=mock_server)
         mock_smtp_cls.return_value.__exit__ = MagicMock(return_value=False)
 
         _send_smtp(["to@example.com"], "Subject", "<p>Body</p>")
 
-        mock_smtp_cls.assert_called_once_with("smtp.gmail.com", 587)
+        mock_smtp_cls.assert_called_once_with("smtp.gmail.com", 587, timeout=30)
         mock_server.starttls.assert_called_once()
         mock_server.login.assert_called_once()
         mock_server.sendmail.assert_called_once()
@@ -164,3 +165,14 @@ class TestSendSmtp:
         assert "Subject: Subject" in sent_message
         assert "to@example.com" in sent_message
         assert "text/html" in sent_message  # HTML MIME part present
+
+    @patch("app.utils.email.smtplib.SMTP")
+    def test_smtp_raises_on_refused_recipients(self, mock_smtp_cls):
+        """_send_smtp should raise SMTPRecipientsRefused when recipients are rejected."""
+        mock_server = MagicMock()
+        mock_server.sendmail.return_value = {"refused@example.com": (550, b"Rejected")}
+        mock_smtp_cls.return_value.__enter__ = MagicMock(return_value=mock_server)
+        mock_smtp_cls.return_value.__exit__ = MagicMock(return_value=False)
+
+        with pytest.raises(Exception):
+            _send_smtp(["refused@example.com"], "Subject", "<p>Body</p>")
