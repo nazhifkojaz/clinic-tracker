@@ -65,7 +65,11 @@ _created_users = {}
 
 async def _run_setup():
     """Create schema and seed base test users. Runs once per session via asyncio.run()."""
+    from sqlalchemy import text
+
     async with test_engine.begin() as conn:
+        # Enable pg_trgm extension for trigram indexes (PERF-04)
+        await conn.execute(text("CREATE EXTENSION IF NOT EXISTS pg_trgm"))
         await conn.run_sync(Base.metadata.create_all)
 
     async with TestSessionLocal() as session:

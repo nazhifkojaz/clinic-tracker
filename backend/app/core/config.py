@@ -18,9 +18,11 @@ class Settings(BaseSettings):
     DATABASE_SSL: bool = (
         True  # Default to secure for production, set false for local dev
     )
-    # Connection pool settings (small for auto-sleep compatibility on fly.io/Neon free tier)
-    DATABASE_POOL_SIZE: int = 2  # Small pool to minimize stale connections
-    DATABASE_MAX_OVERFLOW: int = 1  # Allow brief bursts
+    # Connection pool settings (configurable via environment for different deployment scenarios)
+    # For production: Use larger pools for better concurrency
+    # For free-tier: Override with smaller values to minimize stale connections
+    DATABASE_POOL_SIZE: int = 5  # Increased for moderate concurrent load
+    DATABASE_MAX_OVERFLOW: int = 10  # Allow bursts up to 15 total connections
     DATABASE_POOL_RECYCLE: int = 300  # Recycle after 5 min (before sleep timeout)
     DATABASE_POOL_TIMEOUT: int = 30
 
@@ -41,9 +43,10 @@ class Settings(BaseSettings):
     R2_SECRET_ACCESS_KEY: str = ""
     R2_BUCKET_NAME: str = "clinic-tracker"
 
-    # Resend (email)
-    RESEND_API_KEY: str = ""
-    EMAIL_FROM: str = "noreply@example.com"
+    # Gmail SMTP (email)
+    GMAIL_USER: str = ""  # Your Gmail address (e.g. yourname@gmail.com)
+    GMAIL_APP_PASSWORD: str = ""  # 16-char App Password from Google
+    EMAIL_FROM: str = "noreply@example.com"  # Defaults to GMAIL_USER if not set
     EMAIL_MOCK_MODE: bool = False  # Explicit flag for dev/test
 
     # Frontend URL (used for building email verification links)

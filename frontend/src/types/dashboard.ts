@@ -1,5 +1,7 @@
 // frontend/src/types/dashboard.ts
 
+import type { PaginatedResponse } from "./pagination";
+
 export interface CategoryProgress {
 	category_id: string;
 	category_name: string;
@@ -64,7 +66,7 @@ export interface SupervisorDashboardData {
 	on_track_count: number;
 	at_risk_count: number;
 	behind_count: number;
-	students: StudentSummary[];
+	students: PaginatedResponse<StudentSummary>;
 }
 
 export interface DepartmentStudentProgress {

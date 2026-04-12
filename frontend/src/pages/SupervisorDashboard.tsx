@@ -94,7 +94,7 @@ export default function SupervisorDashboard() {
 	// Filter students with memoization (must be before early returns to satisfy Rules of Hooks)
 	const filteredStudents = useMemo(() => {
 		if (!data) return [];
-		return data.students.filter((s: StudentSummary) => {
+		return data.students.items.filter((s: StudentSummary) => {
 			const matchesSearch =
 				s.student_name.toLowerCase().includes(search.toLowerCase()) ||
 				s.student_email.toLowerCase().includes(search.toLowerCase()) ||
