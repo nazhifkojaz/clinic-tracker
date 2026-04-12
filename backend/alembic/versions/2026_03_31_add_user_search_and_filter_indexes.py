@@ -15,7 +15,6 @@ performance audit by adding indexes to optimize:
 from typing import Sequence, Union
 
 from alembic import op
-from sqlalchemy import text
 
 
 # revision identifiers, used by Alembic.
@@ -41,8 +40,7 @@ def upgrade() -> None:
         "USING gin (full_name gin_trgm_ops)"
     )
     op.execute(
-        "CREATE INDEX ix_users_email_trgm ON users "
-        "USING gin (email gin_trgm_ops)"
+        "CREATE INDEX ix_users_email_trgm ON users USING gin (email gin_trgm_ops)"
     )
     op.execute(
         "CREATE INDEX ix_users_institutional_id_trgm ON users "

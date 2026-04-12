@@ -58,9 +58,24 @@ class User(Base):
         # PERF-03: Composite index for dashboard queries filtering both columns
         Index("ix_users_role_is_active", "role", "is_active"),
         # PERF-04: Trigram indexes for search (requires pg_trgm extension)
-        Index("ix_users_full_name_trgm", "full_name", postgresql_using="gin", postgresql_ops={"full_name": "gin_trgm_ops"}),
-        Index("ix_users_email_trgm", "email", postgresql_using="gin", postgresql_ops={"email": "gin_trgm_ops"}),
-        Index("ix_users_institutional_id_trgm", "institutional_id", postgresql_using="gin", postgresql_ops={"institutional_id": "gin_trgm_ops"}),
+        Index(
+            "ix_users_full_name_trgm",
+            "full_name",
+            postgresql_using="gin",
+            postgresql_ops={"full_name": "gin_trgm_ops"},
+        ),
+        Index(
+            "ix_users_email_trgm",
+            "email",
+            postgresql_using="gin",
+            postgresql_ops={"email": "gin_trgm_ops"},
+        ),
+        Index(
+            "ix_users_institutional_id_trgm",
+            "institutional_id",
+            postgresql_using="gin",
+            postgresql_ops={"institutional_id": "gin_trgm_ops"},
+        ),
     )
 
 

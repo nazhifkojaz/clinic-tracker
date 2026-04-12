@@ -18,7 +18,6 @@ Benefits:
 from typing import Sequence, Union
 
 from alembic import op
-from sqlalchemy import text
 
 
 # revision identifiers, used by Alembic.

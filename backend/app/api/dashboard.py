@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import case, func, select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.dependencies import require_student, require_supervisor
@@ -177,7 +177,8 @@ async def _build_student_dashboard(
             for cat in dept_categories.get(current_rotation.department_id, [])
         )
         current_dept_required = sum(
-            cat.required_count for cat in dept_categories.get(current_rotation.department_id, [])
+            cat.required_count
+            for cat in dept_categories.get(current_rotation.department_id, [])
         )
         if current_dept_required > 0:
             case_pct = (current_dept_approved / current_dept_required) * 100

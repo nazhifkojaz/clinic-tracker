@@ -622,9 +622,7 @@ async def test_supervisor_dashboard_pagination_structure(
 
     # Verify status counts are computed from ALL students
     assert data["total_students"] == 60
-    assert (
-        data["on_track_count"] + data["at_risk_count"] + data["behind_count"] == 60
-    )
+    assert data["on_track_count"] + data["at_risk_count"] + data["behind_count"] == 60
 
 
 async def test_supervisor_dashboard_status_counts_accuracy(

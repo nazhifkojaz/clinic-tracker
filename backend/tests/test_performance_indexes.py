@@ -69,7 +69,9 @@ async def test_user_trigram_indexes_exist(db_session):
     index_names = [row[0] for row in result.fetchall()]
     assert "ix_users_full_name_trgm" in index_names, "ix_users_full_name_trgm not found"
     assert "ix_users_email_trgm" in index_names, "ix_users_email_trgm not found"
-    assert "ix_users_institutional_id_trgm" in index_names, "ix_users_institutional_id_trgm not found"
+    assert "ix_users_institutional_id_trgm" in index_names, (
+        "ix_users_institutional_id_trgm not found"
+    )
 
 
 @pytest.mark.asyncio
@@ -121,18 +123,19 @@ async def test_all_performance_indexes_present(db_session):
     found_indexes = [row[0] for row in result.fetchall()]
 
     expected_indexes = [
-        'ix_users_role',
-        'ix_users_is_active',
-        'ix_users_role_is_active',
-        'ix_users_full_name_trgm',
-        'ix_users_email_trgm',
-        'ix_users_institutional_id_trgm',
-        'ix_task_categories_dept_is_active',
-        'ix_departments_is_active',
+        "ix_users_role",
+        "ix_users_is_active",
+        "ix_users_role_is_active",
+        "ix_users_full_name_trgm",
+        "ix_users_email_trgm",
+        "ix_users_institutional_id_trgm",
+        "ix_task_categories_dept_is_active",
+        "ix_departments_is_active",
     ]
 
     for expected in expected_indexes:
         assert expected in found_indexes, f"Expected index {expected} not found"
 
-    assert len(found_indexes) == len(expected_indexes), \
+    assert len(found_indexes) == len(expected_indexes), (
         f"Expected {len(expected_indexes)} indexes, found {len(found_indexes)}"
+    )

@@ -32,26 +32,47 @@ class TestSanitizeForEmail:
 
 
 class TestMockMode:
-    """Verify mock mode behavior (tests always run in mock mode via conftest)."""
+    """Verify mock mode behavior — send_email returns None when in mock mode."""
 
     @pytest.mark.asyncio
     async def test_send_email_returns_none_in_mock_mode(self):
-        result = await send_email(
-            to="test@example.com", subject="Test", html="<p>Hello</p>"
-        )
-        assert result is None
+        import app.utils.email as email_module
 
-    def test_is_mock_mode_true_in_tests(self):
-        assert is_mock_mode() is True
+        original = email_module._MOCK_MODE
+        email_module._MOCK_MODE = True
+        try:
+            result = await send_email(
+                to="test@example.com", subject="Test", html="<p>Hello</p>"
+            )
+            assert result is None
+        finally:
+            email_module._MOCK_MODE = original
+
+    def test_is_mock_mode_reflects_module_state(self):
+        import app.utils.email as email_module
+
+        original = email_module._MOCK_MODE
+        email_module._MOCK_MODE = True
+        try:
+            assert is_mock_mode() is True
+        finally:
+            email_module._MOCK_MODE = original
 
     @pytest.mark.asyncio
     async def test_send_verification_email_returns_none_in_mock_mode(self):
-        result = await send_verification_email(
-            to="test@example.com",
-            full_name="Test User",
-            verification_link="http://localhost/verify?token=abc",
-        )
-        assert result is None
+        import app.utils.email as email_module
+
+        original = email_module._MOCK_MODE
+        email_module._MOCK_MODE = True
+        try:
+            result = await send_verification_email(
+                to="test@example.com",
+                full_name="Test User",
+                verification_link="http://localhost/verify?token=abc",
+            )
+            assert result is None
+        finally:
+            email_module._MOCK_MODE = original
 
 
 @patch("app.utils.email._send_smtp")
