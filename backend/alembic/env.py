@@ -12,7 +12,9 @@ from app.core.database import Base
 from app.models.assignment import SupervisorAssignment  # noqa: F401
 from app.models.audit_log import AuditLog  # noqa: F401
 from app.models.department import Department, TaskCategory  # noqa: F401
+from app.models.invite_code import InviteCode  # noqa: F401
 from app.models.notification import Notification  # noqa: F401
+from app.models.pending_profile_change import PendingProfileChange  # noqa: F401
 from app.models.rotation import StudentRotation  # noqa: F401
 from app.models.submission import CaseSubmission  # noqa: F401
 from app.models.user import User  # noqa: F401
