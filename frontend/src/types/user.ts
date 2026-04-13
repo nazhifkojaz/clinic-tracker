@@ -39,4 +39,35 @@ export interface UserRegisterRequest {
 	role: UserRole;
 	institutional_id: string;
 	department_id?: string | null;
+	invite_code?: string;
+}
+
+export type PendingChangeStatus = "pending" | "approved" | "rejected";
+
+export interface PendingChange {
+	id: string;
+	user_id: string;
+	field_name: string;
+	old_value: string | null;
+	new_value: string | null;
+	status: PendingChangeStatus;
+	reviewed_by: string | null;
+	reviewed_at: string | null;
+	created_at: string;
+}
+
+export interface PendingChangeWithUser extends PendingChange {
+	user_name: string;
+	user_email: string;
+}
+
+export interface ChangePasswordRequest {
+	current_password: string;
+	new_password: string;
+}
+
+export interface ProfileUpdateRequest {
+	full_name?: string;
+	institutional_id?: string | null;
+	department_id?: string | null;
 }
