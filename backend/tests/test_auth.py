@@ -315,19 +315,23 @@ async def test_register_duplicate_email(client, db_session):
     assert response.status_code == 409
 
 
-async def test_register_admin_role_rejected(client):
-    """Attempting to self-register as admin should return 422 (schema validation)."""
+async def test_register_admin_without_invite_code(client):
+    """Admin registration without invite code should return 400."""
+    from tests.factories import _random_suffix
+
+    suffix = _random_suffix()
     response = await client.post(
         "/api/auth/register",
         json={
-            "email": "adminattempt@test.com",
+            "email": f"adminattempt_{suffix}@test.com",
             "password": "securepass123",
             "full_name": "Bad Actor",
             "role": "admin",
-            "institutional_id": "BADACTOR",
+            "institutional_id": f"BADACTOR{suffix}",
         },
     )
-    assert response.status_code == 422
+    assert response.status_code == 400
+    assert "invite code" in response.json()["detail"].lower()
 
 
 async def test_verify_email_success(client, db_session):
