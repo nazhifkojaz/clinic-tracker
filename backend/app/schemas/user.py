@@ -4,6 +4,7 @@ from typing import Literal
 
 from pydantic import BaseModel, EmailStr, Field
 
+from app.models.pending_profile_change import PendingChangeStatus
 from app.models.user import UserRole
 
 
@@ -45,6 +46,46 @@ class UserRegisterRequest(BaseModel):
     email: EmailStr
     password: str = Field(..., min_length=8, max_length=100)
     full_name: str = Field(..., min_length=1, max_length=200)
-    role: Literal[UserRole.student, UserRole.supervisor]  # admin cannot self-register
+    role: Literal[UserRole.student, UserRole.supervisor, UserRole.admin]
     institutional_id: str = Field(..., min_length=1, max_length=50)
     department_id: uuid.UUID | None = None
+    invite_code: str | None = Field(None, description="Required when role is admin")
+
+
+class ChangePasswordRequest(BaseModel):
+    current_password: str = Field(..., min_length=1)
+    new_password: str = Field(..., min_length=8, max_length=100)
+
+
+class ProfileUpdateRequest(BaseModel):
+    full_name: str | None = Field(None, max_length=200)
+    institutional_id: str | None = Field(None, max_length=50)
+    department_id: uuid.UUID | None = None
+
+
+class PendingChangeResponse(BaseModel):
+    id: uuid.UUID
+    user_id: uuid.UUID
+    field_name: str
+    old_value: str | None
+    new_value: str | None
+    status: PendingChangeStatus
+    reviewed_by: uuid.UUID | None = None
+    reviewed_at: datetime | None = None
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class PendingChangeWithUserResponse(BaseModel):
+    id: uuid.UUID
+    user_id: uuid.UUID
+    user_name: str
+    user_email: str
+    field_name: str
+    old_value: str | None
+    new_value: str | None
+    status: PendingChangeStatus
+    reviewed_by: uuid.UUID | None = None
+    reviewed_at: datetime | None = None
+    created_at: datetime
