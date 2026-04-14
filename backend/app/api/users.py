@@ -80,16 +80,23 @@ async def update_own_profile(
     if user.role == UserRole.admin:
         for field, value in update_data.items():
             setattr(user, field, value)
-        await db.flush()
-        await record_audit(
-            db,
-            user_id=user.id,
-            action="self_update",
-            table_name="users",
-            record_id=user.id,
-            new_values=update_data,
-        )
-        await db.commit()
+        try:
+            await db.flush()
+            await record_audit(
+                db,
+                user_id=user.id,
+                action="self_update",
+                table_name="users",
+                record_id=user.id,
+                new_values=update_data,
+            )
+            await db.commit()
+        except IntegrityError:
+            await db.rollback()
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="institutional_id already in use",
+            )
         await db.refresh(user)
         return user
 
@@ -219,7 +226,12 @@ async def approve_pending_change(
     db: AsyncSession = Depends(get_db),
 ):
     """Approve a pending profile change and apply it to the user."""
-    change = await db.get(PendingProfileChange, change_id)
+    result = await db.execute(
+        select(PendingProfileChange)
+        .where(PendingProfileChange.id == change_id)
+        .with_for_update()
+    )
+    change = result.scalar_one_or_none()
     if change is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Change request not found"
@@ -255,17 +267,24 @@ async def approve_pending_change(
     change.reviewed_by = admin.id
     change.reviewed_at = datetime.now(timezone.utc)
 
-    await db.flush()
-    await record_audit(
-        db,
-        user_id=admin.id,
-        action="approve_profile_change",
-        table_name="pending_profile_changes",
-        record_id=change.id,
-        old_values={"field": change.field_name, "old_value": change.old_value},
-        new_values={"field": change.field_name, "new_value": change.new_value},
-    )
-    await db.commit()
+    try:
+        await db.flush()
+        await record_audit(
+            db,
+            user_id=admin.id,
+            action="approve_profile_change",
+            table_name="pending_profile_changes",
+            record_id=change.id,
+            old_values={"field": change.field_name, "old_value": change.old_value},
+            new_values={"field": change.field_name, "new_value": change.new_value},
+        )
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Could not apply change: value already in use by another user",
+        )
 
 
 @router.post(
@@ -277,7 +296,12 @@ async def reject_pending_change(
     db: AsyncSession = Depends(get_db),
 ):
     """Reject a pending profile change."""
-    change = await db.get(PendingProfileChange, change_id)
+    result = await db.execute(
+        select(PendingProfileChange)
+        .where(PendingProfileChange.id == change_id)
+        .with_for_update()
+    )
+    change = result.scalar_one_or_none()
     if change is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Change request not found"
