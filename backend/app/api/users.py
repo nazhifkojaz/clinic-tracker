@@ -46,12 +46,12 @@ async def change_password(
     db: AsyncSession = Depends(get_db),
 ):
     """Change current user's password. Requires current password confirmation."""
-    if not verify_password(body.current_password, user.password_hash):
+    if not await verify_password(body.current_password, user.password_hash):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Current password is incorrect",
         )
-    user.password_hash = hash_password(body.new_password)
+    user.password_hash = await hash_password(body.new_password)
     await db.flush()
     await record_audit(
         db,
@@ -363,7 +363,7 @@ async def create_user(
     """Create a new user (admin only). Created users are immediately active."""
     user = User(
         email=body.email,
-        password_hash=hash_password(body.password),
+        password_hash=await hash_password(body.password),
         full_name=body.full_name,
         institutional_id=body.institutional_id,
         department_id=body.department_id,
@@ -424,7 +424,7 @@ async def update_user(
 
     update_data = body.model_dump(exclude_unset=True)
     if "password" in update_data:
-        update_data["password_hash"] = hash_password(update_data.pop("password"))
+        update_data["password_hash"] = await hash_password(update_data.pop("password"))
 
     for field, value in update_data.items():
         setattr(user, field, value)
@@ -533,7 +533,7 @@ async def delete_user(
         user.email = f"deleted_{user.id}@deleted"
         user.full_name = f"{user.full_name} (Deleted User)" if user.full_name else "Deleted User"
         user.institutional_id = None
-        user.password_hash = hash_password(str(uuid.uuid4()))
+        user.password_hash = await hash_password(str(uuid.uuid4()))
         user.is_active = False
         user.email_verified = False
         await db.flush()

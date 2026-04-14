@@ -50,7 +50,7 @@ async def login(
     )
     user = result.scalar_one_or_none()
 
-    if user is None or not verify_password(body.password, user.password_hash):
+    if user is None or not await verify_password(body.password, user.password_hash):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid credentials",
@@ -153,7 +153,7 @@ async def register(
 
     user = User(
         email=body.email,
-        password_hash=hash_password(body.password),
+        password_hash=await hash_password(body.password),
         full_name=body.full_name,
         institutional_id=body.institutional_id,
         department_id=body.department_id,

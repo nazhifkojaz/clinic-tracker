@@ -1,3 +1,4 @@
+import asyncio
 from datetime import datetime, timedelta, timezone
 
 from jose import jwt
@@ -10,14 +11,14 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 ALGORITHM = "HS256"
 
 
-def hash_password(password: str) -> str:
-    """Hash a password using bcrypt."""
-    return pwd_context.hash(password)
+async def hash_password(password: str) -> str:
+    """Hash a password using bcrypt (offloaded to thread pool)."""
+    return await asyncio.to_thread(pwd_context.hash, password)
 
 
-def verify_password(plain_password: str, hashed_password: str) -> bool:
-    """Verify a plain password against a hashed password."""
-    return pwd_context.verify(plain_password, hashed_password)
+async def verify_password(plain_password: str, hashed_password: str) -> bool:
+    """Verify a plain password against a hashed password (offloaded to thread pool)."""
+    return await asyncio.to_thread(pwd_context.verify, plain_password, hashed_password)
 
 
 def create_access_token(subject: str, role: str) -> str:
