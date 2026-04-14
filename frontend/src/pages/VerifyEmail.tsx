@@ -7,14 +7,20 @@ import {
 	CardHeader,
 	CardTitle,
 } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { authService } from "@/services/auth";
 
 type VerifyState = "loading" | "success" | "error";
+type ResendState = "idle" | "loading" | "sent" | "error";
 
 export default function VerifyEmail() {
 	const [searchParams] = useSearchParams();
 	const [state, setState] = useState<VerifyState>("loading");
 	const [message, setMessage] = useState("");
+
+	const [resendEmail, setResendEmail] = useState("");
+	const [resendState, setResendState] = useState<ResendState>("idle");
 
 	useEffect(() => {
 		const token = searchParams.get("token");
@@ -32,11 +38,20 @@ export default function VerifyEmail() {
 			})
 			.catch(() => {
 				setState("error");
-				setMessage(
-					"This verification link is invalid or has expired. Please register again.",
-				);
+				setMessage("This verification link is invalid or has expired.");
 			});
 	}, [searchParams]);
+
+	const handleResend = async (e: React.FormEvent) => {
+		e.preventDefault();
+		setResendState("loading");
+		try {
+			await authService.resendVerification(resendEmail);
+			setResendState("sent");
+		} catch {
+			setResendState("error");
+		}
+	};
 
 	return (
 		<div className="flex min-h-screen items-center justify-center bg-background px-4">
@@ -71,13 +86,47 @@ export default function VerifyEmail() {
 							<CardTitle className="text-2xl">Verification failed</CardTitle>
 							<CardDescription>{message}</CardDescription>
 						</CardHeader>
-						<CardContent className="text-center">
-							<Link
-								to="/register"
-								className="text-sm font-medium text-primary hover:underline"
-							>
-								Register again
-							</Link>
+						<CardContent className="space-y-4">
+							{resendState === "sent" ? (
+								<p className="text-center text-sm text-muted-foreground">
+									Check your inbox for a new verification link.
+								</p>
+							) : (
+								<form onSubmit={handleResend} className="space-y-3">
+									<p className="text-center text-sm text-muted-foreground">
+										Enter your email to get a new link:
+									</p>
+									<Input
+										type="email"
+										placeholder="your@email.com"
+										value={resendEmail}
+										onChange={(e) => setResendEmail(e.target.value)}
+										required
+									/>
+									{resendState === "error" && (
+										<p className="text-center text-sm text-destructive">
+											Something went wrong. Please try again.
+										</p>
+									)}
+									<Button
+										type="submit"
+										className="w-full"
+										disabled={resendState === "loading"}
+									>
+										{resendState === "loading"
+											? "Sending..."
+											: "Resend verification email"}
+									</Button>
+								</form>
+							)}
+							<div className="text-center">
+								<Link
+									to="/login"
+									className="text-sm font-medium text-primary hover:underline"
+								>
+									Back to Login
+								</Link>
+							</div>
 						</CardContent>
 					</>
 				)}
