@@ -28,7 +28,9 @@ class User(Base):
     )
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
     full_name: Mapped[str] = mapped_column(String(255), nullable=False)
-    institutional_id: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    institutional_id: Mapped[str | None] = mapped_column(
+        String(50), nullable=True, index=True
+    )
     role: Mapped[UserRole] = mapped_column(
         Enum(UserRole, name="user_role", create_constraint=True),
         nullable=False,
