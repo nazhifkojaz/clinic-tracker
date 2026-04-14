@@ -55,3 +55,4 @@ def downgrade() -> None:
     """Downgrade schema."""
     op.drop_index(op.f("ix_invite_codes_code"), table_name="invite_codes")
     op.drop_table("invite_codes")
+    op.execute("DROP TYPE IF EXISTS invite_code_status")

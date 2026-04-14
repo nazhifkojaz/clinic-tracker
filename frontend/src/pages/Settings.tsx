@@ -121,7 +121,7 @@ export default function Settings() {
 		}
 		if (
 			profileForm.institutional_id !== undefined &&
-			profileForm.institutional_id !== user?.institutional_id
+			(profileForm.institutional_id || null) !== (user?.institutional_id ?? null)
 		) {
 			updateData.institutional_id = profileForm.institutional_id || null;
 		}

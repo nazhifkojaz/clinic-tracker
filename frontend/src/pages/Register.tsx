@@ -74,7 +74,7 @@ export default function Register() {
 						: null,
 				invite_code:
 					formData.role === "admin" && formData.invite_code
-						? formData.invite_code
+						? formData.invite_code.trim()
 						: undefined,
 			});
 			setSuccess(true);

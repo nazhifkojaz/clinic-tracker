@@ -192,6 +192,15 @@ async def register(
                 "role": user.role.value,
             },
         )
+
+        token = create_email_verification_token(str(user.id))
+        verification_link = f"{settings.FRONTEND_URL}/#/verify-email?token={token}"
+        await send_verification_email(
+            to=user.email,
+            full_name=user.full_name,
+            verification_link=verification_link,
+        )
+
         await db.commit()
     except IntegrityError:
         await db.rollback()
@@ -199,19 +208,12 @@ async def register(
             status_code=status.HTTP_409_CONFLICT,
             detail="Email or institutional ID already registered",
         )
-
-    token = create_email_verification_token(str(user.id))
-    verification_link = f"{settings.FRONTEND_URL}/#/verify-email?token={token}"
-    try:
-        await send_verification_email(
-            to=user.email,
-            full_name=user.full_name,
-            verification_link=verification_link,
-        )
     except Exception:
-        # Account is saved; email delivery failed. The user can contact support
-        # or an admin can resend. Do not return 500 — account creation succeeded.
-        pass
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Registration failed. Please try again.",
+        )
 
     return RegisterResponse(
         message="Registration successful. Please check your email to verify your account."

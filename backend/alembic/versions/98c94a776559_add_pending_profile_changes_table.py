@@ -80,3 +80,4 @@ def downgrade() -> None:
         postgresql_where=sa.text("status = 'pending'"),
     )
     op.drop_table("pending_profile_changes")
+    op.execute("DROP TYPE IF EXISTS pending_change_status")
