@@ -13,6 +13,7 @@ from app.api.audit import router as audit_router
 from app.api.auth import router as auth_router
 from app.api.dashboard import router as dashboard_router
 from app.api.departments import router as departments_router
+from app.api.invite_codes import router as invite_codes_router
 from app.api.notifications import router as notifications_router
 from app.api.rotations import router as rotations_router
 from app.api.submissions import router as submissions_router
@@ -50,8 +51,9 @@ async def lifespan(app: FastAPI):
             await conn.execute(text("SELECT 1"))
         logger.info("Database connectivity validated")
     except Exception as e:
-        logger.error("Database connection failed during startup: %s", e)
-        raise
+        logger.warning(
+            "Database not reachable at startup (will retry on first request): %s", e
+        )
 
     # Start APScheduler for rotation reminders
     try:
@@ -115,6 +117,7 @@ async def general_exception_handler(request: Request, exc: Exception):
 
 # Include routers
 app.include_router(auth_router)
+app.include_router(invite_codes_router)
 app.include_router(users_router)
 app.include_router(departments_router)
 app.include_router(rotations_router)

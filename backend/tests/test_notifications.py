@@ -22,7 +22,7 @@ async def _create_student(db_session) -> User:
 
     student = User(
         email=f"student_{_random_suffix()}@test.com",
-        password_hash=hash_password("testpass123"),
+        password_hash=await hash_password("testpass123"),
         full_name="Test Student",
         institutional_id=f"TS{_random_suffix()}",
         role=UserRole.student,

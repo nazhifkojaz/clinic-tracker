@@ -15,6 +15,7 @@ from sqlalchemy.pool import NullPool
 
 from app.core.cache import categories_cache, departments_cache
 from app.core.database import Base, get_db
+from app.core.rate_limit import limiter
 from app.core.security import create_access_token, hash_password
 from app.main import app
 from app.models.user import User, UserRole
@@ -79,14 +80,14 @@ async def _run_setup():
         seed_users = [
             {
                 "email": "admin@test.com",
-                "password_hash": hash_password("testpass123"),
+                "password_hash": await hash_password("testpass123"),
                 "full_name": "Test Admin",
                 "role": UserRole.admin,
                 "is_active": True,
             },
             {
                 "email": "student@test.com",
-                "password_hash": hash_password("testpass123"),
+                "password_hash": await hash_password("testpass123"),
                 "full_name": "Test Student",
                 "institutional_id": "STU001",
                 "role": UserRole.student,
@@ -95,7 +96,7 @@ async def _run_setup():
             },
             {
                 "email": "supervisor@test.com",
-                "password_hash": hash_password("testpass123"),
+                "password_hash": await hash_password("testpass123"),
                 "full_name": "Test Supervisor",
                 "role": UserRole.supervisor,
                 "is_active": True,
@@ -143,6 +144,13 @@ def _disable_cache_during_tests():
     yield
     categories_cache.enable()
     departments_cache.enable()
+
+
+@pytest.fixture(autouse=True)
+def _reset_rate_limiter():
+    """Reset rate limiter storage between tests so limits don't carry over."""
+    limiter.reset()
+    yield
 
 
 @pytest.fixture
@@ -228,7 +236,7 @@ async def inactive_user(db_session: AsyncSession) -> User:
     suffix = _random_suffix()
     user = User(
         email=f"inactive_{suffix}@test.com",
-        password_hash=hash_password("testpass123"),
+        password_hash=await hash_password("testpass123"),
         full_name="Inactive User",
         institutional_id=f"INACTIVE{suffix}",
         role=UserRole.student,
@@ -247,7 +255,7 @@ async def fresh_student(db_session: AsyncSession) -> User:
     suffix = _random_suffix()
     user = User(
         email=f"fresh_{suffix}@test.com",
-        password_hash=hash_password("testpass123"),
+        password_hash=await hash_password("testpass123"),
         full_name="Fresh Student",
         institutional_id=f"FRESH{suffix}",
         role=UserRole.student,

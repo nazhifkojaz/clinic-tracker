@@ -5,6 +5,7 @@ import {
 	Pencil,
 	Plus,
 	RotateCw,
+	Trash2,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
@@ -12,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { useAuthStore } from "@/stores/authStore";
 import { departmentService } from "@/services/departments";
 import { rotationService } from "@/services/rotations";
 import { userService } from "@/services/users";
@@ -52,6 +54,12 @@ export default function UserManagement() {
 	const [isDeptSubmitting, setIsDeptSubmitting] = useState(false);
 	const [deptError, setDeptError] = useState("");
 
+	const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+	const [deleteTargetUser, setDeleteTargetUser] = useState<User | null>(null);
+	const [isDeleting, setIsDeleting] = useState(false);
+
+	const currentUser = useAuthStore((s) => s.user);
+
 	const fetchUsers = async (page: number = currentPage) => {
 		try {
 			setIsLoading(true);
@@ -83,11 +91,13 @@ export default function UserManagement() {
 	};
 
 	useEffect(() => {
-		fetchUsers();
-		fetchPendingUsers();
-		departmentService.list().then((depts) => {
-			setDepartments(depts.filter((d) => d.is_active));
-		});
+		Promise.all([
+			fetchUsers(),
+			fetchPendingUsers(),
+			departmentService.list().then((depts) => {
+				setDepartments(depts.filter((d) => d.is_active));
+			}),
+		]);
 		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, []);
 
@@ -191,6 +201,31 @@ export default function UserManagement() {
 			setDeptError("Failed to update department.");
 		} finally {
 			setIsDeptSubmitting(false);
+		}
+	};
+
+	const openDeleteModal = (user: User) => {
+		setDeleteTargetUser(user);
+		setIsDeleteModalOpen(true);
+	};
+
+	const handleDelete = async (mode: "soft" | "hard") => {
+		if (!deleteTargetUser) return;
+		setIsDeleting(true);
+		try {
+			await userService.delete(deleteTargetUser.id, mode);
+			toast.success(
+				mode === "soft"
+					? "User deactivated successfully"
+					: "User permanently deleted",
+			);
+			setIsDeleteModalOpen(false);
+			setDeleteTargetUser(null);
+			await Promise.all([fetchUsers(currentPage), fetchPendingUsers()]);
+		} catch {
+			toast.error("Failed to delete user");
+		} finally {
+			setIsDeleting(false);
 		}
 	};
 
@@ -330,6 +365,19 @@ export default function UserManagement() {
 													onClick={() => openEditModal(user)}
 												>
 													<Pencil className="h-4 w-4" />
+												</Button>
+												<Button
+													variant="ghost"
+													size="icon-sm"
+													onClick={() => openDeleteModal(user)}
+													disabled={user.id === currentUser?.id}
+													title={
+														user.id === currentUser?.id
+															? "Cannot delete yourself"
+															: "Delete User"
+													}
+												>
+													<Trash2 className="h-4 w-4 text-destructive" />
 												</Button>
 											</div>
 										</td>
@@ -546,6 +594,68 @@ export default function UserManagement() {
 									</Button>
 								</div>
 							</form>
+						</CardContent>
+					</Card>
+				</div>
+			)}
+
+			{/* Delete Confirmation Modal */}
+			{isDeleteModalOpen && deleteTargetUser && (
+				<div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+					<Card className="w-full max-w-md">
+						<CardHeader>
+							<CardTitle>Delete User — {deleteTargetUser.full_name}</CardTitle>
+						</CardHeader>
+						<CardContent>
+							<p className="text-sm text-muted-foreground mb-4">
+								Choose how to delete this user. This action cannot be undone.
+							</p>
+							<div className="space-y-3">
+								<Button
+									variant="outline"
+									className="w-full justify-start"
+									onClick={() => handleDelete("soft")}
+									disabled={isDeleting}
+								>
+									<div className="text-left">
+										<div className="font-medium">Deactivate (Soft Delete)</div>
+										<div className="text-xs text-muted-foreground">
+											User cannot login but data is preserved. Can be reactivated.
+										</div>
+									</div>
+								</Button>
+								<Button
+									variant="destructive"
+									className="w-full justify-start"
+									onClick={() => handleDelete("hard")}
+									disabled={isDeleting}
+								>
+									<div className="text-left">
+										<div className="font-medium">Permanently Delete (Hard Delete)</div>
+										<div className="text-xs">
+											All personal data is anonymized. Submissions and logs are kept.
+										</div>
+									</div>
+								</Button>
+							</div>
+							{isDeleting && (
+								<div className="mt-3 flex items-center gap-2 text-sm text-muted-foreground">
+									<Loader2 className="h-4 w-4 animate-spin" />
+									Deleting...
+								</div>
+							)}
+							<div className="mt-4 flex justify-end">
+								<Button
+									variant="outline"
+									onClick={() => {
+										setIsDeleteModalOpen(false);
+										setDeleteTargetUser(null);
+									}}
+									disabled={isDeleting}
+								>
+									Cancel
+								</Button>
+							</div>
 						</CardContent>
 					</Card>
 				</div>

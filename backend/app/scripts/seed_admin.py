@@ -34,7 +34,7 @@ async def seed() -> None:
 
         admin = User(
             email=ADMIN_EMAIL,
-            password_hash=hash_password(ADMIN_PASSWORD),
+            password_hash=await hash_password(ADMIN_PASSWORD),
             full_name=ADMIN_NAME,
             role=UserRole.admin,
         )

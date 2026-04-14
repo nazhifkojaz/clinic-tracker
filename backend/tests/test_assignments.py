@@ -27,7 +27,7 @@ async def test_list_assignments_filters_by_type(
     suffix = _random_suffix()
     student = User(
         email=f"filter_student_{suffix}@test.com",
-        password_hash=hash_password("testpass123"),
+        password_hash=await hash_password("testpass123"),
         full_name="Filter Student",
         institutional_id=f"FS{suffix}",
         role=UserRole.student,
@@ -85,7 +85,7 @@ async def test_list_assignments_paginates(
     for i in range(5):
         student = User(
             email=f"page_student_{i}_{suffix}@test.com",
-            password_hash=hash_password("testpass123"),
+            password_hash=await hash_password("testpass123"),
             full_name=f"Page Student {i}",
             institutional_id=f"PS{i}{suffix}",
             role=UserRole.student,
@@ -131,7 +131,7 @@ async def test_get_my_students_returns_only_assigned(
     suffix = _random_suffix()
     other_supervisor = User(
         email=f"other_sup_{suffix}@test.com",
-        password_hash=hash_password("testpass123"),
+        password_hash=await hash_password("testpass123"),
         full_name="Other Supervisor",
         role=UserRole.supervisor,
         is_active=True,
@@ -142,7 +142,7 @@ async def test_get_my_students_returns_only_assigned(
     # Create two students
     student1 = User(
         email=f"my_student1_{suffix}@test.com",
-        password_hash=hash_password("testpass123"),
+        password_hash=await hash_password("testpass123"),
         full_name="My Student 1",
         institutional_id=f"MS1{suffix}",
         role=UserRole.student,
@@ -150,7 +150,7 @@ async def test_get_my_students_returns_only_assigned(
     )
     student2 = User(
         email=f"my_student2_{suffix}@test.com",
-        password_hash=hash_password("testpass123"),
+        password_hash=await hash_password("testpass123"),
         full_name="My Student 2",
         institutional_id=f"MS2{suffix}",
         role=UserRole.student,
@@ -197,7 +197,7 @@ async def test_get_my_students_includes_dept_students(
     # Create a student
     student = User(
         email=f"dept_student_{suffix}@test.com",
-        password_hash=hash_password("testpass123"),
+        password_hash=await hash_password("testpass123"),
         full_name="Dept Student",
         institutional_id=f"DS{suffix}",
         role=UserRole.student,
@@ -240,7 +240,7 @@ async def test_get_my_students_student_details_complete(
     suffix = _random_suffix()
     student = User(
         email=f"detail_student_{suffix}@test.com",
-        password_hash=hash_password("testpass123"),
+        password_hash=await hash_password("testpass123"),
         full_name="Detail Student",
         institutional_id=f"DT{suffix}",
         role=UserRole.student,
@@ -292,7 +292,7 @@ async def test_create_primary_assignment_success(
     suffix = _random_suffix()
     student = User(
         email=f"prim_student_{suffix}@test.com",
-        password_hash=hash_password("testpass123"),
+        password_hash=await hash_password("testpass123"),
         full_name="Primary Student",
         institutional_id=f"PR{suffix}",
         role=UserRole.student,
@@ -348,7 +348,7 @@ async def test_create_assignment_validates_type_specific_fields(
     suffix = _random_suffix()
     student = User(
         email=f"valid_student_{suffix}@test.com",
-        password_hash=hash_password("testpass123"),
+        password_hash=await hash_password("testpass123"),
         full_name="Valid Student",
         institutional_id=f"VD{suffix}",
         role=UserRole.student,
@@ -388,7 +388,7 @@ async def test_create_assignment_mutual_exclusivity(
     suffix = _random_suffix()
     student = User(
         email=f"mutual_student_{suffix}@test.com",
-        password_hash=hash_password("testpass123"),
+        password_hash=await hash_password("testpass123"),
         full_name="Mutual Student",
         institutional_id=f"MT{suffix}",
         role=UserRole.student,
@@ -433,7 +433,7 @@ async def test_create_assignment_duplicate_returns_409(
     suffix = _random_suffix()
     student = User(
         email=f"dup_student_{suffix}@test.com",
-        password_hash=hash_password("testpass123"),
+        password_hash=await hash_password("testpass123"),
         full_name="Dup Student",
         institutional_id=f"DP{suffix}",
         role=UserRole.student,
@@ -471,7 +471,7 @@ async def test_delete_assignment_admin_only(
     suffix = _random_suffix()
     student = User(
         email=f"del_student_{suffix}@test.com",
-        password_hash=hash_password("testpass123"),
+        password_hash=await hash_password("testpass123"),
         full_name="Delete Student",
         institutional_id=f"DL{suffix}",
         role=UserRole.student,
@@ -503,7 +503,7 @@ async def test_delete_assignment_success(
     suffix = _random_suffix()
     student = User(
         email=f"del_ok_student_{suffix}@test.com",
-        password_hash=hash_password("testpass123"),
+        password_hash=await hash_password("testpass123"),
         full_name="Delete OK Student",
         institutional_id=f"DOK{suffix}",
         role=UserRole.student,

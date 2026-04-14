@@ -249,7 +249,7 @@ async def test_login_pending_approval(client, db_session):
 
     user = User(
         email=f"pending_{suffix}@test.com",
-        password_hash=_hp("testpass123"),
+        password_hash=await _hp("testpass123"),
         full_name="Pending User",
         role=UserRole.student,
         is_active=False,
@@ -315,19 +315,23 @@ async def test_register_duplicate_email(client, db_session):
     assert response.status_code == 409
 
 
-async def test_register_admin_role_rejected(client):
-    """Attempting to self-register as admin should return 422 (schema validation)."""
+async def test_register_admin_without_invite_code(client):
+    """Admin registration without invite code should return 422 (Pydantic validation)."""
+    from tests.factories import _random_suffix
+
+    suffix = _random_suffix()
     response = await client.post(
         "/api/auth/register",
         json={
-            "email": "adminattempt@test.com",
+            "email": f"adminattempt_{suffix}@test.com",
             "password": "securepass123",
             "full_name": "Bad Actor",
             "role": "admin",
-            "institutional_id": "BADACTOR",
+            "institutional_id": f"BADACTOR{suffix}",
         },
     )
     assert response.status_code == 422
+    assert "invite_code" in str(response.json()).lower()
 
 
 async def test_verify_email_success(client, db_session):
@@ -338,7 +342,7 @@ async def test_verify_email_success(client, db_session):
     suffix = _random_suffix()
     user = User(
         email=f"verify_{suffix}@test.com",
-        password_hash=_hp("testpass123"),
+        password_hash=await _hp("testpass123"),
         full_name="Verify Me",
         role=UserRole.student,
         is_active=False,
@@ -373,7 +377,7 @@ async def test_verify_email_already_verified(client, db_session):
     suffix = _random_suffix()
     user = User(
         email=f"already_{suffix}@test.com",
-        password_hash=_hp("testpass123"),
+        password_hash=await _hp("testpass123"),
         full_name="Already Verified",
         role=UserRole.student,
         is_active=False,

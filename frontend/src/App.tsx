@@ -27,6 +27,9 @@ const AuditLog = lazy(() => import("@/pages/admin/AuditLog"));
 const DeletedSubmissions = lazy(
 	() => import("@/pages/admin/DeletedSubmissions"),
 );
+const Settings = lazy(() => import("@/pages/Settings"));
+const PendingChanges = lazy(() => import("@/pages/admin/PendingChanges"));
+const InviteCodes = lazy(() => import("@/pages/admin/InviteCodes"));
 const NotFound = lazy(() => import("@/pages/NotFound"));
 
 // Simple loading spinner
@@ -71,6 +74,7 @@ function App() {
 								element={<SendNotification />}
 							/>
 							<Route path="/notifications" element={<NotificationHistory />} />
+							<Route path="/settings" element={<Settings />} />
 							<Route element={<ProtectedRoute allowedRoles={["admin"]} />}>
 								<Route path="/admin/users" element={<UserManagement />} />
 								<Route
@@ -87,8 +91,12 @@ function App() {
 									element={<DeletedSubmissions />}
 								/>
 								<Route
-									path="/admin/settings"
-									element={<div>Settings (coming in Phase 2)</div>}
+									path="/admin/invite-codes"
+									element={<InviteCodes />}
+								/>
+								<Route
+									path="/admin/pending-changes"
+									element={<PendingChanges />}
 								/>
 							</Route>
 						</Route>

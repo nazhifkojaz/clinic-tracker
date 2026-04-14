@@ -3,6 +3,7 @@ import {
 	Building2,
 	ClipboardList,
 	FilePlus,
+	KeyRound,
 	LayoutDashboard,
 	Link2,
 	ScrollText,
@@ -10,6 +11,7 @@ import {
 	Settings,
 	Timer,
 	Trash2,
+	UserCheck,
 	Users,
 	X,
 } from "lucide-react";
@@ -24,12 +26,14 @@ const navItems = {
 		{ to: "/cases/new", label: "Submit Case", icon: FilePlus },
 		{ to: "/rotation-tracker", label: "Rotation Tracker", icon: Timer },
 		{ to: "/submissions", label: "My Submissions", icon: ClipboardList },
+		{ to: "/settings", label: "Settings", icon: Settings },
 	],
 	supervisor: [
 		{ to: "/", label: "Dashboard", icon: LayoutDashboard },
 		{ to: "/submissions", label: "Submissions", icon: ClipboardList },
 		{ to: "/notifications/send", label: "Send Notification", icon: Send },
 		{ to: "/notifications", label: "Notification History", icon: Bell },
+		{ to: "/settings", label: "Settings", icon: Settings },
 	],
 	admin: [
 		{ to: "/", label: "Dashboard", icon: LayoutDashboard },
@@ -37,6 +41,7 @@ const navItems = {
 		{ to: "/notifications/send", label: "Send Notification", icon: Send },
 		{ to: "/notifications", label: "Notification History", icon: Bell },
 		{ to: "/admin/users", label: "Users", icon: Users },
+		{ to: "/admin/invite-codes", label: "Invite Codes", icon: KeyRound },
 		{ to: "/admin/departments", label: "Departments", icon: Building2 },
 		{ to: "/admin/assignments", label: "Assignments", icon: Link2 },
 		{ to: "/admin/audit-log", label: "Audit Log", icon: ScrollText },
@@ -45,7 +50,8 @@ const navItems = {
 			label: "Deleted Submissions",
 			icon: Trash2,
 		},
-		{ to: "/admin/settings", label: "Settings", icon: Settings },
+		{ to: "/admin/pending-changes", label: "Profile Changes", icon: UserCheck },
+		{ to: "/settings", label: "Settings", icon: Settings },
 	],
 };
 

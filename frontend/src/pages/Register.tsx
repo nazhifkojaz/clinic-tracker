@@ -24,6 +24,7 @@ export default function Register() {
 		role: "student" as UserRole,
 		institutional_id: "",
 		department_id: "",
+		invite_code: "",
 	});
 	const [departments, setDepartments] = useState<Department[]>([]);
 	const [isSubmitting, setIsSubmitting] = useState(false);
@@ -38,7 +39,9 @@ export default function Register() {
 	}, []);
 
 	const idLabel =
-		formData.role === "student" ? "Student ID" : "Staff ID";
+		formData.role === "student" ? "Student ID"
+		: formData.role === "admin" ? "Admin ID"
+		: "Staff ID";
 
 	const handleSubmit = async (e: React.FormEvent) => {
 		e.preventDefault();
@@ -50,6 +53,10 @@ export default function Register() {
 		}
 		if (!formData.institutional_id.trim()) {
 			setError(`${idLabel} is required.`);
+			return;
+		}
+		if (formData.role === "admin" && !formData.invite_code.trim()) {
+			setError("Invite code is required for admin registration.");
 			return;
 		}
 
@@ -65,13 +72,18 @@ export default function Register() {
 					formData.role === "supervisor" && formData.department_id
 						? formData.department_id
 						: null,
+				invite_code:
+					formData.role === "admin" && formData.invite_code
+						? formData.invite_code.trim()
+						: undefined,
 			});
 			setSuccess(true);
 		} catch (err: unknown) {
-			const status = (err as { response?: { status?: number } })?.response
-				?.status;
-			if (status === 409) {
+			const response = (err as { response?: { status?: number; data?: { detail?: string } } })?.response;
+			if (response?.status === 409) {
 				setError("Email or institutional ID is already registered.");
+			} else if (response?.status === 400 && response.data?.detail) {
+				setError(response.data.detail);
 			} else {
 				setError("Registration failed. Please try again.");
 			}
@@ -165,8 +177,26 @@ export default function Register() {
 							>
 								<option value="student">Student</option>
 								<option value="supervisor">Supervisor</option>
+								<option value="admin">Admin</option>
 							</select>
 						</div>
+						{formData.role === "admin" && (
+							<div className="space-y-2">
+								<Label htmlFor="invite_code">Invite Code</Label>
+								<Input
+									id="invite_code"
+									value={formData.invite_code}
+									onChange={(e) =>
+										setFormData({ ...formData, invite_code: e.target.value })
+									}
+									required
+									placeholder="Enter your invite code"
+								/>
+								<p className="text-xs text-muted-foreground">
+									Contact an existing admin for an invite code.
+								</p>
+							</div>
+						)}
 						<div className="space-y-2">
 							<Label htmlFor="institutional_id">{idLabel}</Label>
 							<Input

@@ -1,3 +1,5 @@
+from datetime import datetime, timezone
+
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from jose import JWTError
 from sqlalchemy import select
@@ -17,7 +19,8 @@ from app.core.security import (
     verify_password,
 )
 from app.models.department import Department
-from app.models.user import User
+from app.models.invite_code import InviteCode, InviteCodeStatus
+from app.models.user import UserRole, User
 from app.schemas.auth import (
     LoginRequest,
     RefreshRequest,
@@ -47,7 +50,7 @@ async def login(
     )
     user = result.scalar_one_or_none()
 
-    if user is None or not verify_password(body.password, user.password_hash):
+    if user is None or not await verify_password(body.password, user.password_hash):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid credentials",
@@ -116,6 +119,29 @@ async def register(
     request: Request, body: UserRegisterRequest, db: AsyncSession = Depends(get_db)
 ):
     """Self-register a new account. Requires email verification and admin approval."""
+    # Validate invite code when registering as admin
+    invite: InviteCode | None = None
+    if body.role == UserRole.admin:
+        if not body.invite_code:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invite code is required for admin registration",
+            )
+        result = await db.execute(
+            select(InviteCode)
+            .where(
+                InviteCode.code == body.invite_code,
+                InviteCode.status == InviteCodeStatus.active,
+            )
+            .with_for_update()
+        )
+        invite = result.scalar_one_or_none()
+        if invite is None:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid or expired invite code",
+            )
+
     # Validate department exists if provided
     if body.department_id is not None:
         dept = await db.get(Department, body.department_id)
@@ -127,7 +153,7 @@ async def register(
 
     user = User(
         email=body.email,
-        password_hash=hash_password(body.password),
+        password_hash=await hash_password(body.password),
         full_name=body.full_name,
         institutional_id=body.institutional_id,
         department_id=body.department_id,
@@ -138,6 +164,21 @@ async def register(
     db.add(user)
     try:
         await db.flush()
+
+        # Consume invite code if this is an admin registration
+        if invite is not None:
+            invite.status = InviteCodeStatus.used
+            invite.used_by = user.id
+            invite.used_at = datetime.now(timezone.utc)
+            await record_audit(
+                db,
+                user_id=user.id,
+                action="use_invite_code",
+                table_name="invite_codes",
+                record_id=invite.id,
+                new_values={"code": invite.code, "used_by": str(user.id)},
+            )
+
         await record_audit(
             db,
             user_id=user.id,
@@ -151,6 +192,15 @@ async def register(
                 "role": user.role.value,
             },
         )
+
+        token = create_email_verification_token(str(user.id))
+        verification_link = f"{settings.FRONTEND_URL}/#/verify-email?token={token}"
+        await send_verification_email(
+            to=user.email,
+            full_name=user.full_name,
+            verification_link=verification_link,
+        )
+
         await db.commit()
     except IntegrityError:
         await db.rollback()
@@ -158,19 +208,12 @@ async def register(
             status_code=status.HTTP_409_CONFLICT,
             detail="Email or institutional ID already registered",
         )
-
-    token = create_email_verification_token(str(user.id))
-    verification_link = f"{settings.FRONTEND_URL}/#/verify-email?token={token}"
-    try:
-        await send_verification_email(
-            to=user.email,
-            full_name=user.full_name,
-            verification_link=verification_link,
-        )
     except Exception:
-        # Account is saved; email delivery failed. The user can contact support
-        # or an admin can resend. Do not return 500 — account creation succeeded.
-        pass
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Registration failed. Please try again.",
+        )
 
     return RegisterResponse(
         message="Registration successful. Please check your email to verify your account."

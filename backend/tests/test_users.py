@@ -36,7 +36,7 @@ async def test_list_users_filters_by_role(client, admin_token, db_session):
     # Create users with different roles
     student = User(
         email=f"filter_student_{suffix}@test.com",
-        password_hash=hash_password("testpass123"),
+        password_hash=await hash_password("testpass123"),
         full_name="Filter Student",
         institutional_id=f"FS{suffix}",
         role=UserRole.student,
@@ -44,7 +44,7 @@ async def test_list_users_filters_by_role(client, admin_token, db_session):
     )
     supervisor = User(
         email=f"filter_supervisor_{suffix}@test.com",
-        password_hash=hash_password("testpass123"),
+        password_hash=await hash_password("testpass123"),
         full_name="Filter Supervisor",
         role=UserRole.supervisor,
         is_active=True,
@@ -76,7 +76,7 @@ async def test_list_users_filters_by_active(client, admin_token, db_session):
     suffix = _random_suffix()
     inactive = User(
         email=f"inactive_{suffix}@test.com",
-        password_hash=hash_password("testpass123"),
+        password_hash=await hash_password("testpass123"),
         full_name="Inactive User",
         institutional_id=f"INACT{suffix}",
         role=UserRole.student,
@@ -189,7 +189,7 @@ async def test_create_user_duplicate_email_returns_409(client, admin_token, db_s
     # Create first user
     first = User(
         email=email,
-        password_hash=hash_password("testpass123"),
+        password_hash=await hash_password("testpass123"),
         full_name="First User",
         role=UserRole.student,
         is_active=True,
@@ -253,7 +253,7 @@ async def test_update_user_admin_only(client, student_token, db_session):
     suffix = _random_suffix()
     user = User(
         email=f"to_update_{suffix}@test.com",
-        password_hash=hash_password("testpass123"),
+        password_hash=await hash_password("testpass123"),
         full_name="Original Name",
         role=UserRole.student,
         is_active=True,
@@ -275,7 +275,7 @@ async def test_update_user_success(client, admin_token, db_session):
     suffix = _random_suffix()
     user = User(
         email=f"update_success_{suffix}@test.com",
-        password_hash=hash_password("testpass123"),
+        password_hash=await hash_password("testpass123"),
         full_name="Original Name",
         institutional_id=f"ORIG{suffix}",
         role=UserRole.student,
@@ -305,14 +305,14 @@ async def test_update_user_email_duplicate_returns_409(client, admin_token, db_s
     suffix = _random_suffix()
     user1 = User(
         email=f"user1_{suffix}@test.com",
-        password_hash=hash_password("testpass123"),
+        password_hash=await hash_password("testpass123"),
         full_name="User One",
         role=UserRole.student,
         is_active=True,
     )
     user2 = User(
         email=f"user2_{suffix}@test.com",
-        password_hash=hash_password("testpass123"),
+        password_hash=await hash_password("testpass123"),
         full_name="User Two",
         role=UserRole.student,
         is_active=True,
@@ -336,7 +336,7 @@ async def test_deactivate_user_soft_delete(client, admin_token, db_session):
     suffix = _random_suffix()
     user = User(
         email=f"to_deactivate_{suffix}@test.com",
-        password_hash=hash_password("testpass123"),
+        password_hash=await hash_password("testpass123"),
         full_name="To Deactivate",
         role=UserRole.student,
         is_active=True,
@@ -416,7 +416,7 @@ async def test_change_password_requires_current_password(
     suffix = _random_suffix()
     user = User(
         email=f"pwd_change_{suffix}@test.com",
-        password_hash=hash_password("oldpassword123"),
+        password_hash=await hash_password("oldpassword123"),
         full_name="Password Change User",
         role=UserRole.student,
         is_active=True,
@@ -435,8 +435,8 @@ async def test_change_password_requires_current_password(
 
     # Verify password was changed
     await db_session.refresh(user)
-    assert verify_password("newpassword123", user.password_hash)
-    assert not verify_password("oldpassword123", user.password_hash)
+    assert await verify_password("newpassword123", user.password_hash)
+    assert not await verify_password("oldpassword123", user.password_hash)
 
 
 async def test_change_password_success(client, admin_token, db_session):
@@ -444,7 +444,7 @@ async def test_change_password_success(client, admin_token, db_session):
     suffix = _random_suffix()
     user = User(
         email=f"pwd_success_{suffix}@test.com",
-        password_hash=hash_password("oldpass123"),
+        password_hash=await hash_password("oldpass123"),
         full_name="Password Success User",
         role=UserRole.student,
         is_active=True,
