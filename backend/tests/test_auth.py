@@ -392,3 +392,70 @@ async def test_verify_email_already_verified(client, db_session):
     response = await client.get(f"/api/auth/verify-email?token={token}")
     assert response.status_code == 200
     assert "already" in response.json()["message"].lower()
+
+
+# ---------------------------------------------------------------------------
+# Resend verification tests
+# ---------------------------------------------------------------------------
+
+
+async def test_resend_verification_unverified_user(client, db_session):
+    """Resend for an existing unverified user returns 200 and sends a new email."""
+    from tests.factories import _random_suffix
+    from app.core.security import hash_password as _hp
+
+    suffix = _random_suffix()
+    user = User(
+        email=f"resend_{suffix}@test.com",
+        password_hash=await _hp("testpass123"),
+        full_name="Resend Me",
+        role=UserRole.student,
+        is_active=False,
+        email_verified=False,
+        institutional_id=f"RSN{suffix}",
+    )
+    db_session.add(user)
+    await db_session.commit()
+
+    response = await client.post(
+        "/api/auth/resend-verification",
+        json={"email": user.email},
+    )
+    assert response.status_code == 200
+    assert "verification link" in response.json()["message"].lower()
+
+
+async def test_resend_verification_unknown_email(client):
+    """Resend for an unknown email returns 200 (no enumeration)."""
+    response = await client.post(
+        "/api/auth/resend-verification",
+        json={"email": "nobody_xyz@test.com"},
+    )
+    assert response.status_code == 200
+    assert "verification link" in response.json()["message"].lower()
+
+
+async def test_resend_verification_already_verified(client, db_session):
+    """Resend for an already-verified user returns 200 but does not resend email."""
+    from tests.factories import _random_suffix
+    from app.core.security import hash_password as _hp
+
+    suffix = _random_suffix()
+    user = User(
+        email=f"alreadyv_{suffix}@test.com",
+        password_hash=await _hp("testpass123"),
+        full_name="Already Verified",
+        role=UserRole.student,
+        is_active=True,
+        email_verified=True,
+        institutional_id=f"ALV{suffix}",
+    )
+    db_session.add(user)
+    await db_session.commit()
+
+    response = await client.post(
+        "/api/auth/resend-verification",
+        json={"email": user.email},
+    )
+    assert response.status_code == 200
+    assert "verification link" in response.json()["message"].lower()

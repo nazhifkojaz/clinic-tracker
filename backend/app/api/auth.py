@@ -25,6 +25,7 @@ from app.schemas.auth import (
     LoginRequest,
     RefreshRequest,
     RegisterResponse,
+    ResendVerificationRequest,
     TokenResponse,
 )
 from app.schemas.user import UserRegisterRequest
@@ -249,3 +250,28 @@ async def verify_email(
     await db.commit()
 
     return {"message": "Email verified. Your account is pending admin approval."}
+
+
+@router.post("/resend-verification")
+@limiter.limit("3/minute")
+async def resend_verification(
+    request: Request,
+    body: ResendVerificationRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """Resend email verification link. Always returns 200 to prevent user enumeration."""
+    result = await db.execute(select(User).where(User.email == body.email))
+    user = result.scalar_one_or_none()
+
+    if user is not None and not user.email_verified:
+        token = create_email_verification_token(str(user.id))
+        verification_link = f"{settings.FRONTEND_URL}/#/verify-email?token={token}"
+        await send_verification_email(
+            to=user.email,
+            full_name=user.full_name,
+            verification_link=verification_link,
+        )
+
+    return {
+        "message": "If your email is registered and unverified, a new verification link has been sent."
+    }
