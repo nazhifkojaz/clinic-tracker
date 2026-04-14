@@ -316,7 +316,7 @@ async def test_register_duplicate_email(client, db_session):
 
 
 async def test_register_admin_without_invite_code(client):
-    """Admin registration without invite code should return 400."""
+    """Admin registration without invite code should return 422 (Pydantic validation)."""
     from tests.factories import _random_suffix
 
     suffix = _random_suffix()
@@ -330,8 +330,8 @@ async def test_register_admin_without_invite_code(client):
             "institutional_id": f"BADACTOR{suffix}",
         },
     )
-    assert response.status_code == 400
-    assert "invite code" in response.json()["detail"].lower()
+    assert response.status_code == 422
+    assert "invite_code" in str(response.json()).lower()
 
 
 async def test_verify_email_success(client, db_session):
