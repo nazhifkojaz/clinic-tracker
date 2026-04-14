@@ -219,7 +219,7 @@ export default function UserManagement() {
 			);
 			setIsDeleteModalOpen(false);
 			setDeleteTargetUser(null);
-			fetchUsers(currentPage);
+			await Promise.all([fetchUsers(currentPage), fetchPendingUsers()]);
 		} catch {
 			toast.error("Failed to delete user");
 		} finally {

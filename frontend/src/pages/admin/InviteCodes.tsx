@@ -1,5 +1,5 @@
 import { Check, Copy, Loader2, Plus } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -11,6 +11,13 @@ export default function InviteCodes() {
 	const [isLoading, setIsLoading] = useState(false);
 	const [isGenerating, setIsGenerating] = useState(false);
 	const [copiedId, setCopiedId] = useState<string | null>(null);
+	const copyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+	useEffect(() => {
+		return () => {
+			if (copyTimeoutRef.current) clearTimeout(copyTimeoutRef.current);
+		};
+	}, []);
 
 	const fetchCodes = async () => {
 		try {
@@ -44,8 +51,9 @@ export default function InviteCodes() {
 	const handleCopy = async (code: string, id: string) => {
 		try {
 			await navigator.clipboard.writeText(code);
+			if (copyTimeoutRef.current) clearTimeout(copyTimeoutRef.current);
 			setCopiedId(id);
-			setTimeout(() => setCopiedId(null), 2000);
+			copyTimeoutRef.current = setTimeout(() => setCopiedId(null), 2000);
 		} catch {
 			toast.error("Failed to copy code");
 		}

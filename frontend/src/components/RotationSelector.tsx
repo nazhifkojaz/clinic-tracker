@@ -152,8 +152,10 @@ export default function RotationSelector({
 									{selectedDept?.name}
 								</span>
 								<button
+									type="button"
 									onClick={handleCancel}
 									disabled={isChanging}
+									aria-label="Cancel"
 									className="text-muted-foreground hover:text-foreground disabled:opacity-50"
 								>
 									<X className="h-4 w-4" />
@@ -182,6 +184,7 @@ export default function RotationSelector({
 							</div>
 
 							<button
+								type="button"
 								onClick={handleConfirm}
 								disabled={isChanging}
 								className="w-full rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
