@@ -67,7 +67,9 @@ async def test_soft_delete_default_mode(client, admin_token, db_session):
 
 async def test_hard_delete_anonymizes_pii(client, admin_token, db_session):
     """Hard delete anonymizes user PII."""
-    user = await _create_user(db_session, full_name="Real Name", institutional_id="ID12345")
+    user = await _create_user(
+        db_session, full_name="Real Name", institutional_id="ID12345"
+    )
     response = await client.delete(
         f"/api/users/{user.id}?mode=hard",
         headers=auth_header(admin_token),
@@ -117,7 +119,10 @@ async def test_cannot_delete_self(client, admin_token, admin_user):
         headers=auth_header(admin_token),
     )
     assert response.status_code == 400
-    assert "cannot delete" in response.json()["detail"].lower() or "own" in response.json()["detail"].lower()
+    assert (
+        "cannot delete" in response.json()["detail"].lower()
+        or "own" in response.json()["detail"].lower()
+    )
 
 
 # ---------------------------------------------------------------------------

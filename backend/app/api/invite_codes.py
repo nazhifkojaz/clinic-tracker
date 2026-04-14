@@ -1,7 +1,7 @@
 import secrets
 import string
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, Request, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -66,9 +66,7 @@ async def list_codes(
     db: AsyncSession = Depends(get_db),
 ):
     """List all invite codes (admin only)."""
-    result = await db.execute(
-        select(InviteCode).order_by(InviteCode.created_at.desc())
-    )
+    result = await db.execute(select(InviteCode).order_by(InviteCode.created_at.desc()))
     codes = result.scalars().all()
     return codes
 

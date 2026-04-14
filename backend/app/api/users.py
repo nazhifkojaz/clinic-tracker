@@ -176,9 +176,8 @@ async def list_pending_changes(
     total = total_result.scalar() or 0
 
     # Data query with join to avoid N+1
-    query = (
-        select(PendingProfileChange, User.full_name, User.email)
-        .join(User, PendingProfileChange.user_id == User.id, isouter=True)
+    query = select(PendingProfileChange, User.full_name, User.email).join(
+        User, PendingProfileChange.user_id == User.id, isouter=True
     )
     if status_filter is not None:
         query = query.where(PendingProfileChange.status == status_filter)
@@ -531,7 +530,9 @@ async def delete_user(
             "institutional_id": user.institutional_id,
         }
         user.email = f"deleted_{user.id}@deleted"
-        user.full_name = f"{user.full_name} (Deleted User)" if user.full_name else "Deleted User"
+        user.full_name = (
+            f"{user.full_name} (Deleted User)" if user.full_name else "Deleted User"
+        )
         user.institutional_id = None
         user.password_hash = await hash_password(str(uuid.uuid4()))
         user.is_active = False

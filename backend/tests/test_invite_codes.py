@@ -2,8 +2,6 @@
 
 import pytest
 from app.models.invite_code import InviteCode, InviteCodeStatus
-from app.models.user import User, UserRole
-from app.core.security import hash_password
 from tests.conftest import auth_header
 from tests.factories import _random_suffix
 
@@ -208,7 +206,10 @@ async def test_register_admin_with_invalid_code(client):
     if response.status_code == 429:
         pytest.skip("Rate limited by /api/auth/register")
     assert response.status_code == 400
-    assert "invalid" in response.json()["detail"].lower() or "expired" in response.json()["detail"].lower()
+    assert (
+        "invalid" in response.json()["detail"].lower()
+        or "expired" in response.json()["detail"].lower()
+    )
 
 
 async def test_register_admin_with_used_code(client, admin_user, db_session):

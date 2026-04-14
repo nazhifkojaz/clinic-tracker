@@ -1,6 +1,5 @@
 """Tests for self-service password change, profile update, and pending changes approval."""
 
-import pytest
 from sqlalchemy import select
 
 from app.core.security import hash_password, verify_password, create_access_token
@@ -108,7 +107,9 @@ async def test_admin_profile_applies_immediately(client, db_session):
 
 async def test_student_profile_queues_for_approval(client, db_session):
     """Student profile changes create a PendingProfileChange."""
-    user = await _create_user(db_session, full_name="Original Name", role=UserRole.student)
+    user = await _create_user(
+        db_session, full_name="Original Name", role=UserRole.student
+    )
     token = _token_for(user)
 
     response = await client.patch(
@@ -241,7 +242,9 @@ async def test_list_pending_changes_admin_only(client, student_token):
 
 async def test_list_pending_changes_with_filter(client, admin_token, db_session):
     """Admin can filter pending changes by status."""
-    user = await _create_user(db_session, full_name="Filter Test", role=UserRole.student)
+    user = await _create_user(
+        db_session, full_name="Filter Test", role=UserRole.student
+    )
     token = _token_for(user)
 
     # Create a pending change
@@ -269,7 +272,9 @@ async def test_list_pending_changes_with_filter(client, admin_token, db_session)
 
 async def test_approve_pending_change(client, admin_token, db_session):
     """Approving a change applies it to the user."""
-    user = await _create_user(db_session, full_name="Before Approval", role=UserRole.student)
+    user = await _create_user(
+        db_session, full_name="Before Approval", role=UserRole.student
+    )
     token = _token_for(user)
 
     # Submit a change
@@ -307,7 +312,9 @@ async def test_approve_pending_change(client, admin_token, db_session):
 
 async def test_reject_pending_change(client, admin_token, db_session):
     """Rejecting a change does NOT apply it to the user."""
-    user = await _create_user(db_session, full_name="Before Rejection", role=UserRole.student)
+    user = await _create_user(
+        db_session, full_name="Before Rejection", role=UserRole.student
+    )
     token = _token_for(user)
 
     # Submit a change
@@ -344,7 +351,9 @@ async def test_reject_pending_change(client, admin_token, db_session):
 
 async def test_cannot_approve_already_reviewed(client, admin_token, db_session):
     """Approving an already-reviewed change returns 400."""
-    user = await _create_user(db_session, full_name="Already Reviewed", role=UserRole.student)
+    user = await _create_user(
+        db_session, full_name="Already Reviewed", role=UserRole.student
+    )
     token = _token_for(user)
 
     await client.patch(
