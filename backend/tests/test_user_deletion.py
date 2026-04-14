@@ -11,7 +11,7 @@ async def _create_user(db_session, **overrides):
     suffix = _random_suffix()
     defaults = {
         "email": f"delete_{suffix}@test.com",
-        "password_hash": hash_password("testpass123"),
+        "password_hash": await hash_password("testpass123"),
         "full_name": "Delete Target",
         "role": UserRole.student,
         "is_active": True,
@@ -84,7 +84,7 @@ async def test_hard_delete_anonymizes_pii(client, admin_token, db_session):
     assert user.password_hash != ""  # Replaced with random invalid hash
     from app.core.security import verify_password
 
-    assert not verify_password("testpass123", user.password_hash)
+    assert not await verify_password("testpass123", user.password_hash)
 
 
 async def test_hard_delete_preserves_row(client, admin_token, db_session):

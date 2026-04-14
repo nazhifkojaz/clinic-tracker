@@ -249,7 +249,7 @@ async def test_login_pending_approval(client, db_session):
 
     user = User(
         email=f"pending_{suffix}@test.com",
-        password_hash=_hp("testpass123"),
+        password_hash=await _hp("testpass123"),
         full_name="Pending User",
         role=UserRole.student,
         is_active=False,
@@ -342,7 +342,7 @@ async def test_verify_email_success(client, db_session):
     suffix = _random_suffix()
     user = User(
         email=f"verify_{suffix}@test.com",
-        password_hash=_hp("testpass123"),
+        password_hash=await _hp("testpass123"),
         full_name="Verify Me",
         role=UserRole.student,
         is_active=False,
@@ -377,7 +377,7 @@ async def test_verify_email_already_verified(client, db_session):
     suffix = _random_suffix()
     user = User(
         email=f"already_{suffix}@test.com",
-        password_hash=_hp("testpass123"),
+        password_hash=await _hp("testpass123"),
         full_name="Already Verified",
         role=UserRole.student,
         is_active=False,

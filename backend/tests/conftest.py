@@ -79,14 +79,14 @@ async def _run_setup():
         seed_users = [
             {
                 "email": "admin@test.com",
-                "password_hash": hash_password("testpass123"),
+                "password_hash": await hash_password("testpass123"),
                 "full_name": "Test Admin",
                 "role": UserRole.admin,
                 "is_active": True,
             },
             {
                 "email": "student@test.com",
-                "password_hash": hash_password("testpass123"),
+                "password_hash": await hash_password("testpass123"),
                 "full_name": "Test Student",
                 "institutional_id": "STU001",
                 "role": UserRole.student,
@@ -95,7 +95,7 @@ async def _run_setup():
             },
             {
                 "email": "supervisor@test.com",
-                "password_hash": hash_password("testpass123"),
+                "password_hash": await hash_password("testpass123"),
                 "full_name": "Test Supervisor",
                 "role": UserRole.supervisor,
                 "is_active": True,
@@ -228,7 +228,7 @@ async def inactive_user(db_session: AsyncSession) -> User:
     suffix = _random_suffix()
     user = User(
         email=f"inactive_{suffix}@test.com",
-        password_hash=hash_password("testpass123"),
+        password_hash=await hash_password("testpass123"),
         full_name="Inactive User",
         institutional_id=f"INACTIVE{suffix}",
         role=UserRole.student,
@@ -247,7 +247,7 @@ async def fresh_student(db_session: AsyncSession) -> User:
     suffix = _random_suffix()
     user = User(
         email=f"fresh_{suffix}@test.com",
-        password_hash=hash_password("testpass123"),
+        password_hash=await hash_password("testpass123"),
         full_name="Fresh Student",
         institutional_id=f"FRESH{suffix}",
         role=UserRole.student,

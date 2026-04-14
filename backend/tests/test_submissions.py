@@ -276,7 +276,7 @@ async def test_supervisor_can_only_see_assigned_students_submissions(
 
     new_student = User(
         email=f"test_student_{_random_suffix()}@test.com",
-        password_hash=hash_password("testpass123"),
+        password_hash=await hash_password("testpass123"),
         full_name="Test Student For Supervisor",
         institutional_id=f"TS{_random_suffix()}",
         role=UserRole.student,
@@ -391,7 +391,7 @@ async def test_supervisor_sees_department_submissions_not_primary_supervisor(
     # Create another supervisor (supervisor-B) who will be student's primary supervisor
     other_supervisor = User(
         email=f"other_sup_{_random_suffix()}@test.com",
-        password_hash=hash_password("testpass123"),
+        password_hash=await hash_password("testpass123"),
         full_name="Other Supervisor",
         role=UserRole.supervisor,
         is_active=True,
@@ -520,7 +520,7 @@ async def test_get_submission_by_id_student_own_only(
 
     other_student = User(
         email=f"other_student_{_random_suffix()}@test.com",
-        password_hash=hash_password("testpass123"),
+        password_hash=await hash_password("testpass123"),
         full_name="Other Student",
         institutional_id=f"OS{_random_suffix()}",
         role=UserRole.student,
@@ -789,7 +789,7 @@ async def test_student_cannot_delete_others_submission(
 
     other = User(
         email=f"del_other_{_random_suffix()}@test.com",
-        password_hash=hash_password("testpass123"),
+        password_hash=await hash_password("testpass123"),
         full_name="Other Student",
         institutional_id=f"DELOTH{_random_suffix()}",
         role=UserRole.student,

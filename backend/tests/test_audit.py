@@ -15,7 +15,7 @@ async def test_audit_and_main_operation_in_same_transaction(db_session: AsyncSes
     # Create a user with audit
     user = User(
         email="audit-test@example.com",
-        password_hash=hash_password("password123"),
+        password_hash=await hash_password("password123"),
         full_name="Audit Test User",
         role=UserRole.student,
     )
@@ -65,7 +65,7 @@ async def test_audit_failure_rolls_back_main_operation(db_session: AsyncSession)
     # Create a user
     user = User(
         email="rollback-test@example.com",
-        password_hash=hash_password("password123"),
+        password_hash=await hash_password("password123"),
         full_name="Rollback Test User",
         role=UserRole.student,
     )
@@ -113,7 +113,7 @@ async def test_flush_populates_id_before_commit(db_session: AsyncSession):
     """Verify that db.flush() makes server-generated UUID available before commit."""
     user = User(
         email="flush-test@example.com",
-        password_hash=hash_password("password123"),
+        password_hash=await hash_password("password123"),
         full_name="Flush Test User",
         role=UserRole.student,
     )
@@ -140,7 +140,7 @@ async def test_session_state_after_audit(db_session: AsyncSession):
     # First user + audit
     user1 = User(
         email="session-test-1@example.com",
-        password_hash=hash_password("password123"),
+        password_hash=await hash_password("password123"),
         full_name="Session Test User 1",
         role=UserRole.student,
     )
@@ -160,7 +160,7 @@ async def test_session_state_after_audit(db_session: AsyncSession):
     # Second user + audit (session should still be usable)
     user2 = User(
         email="session-test-2@example.com",
-        password_hash=hash_password("password123"),
+        password_hash=await hash_password("password123"),
         full_name="Session Test User 2",
         role=UserRole.student,
     )

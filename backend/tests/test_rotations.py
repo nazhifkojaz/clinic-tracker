@@ -287,7 +287,7 @@ async def test_get_student_rotation_supervisor_can_access(
     suffix = _random_suffix()
     student = User(
         email=f"super_student_{suffix}@test.com",
-        password_hash=hash_password("testpass123"),
+        password_hash=await hash_password("testpass123"),
         full_name="Super Student",
         institutional_id=f"SS{suffix}",
         role=UserRole.student,
@@ -399,7 +399,7 @@ async def test_admin_override_student_only(client, db_session, admin_token):
     suffix = _random_suffix()
     supervisor = User(
         email=f"override_sup_{suffix}@test.com",
-        password_hash=hash_password("testpass123"),
+        password_hash=await hash_password("testpass123"),
         full_name="Override Supervisor",
         institutional_id=f"OS{suffix}",
         role=UserRole.supervisor,

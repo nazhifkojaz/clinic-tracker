@@ -15,7 +15,7 @@ async def _create_user(db_session, **overrides):
     suffix = _random_suffix()
     defaults = {
         "email": f"settingstest_{suffix}@test.com",
-        "password_hash": hash_password("oldpassword123"),
+        "password_hash": await hash_password("oldpassword123"),
         "full_name": "Settings Test User",
         "role": UserRole.student,
         "is_active": True,
@@ -52,8 +52,8 @@ async def test_change_password_success(client, db_session):
     assert response.status_code == 204
 
     await db_session.refresh(user)
-    assert verify_password("newpassword456", user.password_hash)
-    assert not verify_password("oldpassword123", user.password_hash)
+    assert await verify_password("newpassword456", user.password_hash)
+    assert not await verify_password("oldpassword123", user.password_hash)
 
 
 async def test_change_password_wrong_current(client, db_session):
