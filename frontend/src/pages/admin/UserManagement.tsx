@@ -91,11 +91,13 @@ export default function UserManagement() {
 	};
 
 	useEffect(() => {
-		fetchUsers();
-		fetchPendingUsers();
-		departmentService.list().then((depts) => {
-			setDepartments(depts.filter((d) => d.is_active));
-		});
+		Promise.all([
+			fetchUsers(),
+			fetchPendingUsers(),
+			departmentService.list().then((depts) => {
+				setDepartments(depts.filter((d) => d.is_active));
+			}),
+		]);
 		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, []);
 

@@ -418,7 +418,6 @@ async def get_supervisor_dashboard(
             User.id, User.full_name, User.email, User.institutional_id
         ).where(User.role == UserRole.student, User.is_active.is_(True))
     else:
-        student_ids = await _get_supervised_student_ids(user.id, db)
         students_query = select(
             User.id, User.full_name, User.email, User.institutional_id
         ).where(User.id.in_(student_ids), User.is_active.is_(True))

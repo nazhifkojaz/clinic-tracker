@@ -4,6 +4,7 @@ Supervisors can send email notifications to students and view notification histo
 Admins can send to any student and view all notifications.
 """
 
+import asyncio
 import logging
 import uuid
 
@@ -71,21 +72,23 @@ async def _validate_supervisor_assignments(
     Raises:
         HTTPException: If supervisor is not assigned to a student.
     """
-    # 1. Get all primary-assigned student IDs
-    primary_query = select(SupervisorAssignment.student_id).where(
-        SupervisorAssignment.supervisor_id == supervisor_id,
-        SupervisorAssignment.assignment_type == AssignmentType.primary,
-        SupervisorAssignment.student_id.isnot(None),
+    # 1 & 2. Fetch primary-assigned students and supervised departments in parallel
+    primary_result, dept_result = await asyncio.gather(
+        db.execute(
+            select(SupervisorAssignment.student_id).where(
+                SupervisorAssignment.supervisor_id == supervisor_id,
+                SupervisorAssignment.assignment_type == AssignmentType.primary,
+                SupervisorAssignment.student_id.isnot(None),
+            )
+        ),
+        db.execute(
+            select(SupervisorAssignment.department_id).where(
+                SupervisorAssignment.supervisor_id == supervisor_id,
+                SupervisorAssignment.assignment_type == AssignmentType.department,
+            )
+        ),
     )
-    primary_result = await db.execute(primary_query)
     primary_ids = {row[0] for row in primary_result.all()}
-
-    # 2. Get all department-assigned student IDs (via StudentRotation join)
-    dept_query = select(SupervisorAssignment.department_id).where(
-        SupervisorAssignment.supervisor_id == supervisor_id,
-        SupervisorAssignment.assignment_type == AssignmentType.department,
-    )
-    dept_result = await db.execute(dept_query)
     supervised_dept_ids = [row[0] for row in dept_result.all()]
 
     dept_student_ids: set[uuid.UUID] = set()
