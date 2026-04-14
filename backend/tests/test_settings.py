@@ -73,7 +73,7 @@ async def test_change_password_requires_auth(client):
     """Unauthenticated request returns 401/403."""
     response = await client.post(
         "/api/users/me/change-password",
-        json={"current_password": "x", "new_password": "y"},
+        json={"current_password": "somepassword", "new_password": "newsecurepass123"},
     )
     assert response.status_code in (401, 403)
 
@@ -262,6 +262,7 @@ async def test_list_pending_changes_with_filter(client, admin_token, db_session)
     assert response.status_code == 200
     data = response.json()
     assert "items" in data
+    assert len(data["items"]) > 0
     assert all(item["status"] == "pending" for item in data["items"])
 
 

@@ -1,6 +1,5 @@
 """Tests for invite code generation, listing, validation, and consumption."""
 
-import pytest
 from app.models.invite_code import InviteCode, InviteCodeStatus
 from tests.conftest import auth_header
 from tests.factories import _random_suffix
@@ -202,9 +201,6 @@ async def test_register_admin_with_invalid_code(client):
             "invite_code": "WRONGCODE",
         },
     )
-    # May hit rate limiter if other register tests ran first
-    if response.status_code == 429:
-        pytest.skip("Rate limited by /api/auth/register")
     assert response.status_code == 400
     assert (
         "invalid" in response.json()["detail"].lower()
@@ -234,8 +230,6 @@ async def test_register_admin_with_used_code(client, admin_user, db_session):
             "invite_code": "USEDCODE2",
         },
     )
-    if response.status_code == 429:
-        pytest.skip("Rate limited by /api/auth/register")
     assert response.status_code == 400
 
 
@@ -253,7 +247,5 @@ async def test_register_non_admin_ignores_invite_code(client):
             "invite_code": "IRRELEVANT",
         },
     )
-    if response.status_code == 429:
-        pytest.skip("Rate limited by /api/auth/register")
     # Should succeed — invite code is ignored for non-admin roles
     assert response.status_code == 201

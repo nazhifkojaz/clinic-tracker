@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, model_validator
 
 from app.models.pending_profile_change import PendingChangeStatus
 from app.models.user import UserRole
@@ -51,6 +51,12 @@ class UserRegisterRequest(BaseModel):
     department_id: uuid.UUID | None = None
     invite_code: str | None = Field(None, description="Required when role is admin")
 
+    @model_validator(mode="after")
+    def _validate_admin_invite_code(self) -> "UserRegisterRequest":
+        if self.role == UserRole.admin and not self.invite_code:
+            raise ValueError("invite_code is required when role is admin")
+        return self
+
 
 class ChangePasswordRequest(BaseModel):
     current_password: str = Field(..., min_length=1)
@@ -58,8 +64,8 @@ class ChangePasswordRequest(BaseModel):
 
 
 class ProfileUpdateRequest(BaseModel):
-    full_name: str | None = Field(None, max_length=200)
-    institutional_id: str | None = Field(None, max_length=50)
+    full_name: str | None = Field(None, min_length=1, max_length=200)
+    institutional_id: str | None = Field(None, min_length=1, max_length=50)
     department_id: uuid.UUID | None = None
 
 

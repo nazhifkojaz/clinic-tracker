@@ -15,6 +15,7 @@ from sqlalchemy.pool import NullPool
 
 from app.core.cache import categories_cache, departments_cache
 from app.core.database import Base, get_db
+from app.core.rate_limit import limiter
 from app.core.security import create_access_token, hash_password
 from app.main import app
 from app.models.user import User, UserRole
@@ -143,6 +144,13 @@ def _disable_cache_during_tests():
     yield
     categories_cache.enable()
     departments_cache.enable()
+
+
+@pytest.fixture(autouse=True)
+def _reset_rate_limiter():
+    """Reset rate limiter storage between tests so limits don't carry over."""
+    limiter.reset()
+    yield
 
 
 @pytest.fixture
