@@ -51,8 +51,9 @@ async def lifespan(app: FastAPI):
             await conn.execute(text("SELECT 1"))
         logger.info("Database connectivity validated")
     except Exception as e:
-        logger.error("Database connection failed during startup: %s", e)
-        raise
+        logger.warning(
+            "Database not reachable at startup (will retry on first request): %s", e
+        )
 
     # Start APScheduler for rotation reminders
     try:
