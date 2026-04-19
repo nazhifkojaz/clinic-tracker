@@ -289,6 +289,9 @@ async def approve_pending_change(
         new_val = change.new_value
     setattr(target_user, change.field_name, new_val)
 
+    if change.field_name == "department_id" and target_user.role == UserRole.supervisor:
+        await sync_department_assignment(db, target_user.id, new_val)
+
     change.status = PendingChangeStatus.approved
     change.reviewed_by = admin.id
     change.reviewed_at = datetime.now(timezone.utc)
