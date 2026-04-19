@@ -45,6 +45,9 @@ export interface StudentDashboardData {
 	recent_submissions: RecentSubmission[];
 	progress_over_time: ProgressDataPoint[];
 	show_rotation_warning: boolean;
+	rotation_days_active: number;
+	rotation_duration_days: number;
+	rotation_time_pct: number;
 }
 
 export type StudentStatus = "on_track" | "at_risk" | "behind";
