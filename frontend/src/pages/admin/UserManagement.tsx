@@ -18,9 +18,13 @@ import { departmentService } from "@/services/departments";
 import { rotationService } from "@/services/rotations";
 import { userService } from "@/services/users";
 import type { Department } from "@/types/department";
+import type { Rotation } from "@/types/rotation";
 import type { User, UserCreate, UserRole } from "@/types/user";
 
 const PAGE_SIZE = 25;
+const MS_PER_DAY = 86_400_000;
+
+type AssignmentMode = "change_dept" | "adjust_day";
 
 export default function UserManagement() {
 	const [users, setUsers] = useState<User[]>([]);
@@ -44,15 +48,20 @@ export default function UserManagement() {
 	const [error, setError] = useState("");
 	const [isSubmitting, setIsSubmitting] = useState(false);
 
-	const [isDeptModalOpen, setIsDeptModalOpen] = useState(false);
-	const [deptOverrideUserId, setDeptOverrideUserId] = useState<string | null>(
+	// Assignment modal state
+	const [isAssignModalOpen, setIsAssignModalOpen] = useState(false);
+	const [assignTarget, setAssignTarget] = useState<User | null>(null);
+	const [assignMode, setAssignMode] = useState<AssignmentMode>("change_dept");
+	const [currentRotation, setCurrentRotation] = useState<Rotation | null>(
 		null,
 	);
-	const [deptOverrideUserName, setDeptOverrideUserName] = useState("");
-	const [departments, setDepartments] = useState<Department[]>([]);
+	const [isLoadingRotation, setIsLoadingRotation] = useState(false);
 	const [selectedDeptId, setSelectedDeptId] = useState("");
-	const [isDeptSubmitting, setIsDeptSubmitting] = useState(false);
-	const [deptError, setDeptError] = useState("");
+	const [startDayOffset, setStartDayOffset] = useState(0);
+	const [adjustTotalDay, setAdjustTotalDay] = useState(0);
+	const [isAssignSubmitting, setIsAssignSubmitting] = useState(false);
+	const [assignError, setAssignError] = useState("");
+	const [departments, setDepartments] = useState<Department[]>([]);
 
 	const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
 	const [deleteTargetUser, setDeleteTargetUser] = useState<User | null>(null);
@@ -176,31 +185,84 @@ export default function UserManagement() {
 		}
 	};
 
-	const openDeptOverrideModal = (user: User) => {
-		setDeptOverrideUserId(user.id);
-		setDeptOverrideUserName(user.full_name);
-		setSelectedDeptId("");
-		setDeptError("");
-		setIsDeptModalOpen(true);
+	// --- Assignment modal helpers ---
+
+	const getDeptName = (deptId: string | null) => {
+		if (!deptId) return null;
+		return departments.find((d) => d.id === deptId)?.name ?? null;
 	};
 
-	const handleDeptOverride = async (e: React.FormEvent) => {
-		e.preventDefault();
-		if (!deptOverrideUserId || !selectedDeptId) return;
+	const calcRotationDay = (
+		rotation: Rotation,
+		dept: Department | undefined,
+	) => {
+		if (!dept) return { current: 0, total: 0 };
+		const elapsed = Math.max(
+			0,
+			Math.floor(
+				(Date.now() - new Date(rotation.started_at).getTime()) / MS_PER_DAY,
+			),
+		);
+		const current = rotation.days_offset + elapsed;
+		return { current, total: dept.rotation_duration_days };
+	};
 
-		setIsDeptSubmitting(true);
-		setDeptError("");
+	const openAssignModal = async (user: User) => {
+		setAssignTarget(user);
+		setAssignError("");
+		setSelectedDeptId("");
+		setStartDayOffset(0);
+		setAdjustTotalDay(0);
+		setCurrentRotation(null);
+		setAssignMode("change_dept");
+
+		if (user.role === "student") {
+			setIsLoadingRotation(true);
+			try {
+				const rotation = await rotationService.getStudentCurrent(user.id);
+				setCurrentRotation(rotation);
+				if (rotation) {
+					const dept = departments.find((d) => d.id === rotation.department_id);
+					const { current, total } = calcRotationDay(rotation, dept);
+					setAdjustTotalDay(current);
+				}
+			} catch {
+				// Rotation fetch failed — treat as no rotation
+			} finally {
+				setIsLoadingRotation(false);
+			}
+		}
+
+		setIsAssignModalOpen(true);
+	};
+
+	const handleAssignSubmit = async (e: React.FormEvent) => {
+		e.preventDefault();
+		if (!assignTarget) return;
+
+		setIsAssignSubmitting(true);
+		setAssignError("");
+
 		try {
-			await rotationService.overrideDepartment(deptOverrideUserId, {
-				department_id: selectedDeptId,
-			});
-			toast.success("Department updated successfully");
-			setIsDeptModalOpen(false);
+			if (assignTarget.role === "supervisor") {
+				await userService.update(assignTarget.id, {
+					department_id: selectedDeptId || null,
+				});
+			} else if (assignMode === "change_dept" || !currentRotation) {
+				await rotationService.overrideDepartment(assignTarget.id, {
+					department_id: selectedDeptId,
+					days_offset: startDayOffset,
+				});
+			} else {
+				await rotationService.adjustDay(assignTarget.id, adjustTotalDay);
+			}
+			toast.success("Assignment updated successfully");
+			setIsAssignModalOpen(false);
 			fetchUsers(currentPage);
 		} catch {
-			setDeptError("Failed to update department.");
+			setAssignError("Failed to update assignment.");
 		} finally {
-			setIsDeptSubmitting(false);
+			setIsAssignSubmitting(false);
 		}
 	};
 
@@ -238,6 +300,24 @@ export default function UserManagement() {
 		student:
 			"bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300",
 	};
+
+	// Derived values for assignment modal
+	const assignDeptName = assignTarget
+		? currentRotation
+			? getDeptName(currentRotation.department_id)
+			: getDeptName(assignTarget.department_id)
+		: null;
+
+	const assignRotationInfo = (() => {
+		if (!currentRotation || !assignTarget) return null;
+		const dept = departments.find(
+			(d) => d.id === currentRotation.department_id,
+		);
+		return calcRotationDay(currentRotation, dept);
+	})();
+
+	const isStudent = assignTarget?.role === "student";
+	const hasRotation = currentRotation !== null;
 
 	return (
 		<div className="space-y-6">
@@ -349,12 +429,13 @@ export default function UserManagement() {
 										</td>
 										<td className="p-4">
 											<div className="flex items-center gap-1">
-												{user.role === "student" && (
+												{(user.role === "student" ||
+													user.role === "supervisor") && (
 													<Button
 														variant="ghost"
 														size="sm"
-														onClick={() => openDeptOverrideModal(user)}
-														title="Change Department"
+														onClick={() => openAssignModal(user)}
+														title="Manage Assignment"
 													>
 														<RotateCw className="h-4 w-4" />
 													</Button>
@@ -537,63 +618,227 @@ export default function UserManagement() {
 				</div>
 			)}
 
-			{/* Department Override Modal */}
-			{isDeptModalOpen && (
+			{/* Manage Assignment Modal */}
+			{isAssignModalOpen && assignTarget && (
 				<div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
 					<Card className="w-full max-w-md">
 						<CardHeader>
-							<CardTitle>Change Department — {deptOverrideUserName}</CardTitle>
+							<CardTitle>
+								Manage Assignment — {assignTarget.full_name}
+							</CardTitle>
 						</CardHeader>
 						<CardContent>
-							<form onSubmit={handleDeptOverride} className="space-y-4">
-								{deptError && (
-									<div className="rounded-md bg-destructive/10 p-3 text-sm text-destructive">
-										{deptError}
-									</div>
-								)}
-								<div className="space-y-2">
-									<Label htmlFor="dept-select">New Department</Label>
-									<select
-										id="dept-select"
-										className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm"
-										value={selectedDeptId}
-										onChange={(e) => setSelectedDeptId(e.target.value)}
-										required
-									>
-										<option value="" disabled>
-											Select a department
-										</option>
-										{departments.map((dept) => (
-											<option key={dept.id} value={dept.id}>
-												{dept.name}
-											</option>
-										))}
-									</select>
+							{isLoadingRotation ? (
+								<div className="flex items-center justify-center py-8">
+									<Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
 								</div>
-								<p className="text-xs text-muted-foreground">
-									This will deactivate the student's current rotation and assign them to the
-									selected department. Previous case progress is preserved.
-								</p>
-								<div className="flex justify-end gap-2">
-									<Button
-										type="button"
-										variant="outline"
-										onClick={() => setIsDeptModalOpen(false)}
-									>
-										Cancel
-									</Button>
-									<Button type="submit" disabled={isDeptSubmitting || !selectedDeptId}>
-										{isDeptSubmitting ? (
-											<>
-												<Loader2 className="mr-2 h-4 w-4 animate-spin" />
-												Updating...
-											</>
-										) : (
-											"Change Department"
+							) : (
+								<form
+									onSubmit={handleAssignSubmit}
+									className="space-y-4"
+								>
+									{assignError && (
+										<div className="rounded-md bg-destructive/10 p-3 text-sm text-destructive">
+											{assignError}
+										</div>
+									)}
+
+									{/* Current state display */}
+									{isStudent && hasRotation && assignRotationInfo ? (
+										<div className="rounded-md bg-muted p-3 text-sm">
+											<div className="font-medium">
+												Current: {assignDeptName ?? "Unknown"}
+											</div>
+											<div className="text-muted-foreground">
+												Day {assignRotationInfo.current} of{" "}
+												{assignRotationInfo.total}
+											</div>
+										</div>
+									) : isStudent && !hasRotation ? (
+										<div className="rounded-md bg-muted p-3 text-sm text-muted-foreground">
+											No active rotation
+										</div>
+									) : (
+										<div className="rounded-md bg-muted p-3 text-sm">
+											<div className="font-medium">
+												Current:{" "}
+												{assignDeptName ?? (
+													<span className="text-muted-foreground">
+														No department assigned
+													</span>
+												)}
+											</div>
+										</div>
+									)}
+
+									{/* Mode tabs for students with rotation */}
+									{isStudent && hasRotation && (
+										<div className="flex gap-2">
+											<Button
+												type="button"
+												variant={
+													assignMode === "change_dept"
+														? "default"
+														: "outline"
+												}
+												size="sm"
+												onClick={() =>
+													setAssignMode("change_dept")
+												}
+											>
+												Change Department
+											</Button>
+											<Button
+												type="button"
+												variant={
+													assignMode === "adjust_day"
+														? "default"
+														: "outline"
+												}
+												size="sm"
+												onClick={() =>
+													setAssignMode("adjust_day")
+												}
+											>
+												Adjust Day
+											</Button>
+										</div>
+									)}
+
+									{/* Change Department fields */}
+									{(assignMode === "change_dept" ||
+										!isStudent ||
+										!hasRotation) && (
+										<>
+											<div className="space-y-2">
+												<Label htmlFor="assign-dept-select">
+													{isStudent && !hasRotation
+														? "Department"
+														: "New Department"}
+												</Label>
+												<select
+													id="assign-dept-select"
+													className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm"
+													value={selectedDeptId}
+													onChange={(e) =>
+														setSelectedDeptId(e.target.value)
+													}
+													required
+												>
+													<option value="" disabled>
+														Select a department
+													</option>
+													{departments.map((dept) => (
+														<option
+															key={dept.id}
+															value={dept.id}
+														>
+															{dept.name}
+														</option>
+													))}
+												</select>
+											</div>
+
+											{isStudent && (
+												<div className="space-y-2">
+													<Label htmlFor="start-day-offset">
+														Start at day
+													</Label>
+													<Input
+														id="start-day-offset"
+														type="number"
+														min={0}
+														value={startDayOffset}
+														onChange={(e) =>
+															setStartDayOffset(
+																Number(e.target.value),
+															)
+														}
+													/>
+													<p className="text-xs text-muted-foreground">
+														Number of days to credit toward
+														progress in the new department.
+													</p>
+												</div>
+											)}
+
+											{isStudent && hasRotation && (
+												<p className="text-xs text-muted-foreground">
+													This will deactivate the
+													student&apos;s current
+													rotation and assign them to
+													the selected department.
+													Previous case progress is
+													preserved.
+												</p>
+											)}
+										</>
+									)}
+
+									{/* Adjust Day fields */}
+									{assignMode === "adjust_day" &&
+										isStudent &&
+										hasRotation &&
+										assignRotationInfo && (
+											<div className="space-y-2">
+												<Label htmlFor="adjust-total-day">
+													Set total day to
+												</Label>
+												<div className="flex items-center gap-2">
+													<Input
+														id="adjust-total-day"
+														type="number"
+														min={0}
+														max={
+															assignRotationInfo.total
+														}
+														value={adjustTotalDay}
+														onChange={(e) =>
+															setAdjustTotalDay(
+																Number(
+																	e.target.value,
+																),
+															)
+														}
+														className="w-24"
+													/>
+													<span className="text-sm text-muted-foreground">
+														of {assignRotationInfo.total}
+													</span>
+												</div>
+											</div>
 										)}
-									</Button>
-								</div>
-							</form>
+
+									<div className="flex justify-end gap-2">
+										<Button
+											type="button"
+											variant="outline"
+											onClick={() =>
+												setIsAssignModalOpen(false)
+											}
+										>
+											Cancel
+										</Button>
+										<Button
+											type="submit"
+											disabled={
+												isAssignSubmitting ||
+												(assignMode === "change_dept" &&
+													!selectedDeptId)
+											}
+										>
+											{isAssignSubmitting ? (
+												<>
+													<Loader2 className="mr-2 h-4 w-4 animate-spin" />
+													Updating...
+												</>
+											) : (
+												"Apply"
+											)}
+										</Button>
+									</div>
+								</form>
+							)}
 						</CardContent>
 					</Card>
 				</div>
