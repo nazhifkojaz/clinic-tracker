@@ -478,6 +478,9 @@ async def update_user(
     for field, value in update_data.items():
         setattr(user, field, value)
 
+    if "department_id" in update_data and user.role == UserRole.supervisor:
+        await sync_department_assignment(db, user.id, user.department_id)
+
     new_values = {
         "email": user.email,
         "full_name": user.full_name,
