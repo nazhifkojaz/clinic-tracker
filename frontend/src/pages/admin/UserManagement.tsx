@@ -14,6 +14,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useAuthStore } from "@/stores/authStore";
+import { assignmentService } from "@/services/assignments";
 import { departmentService } from "@/services/departments";
 import { rotationService } from "@/services/rotations";
 import { userService } from "@/services/users";
@@ -220,7 +221,13 @@ export default function UserManagement() {
 		return { current, total: dept.rotation_duration_days };
 	};
 
-	const openAssignModal = async (user: User) => {
+	const getStudentLabel = (a: AssignmentWithDetails) => {
+		const stu = allStudents.find((s) => s.id === a.student_id);
+		const name = a.student_name || "Unknown";
+		return stu?.institutional_id ? `${name} (${stu.institutional_id})` : name;
+	};
+
+	const openAssignModal = (user: User) => {
 		setAssignTarget(user);
 		setAssignError("");
 		setSelectedDeptId("");
@@ -228,25 +235,38 @@ export default function UserManagement() {
 		setAdjustTotalDay(0);
 		setCurrentRotation(null);
 		setAssignMode("change_dept");
+		setAssignedStudents([]);
+		setAllStudents([]);
+		setSelectedStudentId("");
+		setIsLoadingStudents(false);
+		setIsAssignModalOpen(true);
 
 		if (user.role === "student") {
 			setIsLoadingRotation(true);
-			try {
-				const rotation = await rotationService.getStudentCurrent(user.id);
+			rotationService.getStudentCurrent(user.id).then((rotation) => {
 				setCurrentRotation(rotation);
 				if (rotation) {
 					const dept = departments.find((d) => d.id === rotation.department_id);
 					const { current } = calcRotationDay(rotation, dept);
 					setAdjustTotalDay(current);
 				}
-			} catch {
-				// Rotation fetch failed — treat as no rotation
-			} finally {
-				setIsLoadingRotation(false);
-			}
+			}).catch(() => {}).finally(() => setIsLoadingRotation(false));
 		}
 
-		setIsAssignModalOpen(true);
+		if (user.role === "supervisor") {
+			setIsLoadingStudents(true);
+			Promise.all([
+				assignmentService.list({
+					supervisor_id: user.id,
+					assignment_type: "primary",
+					limit: 200,
+				}),
+				userService.list({ role: "student", is_active: true, limit: 200 }),
+			]).then(([assignmentsRes, studentsRes]) => {
+				setAssignedStudents(assignmentsRes.items);
+				setAllStudents(studentsRes.items);
+			}).catch(() => {}).finally(() => setIsLoadingStudents(false));
+		}
 	};
 
 	const handleAssignSubmit = async (e: React.FormEvent) => {
@@ -276,6 +296,48 @@ export default function UserManagement() {
 			setAssignError("Failed to update assignment.");
 		} finally {
 			setIsAssignSubmitting(false);
+		}
+	};
+
+	const handleAddStudent = async () => {
+		if (!assignTarget || !selectedStudentId) return;
+		setIsAddingStudent(true);
+		try {
+			await assignmentService.create({
+				supervisor_id: assignTarget.id,
+				student_id: selectedStudentId,
+				assignment_type: "primary",
+			});
+			toast.success("Student assigned successfully");
+			setSelectedStudentId("");
+			const res = await assignmentService.list({
+				supervisor_id: assignTarget.id,
+				assignment_type: "primary",
+				limit: 200,
+			});
+			setAssignedStudents(res.items);
+		} catch {
+			toast.error(
+				"Failed to assign student. They may already have a supervisor.",
+			);
+		} finally {
+			setIsAddingStudent(false);
+		}
+	};
+
+	const handleRemoveStudent = async (assignmentId: string) => {
+		if (!window.confirm("Remove this student from the supervisor?")) return;
+		setIsRemovingStudentId(assignmentId);
+		try {
+			await assignmentService.remove(assignmentId);
+			toast.success("Student removed successfully");
+			setAssignedStudents((prev) =>
+				prev.filter((a) => a.id !== assignmentId),
+			);
+		} catch {
+			toast.error("Failed to remove student.");
+		} finally {
+			setIsRemovingStudentId(null);
 		}
 	};
 
@@ -331,6 +393,13 @@ export default function UserManagement() {
 
 	const isStudent = assignTarget?.role === "student";
 	const hasRotation = currentRotation !== null;
+
+	const assignedStudentIds = new Set(
+		assignedStudents.map((a) => a.student_id),
+	);
+	const unassignedStudents = allStudents.filter(
+		(s) => !assignedStudentIds.has(s.id),
+	);
 
 	return (
 		<div className="space-y-6">
@@ -634,7 +703,7 @@ export default function UserManagement() {
 			{/* Manage Assignment Modal */}
 			{isAssignModalOpen && assignTarget && (
 				<div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-					<Card className="w-full max-w-md">
+					<Card className={"w-full " + (assignMode === "manage_students" ? "max-w-xl" : "max-w-md")}>
 						<CardHeader>
 							<CardTitle>
 								Manage Assignment — {assignTarget.full_name}
@@ -718,8 +787,43 @@ export default function UserManagement() {
 										</div>
 									)}
 
+									{/* Tabs for supervisors */}
+									{!isStudent && (
+										<div className="flex gap-2">
+											<Button
+												type="button"
+												variant={
+													assignMode === "change_dept"
+														? "default"
+														: "outline"
+												}
+												size="sm"
+												onClick={() =>
+													setAssignMode("change_dept")
+												}
+											>
+												Department
+											</Button>
+											<Button
+												type="button"
+												variant={
+													assignMode === "manage_students"
+														? "default"
+														: "outline"
+												}
+												size="sm"
+												onClick={() =>
+													setAssignMode("manage_students")
+												}
+											>
+												Academic Students
+											</Button>
+										</div>
+									)}
+
 									{/* Change Department fields */}
-									{(assignMode === "change_dept" ||
+									{assignMode !== "manage_students" &&
+									(assignMode === "change_dept" ||
 										!isStudent ||
 										!hasRotation) && (
 										<>
@@ -822,6 +926,93 @@ export default function UserManagement() {
 											</div>
 										)}
 
+									{/* Academic Students tab */}
+									{assignMode === "manage_students" && !isStudent && (
+										<div className="space-y-4">
+											{isLoadingStudents ? (
+												<div className="flex items-center justify-center py-4">
+													<Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+												</div>
+											) : (
+												<>
+													{assignedStudents.length === 0 ? (
+														<p className="py-4 text-center text-sm text-muted-foreground">
+															No students assigned yet.
+														</p>
+													) : (
+														<div className="space-y-2">
+															{assignedStudents.map((a) => (
+																<div
+																	key={a.id}
+																	className="flex items-center justify-between rounded-md border px-3 py-2"
+																>
+																	<span className="text-sm font-medium">
+																		{getStudentLabel(a)}
+																	</span>
+																	<Button
+																		variant="ghost"
+																		size="sm"
+																		onClick={() =>
+																			handleRemoveStudent(a.id)
+																		}
+																		disabled={
+																			isRemovingStudentId === a.id
+																		}
+																	>
+																		{isRemovingStudentId === a.id ? (
+																			<Loader2 className="h-4 w-4 animate-spin" />
+																		) : (
+																			<Trash2 className="h-4 w-4 text-destructive" />
+																		)}
+																	</Button>
+																</div>
+															))}
+														</div>
+													)}
+
+													{/* Add student */}
+													<div className="space-y-2 border-t pt-4">
+														<Label>Add Student</Label>
+														<div className="flex gap-2">
+															<select
+																className="flex h-9 flex-1 rounded-md border border-input bg-background px-3 py-1 text-sm"
+																value={selectedStudentId}
+																onChange={(e) =>
+																	setSelectedStudentId(e.target.value)
+																}
+																disabled={isAddingStudent || unassignedStudents.length === 0}
+															>
+																<option value="">
+																	{unassignedStudents.length === 0
+																		? "No unassigned students"
+																		: "Select a student..."}
+																</option>
+																{unassignedStudents.map((s) => (
+																	<option key={s.id} value={s.id}>
+																		{s.full_name}
+																		{s.institutional_id
+																			? ` (${s.institutional_id})`
+																			: ""}
+																	</option>
+																))}
+															</select>
+															<Button
+																onClick={handleAddStudent}
+																disabled={!selectedStudentId || isAddingStudent}
+															>
+																{isAddingStudent ? (
+																	<Loader2 className="h-4 w-4 animate-spin" />
+																) : (
+																	"Add"
+																)}
+															</Button>
+														</div>
+													</div>
+												</>
+											)}
+										</div>
+									)}
+
 									<div className="flex justify-end gap-2">
 										<Button
 											type="button"
@@ -830,25 +1021,30 @@ export default function UserManagement() {
 												setIsAssignModalOpen(false)
 											}
 										>
-											Cancel
+											{assignMode === "manage_students"
+												? "Close"
+												: "Cancel"}
 										</Button>
-										<Button
-											type="submit"
-											disabled={
-												isAssignSubmitting ||
-												(assignMode === "change_dept" &&
-													!selectedDeptId)
-											}
-										>
-											{isAssignSubmitting ? (
-												<>
-													<Loader2 className="mr-2 h-4 w-4 animate-spin" />
-													Updating...
-												</>
-											) : (
-												"Apply"
-											)}
-										</Button>
+										{assignMode !== "manage_students" && (
+											<Button
+												type="submit"
+												disabled={
+													isAssignSubmitting ||
+													(assignMode ===
+														"change_dept" &&
+														!selectedDeptId)
+												}
+											>
+												{isAssignSubmitting ? (
+													<>
+														<Loader2 className="mr-2 h-4 w-4 animate-spin" />
+														Updating...
+													</>
+												) : (
+													"Apply"
+												)}
+											</Button>
+										)}
 									</div>
 								</form>
 							)}
