@@ -1,6 +1,5 @@
 import type { PaginatedResponse, PaginationParams } from "@/types/pagination";
 import type {
-	DayAdjustmentRequest,
 	DepartmentOverrideRequest,
 	Rotation,
 	RotationCreate,

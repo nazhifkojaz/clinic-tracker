@@ -223,7 +223,7 @@ export default function UserManagement() {
 				setCurrentRotation(rotation);
 				if (rotation) {
 					const dept = departments.find((d) => d.id === rotation.department_id);
-					const { current, total } = calcRotationDay(rotation, dept);
+					const { current } = calcRotationDay(rotation, dept);
 					setAdjustTotalDay(current);
 				}
 			} catch {
