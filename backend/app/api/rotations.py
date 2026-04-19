@@ -22,6 +22,20 @@ from app.utils.audit import record_audit
 
 router = APIRouter(prefix="/api/rotations", tags=["rotations"])
 
+SECONDS_PER_DAY = 86400
+
+
+def _resume_prior_rotation(prior: StudentRotation) -> StudentRotation:
+    prior_segment_days = max(
+        0,
+        int((prior.ended_at - prior.started_at).total_seconds() // SECONDS_PER_DAY),
+    )
+    prior.days_offset = prior.days_offset + prior_segment_days
+    prior.started_at = datetime.now(timezone.utc)
+    prior.ended_at = None
+    prior.is_current = True
+    return prior
+
 
 @router.get("/current", response_model=RotationResponse | None)
 async def get_current_rotation(
@@ -98,16 +112,7 @@ async def set_rotation(
     prior = prior_result.scalar_one_or_none()
 
     if prior and prior.ended_at:
-        # Accumulate active days from the prior segment
-        prior_segment_days = max(
-            0,
-            int((prior.ended_at - prior.started_at).total_seconds() // 86400),
-        )
-        prior.days_offset = prior.days_offset + prior_segment_days
-        prior.started_at = datetime.now(timezone.utc)
-        prior.ended_at = None
-        prior.is_current = True
-        rotation = prior
+        rotation = _resume_prior_rotation(prior)
     else:
         # Create new rotation
         rotation = StudentRotation(
@@ -261,15 +266,7 @@ async def override_student_department(
     prior = prior_result.scalar_one_or_none()
 
     if prior and prior.ended_at:
-        prior_segment_days = max(
-            0,
-            int((prior.ended_at - prior.started_at).total_seconds() // 86400),
-        )
-        prior.days_offset = prior.days_offset + prior_segment_days
-        prior.started_at = datetime.now(timezone.utc)
-        prior.ended_at = None
-        prior.is_current = True
-        rotation = prior
+        rotation = _resume_prior_rotation(prior)
     else:
         rotation = StudentRotation(
             student_id=student_id,
@@ -333,12 +330,13 @@ async def adjust_student_day(
         )
 
     elapsed = max(
-        0, int((datetime.now(timezone.utc) - rotation.started_at).total_seconds() // 86400)
+        0, int((datetime.now(timezone.utc) - rotation.started_at).total_seconds() // SECONDS_PER_DAY)
     )
     new_offset = max(0, body.total_day - elapsed)
 
-    old_values = {"days_offset": rotation.days_offset}
+    old_values = {"student_id": str(student_id), "days_offset": rotation.days_offset}
     rotation.days_offset = new_offset
+    await db.flush()
 
     await record_audit(
         db,
@@ -347,7 +345,11 @@ async def adjust_student_day(
         table_name="student_rotations",
         record_id=rotation.id,
         old_values=old_values,
-        new_values={"days_offset": new_offset},
+        new_values={
+            "student_id": str(student_id),
+            "days_offset": new_offset,
+            "requested_total_day": body.total_day,
+        },
     )
     await db.commit()
     await db.refresh(rotation)
