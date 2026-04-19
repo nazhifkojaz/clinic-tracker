@@ -1,5 +1,6 @@
 import type { PaginatedResponse, PaginationParams } from "@/types/pagination";
 import type {
+	DayAdjustmentRequest,
 	DepartmentOverrideRequest,
 	Rotation,
 	RotationCreate,
@@ -41,6 +42,14 @@ export const rotationService = {
 		const { data } = await api.post<Rotation>(
 			`/api/rotations/students/${studentId}/override-department`,
 			body,
+		);
+		return data;
+	},
+
+	async adjustDay(studentId: string, totalDay: number): Promise<Rotation> {
+		const { data } = await api.patch<Rotation>(
+			`/api/rotations/students/${studentId}/day`,
+			{ total_day: totalDay },
 		);
 		return data;
 	},
