@@ -20,11 +20,12 @@ import { userService } from "@/services/users";
 import type { Department } from "@/types/department";
 import type { Rotation } from "@/types/rotation";
 import type { User, UserCreate, UserRole } from "@/types/user";
+import type { AssignmentWithDetails } from "@/types/assignment";
 
 const PAGE_SIZE = 25;
 const MS_PER_DAY = 86_400_000;
 
-type AssignmentMode = "change_dept" | "adjust_day";
+type AssignmentMode = "change_dept" | "adjust_day" | "manage_students";
 
 export default function UserManagement() {
 	const [users, setUsers] = useState<User[]>([]);
@@ -62,6 +63,18 @@ export default function UserManagement() {
 	const [isAssignSubmitting, setIsAssignSubmitting] = useState(false);
 	const [assignError, setAssignError] = useState("");
 	const [departments, setDepartments] = useState<Department[]>([]);
+
+	// Academic students tab state
+	const [assignedStudents, setAssignedStudents] = useState<
+		AssignmentWithDetails[]
+	>([]);
+	const [allStudents, setAllStudents] = useState<User[]>([]);
+	const [isLoadingStudents, setIsLoadingStudents] = useState(false);
+	const [isAddingStudent, setIsAddingStudent] = useState(false);
+	const [isRemovingStudentId, setIsRemovingStudentId] = useState<
+		string | null
+	>(null);
+	const [selectedStudentId, setSelectedStudentId] = useState("");
 
 	const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
 	const [deleteTargetUser, setDeleteTargetUser] = useState<User | null>(null);
