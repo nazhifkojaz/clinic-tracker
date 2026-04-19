@@ -274,6 +274,7 @@ async def override_student_department(
             student_id=student_id,
             department_id=body.department_id,
             is_current=True,
+            days_offset=body.days_offset,
         )
         db.add(rotation)
 
@@ -290,6 +291,7 @@ async def override_student_department(
             "student_id": str(student_id),
             "department_id": str(body.department_id),
             "is_current": True,
+            "days_offset": body.days_offset,
         },
     )
 

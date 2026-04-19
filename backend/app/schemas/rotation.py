@@ -11,6 +11,7 @@ class RotationCreate(BaseModel):
 
 class DepartmentOverrideRequest(BaseModel):
     department_id: uuid.UUID
+    days_offset: int = Field(default=0, ge=0)
 
 
 class RotationResponse(BaseModel):
