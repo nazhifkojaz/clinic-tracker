@@ -12,6 +12,7 @@ from app.models.rotation import StudentRotation
 from app.models.user import User, UserRole
 from app.schemas.pagination import PaginatedResponse
 from app.schemas.rotation import (
+    DayAdjustmentRequest,
     DepartmentOverrideRequest,
     RotationCreate,
     RotationOffsetUpdate,
@@ -295,6 +296,59 @@ async def override_student_department(
         },
     )
 
+    await db.commit()
+    await db.refresh(rotation)
+    return rotation
+
+
+@router.patch(
+    "/students/{student_id}/day",
+    response_model=RotationResponse,
+)
+async def adjust_student_day(
+    student_id: UUID,
+    body: DayAdjustmentRequest,
+    admin: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Admin-only: adjust a student's rotation day by setting the total effective day.
+
+    Calculates the required days_offset so that (days_offset + elapsed) == total_day.
+    """
+    student = await db.get(User, student_id)
+    if not student or student.role != UserRole.student:
+        raise HTTPException(status_code=404, detail="Student not found")
+
+    result = await db.execute(
+        select(StudentRotation).where(
+            StudentRotation.student_id == student_id,
+            StudentRotation.is_current.is_(True),
+        )
+    )
+    rotation = result.scalar_one_or_none()
+    if not rotation:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Student has no active rotation",
+        )
+
+    elapsed = max(
+        0, int((datetime.now(timezone.utc) - rotation.started_at).total_seconds() // 86400)
+    )
+    new_offset = max(0, body.total_day - elapsed)
+
+    old_values = {"days_offset": rotation.days_offset}
+    rotation.days_offset = new_offset
+
+    await record_audit(
+        db,
+        user_id=admin.id,
+        action="update",
+        table_name="student_rotations",
+        record_id=rotation.id,
+        old_values=old_values,
+        new_values={"days_offset": new_offset},
+    )
     await db.commit()
     await db.refresh(rotation)
     return rotation
