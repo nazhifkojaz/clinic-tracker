@@ -330,7 +330,11 @@ async def adjust_student_day(
         )
 
     elapsed = max(
-        0, int((datetime.now(timezone.utc) - rotation.started_at).total_seconds() // SECONDS_PER_DAY)
+        0,
+        int(
+            (datetime.now(timezone.utc) - rotation.started_at).total_seconds()
+            // SECONDS_PER_DAY
+        ),
     )
     new_offset = max(0, body.total_day - elapsed)
 

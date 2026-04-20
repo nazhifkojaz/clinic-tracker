@@ -168,11 +168,13 @@ async def register(
         await db.flush()
 
         if user.role == UserRole.supervisor and user.department_id is not None:
-            db.add(SupervisorAssignment(
-                supervisor_id=user.id,
-                department_id=user.department_id,
-                assignment_type=AssignmentType.department,
-            ))
+            db.add(
+                SupervisorAssignment(
+                    supervisor_id=user.id,
+                    department_id=user.department_id,
+                    assignment_type=AssignmentType.department,
+                )
+            )
             await db.flush()
 
         # Consume invite code if this is an admin registration

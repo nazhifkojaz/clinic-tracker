@@ -49,11 +49,13 @@ async def sync_department_assignment(
         if existing:
             existing.department_id = new_dept_id
         else:
-            db.add(SupervisorAssignment(
-                supervisor_id=supervisor_id,
-                department_id=new_dept_id,
-                assignment_type=AssignmentType.department,
-            ))
+            db.add(
+                SupervisorAssignment(
+                    supervisor_id=supervisor_id,
+                    department_id=new_dept_id,
+                    assignment_type=AssignmentType.department,
+                )
+            )
     else:
         if existing:
             await db.delete(existing)
