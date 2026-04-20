@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { MAX_PROOF_FILE_SIZE } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 import { departmentService } from "@/services/departments";
 import { rotationService } from "@/services/rotations";
@@ -18,8 +19,6 @@ import { submissionService } from "@/services/submissions";
 import { useAuthStore } from "@/stores/authStore";
 import type { Department, TaskCategory } from "@/types/department";
 import type { ReviewerInfo, UploadUrlResponse } from "@/types/submission";
-
-const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
 
 export default function CaseInputForm() {
 	const { user } = useAuthStore();
@@ -112,7 +111,7 @@ export default function CaseInputForm() {
 		const file = e.target.files?.[0];
 		if (!file) return;
 
-		if (file.size > MAX_FILE_SIZE) {
+		if (file.size > MAX_PROOF_FILE_SIZE) {
 			setError("Image file must be less than 5MB");
 			return;
 		}
@@ -130,7 +129,6 @@ export default function CaseInputForm() {
 
 		try {
 			setIsUploading(true);
-			setError("");
 
 			const uploadData: UploadUrlResponse =
 				await submissionService.getUploadUrl({

@@ -25,10 +25,7 @@ export const submissionService = {
 	},
 
 	async update(id: string, body: SubmissionUpdate): Promise<Submission> {
-		const { data } = await api.put<Submission>(
-			`/api/submissions/${id}`,
-			body,
-		);
+		const { data } = await api.put<Submission>(`/api/submissions/${id}`, body);
 		return data;
 	},
 
@@ -43,12 +40,6 @@ export const submissionService = {
 			{ params },
 		);
 		return data;
-	},
-
-	get(id: string): Promise<Submission> {
-		return api
-			.get<Submission>(`/api/submissions/${id}`)
-			.then((res) => res.data);
 	},
 
 	async review(id: string, body: SubmissionReview): Promise<Submission> {

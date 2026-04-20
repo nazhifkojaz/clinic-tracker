@@ -112,14 +112,6 @@ class DeletedSubmissionListResponse(SubmissionListResponse):
     deleted_by_name: str | None
 
 
-class SubmissionWithDetailsResponse(SubmissionResponse):
-    student_name: str
-    department_name: str
-    task_category_name: str
-    reviewer_name: str | None = None
-    target_supervisor_name: str | None = None
-
-
 class SubmissionReview(BaseModel):
     status: Literal["approved", "rejected"] = Field(
         ..., description="Must be 'approved' or 'rejected'"
