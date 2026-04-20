@@ -19,9 +19,6 @@ const UserManagement = lazy(() => import("@/pages/admin/UserManagement"));
 const DepartmentManagement = lazy(
 	() => import("@/pages/admin/DepartmentManagement"),
 );
-const AssignmentManagement = lazy(
-	() => import("@/pages/admin/AssignmentManagement"),
-);
 const AuditLog = lazy(() => import("@/pages/admin/AuditLog"));
 const DeletedSubmissions = lazy(
 	() => import("@/pages/admin/DeletedSubmissions"),
@@ -75,10 +72,6 @@ function App() {
 								<Route
 									path="/admin/departments"
 									element={<DepartmentManagement />}
-								/>
-								<Route
-									path="/admin/assignments"
-									element={<AssignmentManagement />}
 								/>
 								<Route path="/admin/audit-log" element={<AuditLog />} />
 								<Route

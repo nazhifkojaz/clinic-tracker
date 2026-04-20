@@ -5,7 +5,6 @@ import {
 	FilePlus,
 	KeyRound,
 	LayoutDashboard,
-	Link2,
 	ScrollText,
 	Settings,
 	Timer,
@@ -40,7 +39,6 @@ const navItems = {
 		{ to: "/admin/users", label: "Users", icon: Users },
 		{ to: "/admin/invite-codes", label: "Invite Codes", icon: KeyRound },
 		{ to: "/admin/departments", label: "Departments", icon: Building2 },
-		{ to: "/admin/assignments", label: "Assignments", icon: Link2 },
 		{ to: "/admin/audit-log", label: "Audit Log", icon: ScrollText },
 		{
 			to: "/admin/deleted-submissions",
