@@ -480,10 +480,14 @@ async def update_user(
     if "password" in update_data:
         update_data["password_hash"] = await hash_password(update_data.pop("password"))
 
+    original_role = user.role
     for field, value in update_data.items():
         setattr(user, field, value)
 
-    if "department_id" in update_data and user.role == UserRole.supervisor:
+    role_changed = "role" in update_data and original_role != user.role
+    if (
+        "department_id" in update_data or role_changed
+    ) and user.role == UserRole.supervisor:
         await sync_department_assignment(db, user.id, user.department_id)
 
     new_values = {

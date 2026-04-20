@@ -67,10 +67,12 @@ export default function StudentDashboard() {
 							</span>{" "}
 							<span className="font-semibold">{data.current_department}</span>
 						</div>
+						{data.rotation_duration_days > 0 && (
 						<span className="text-sm font-medium">
 							Day {data.rotation_days_active} of{" "}
 							{data.rotation_duration_days}
 						</span>
+						)}
 					</div>
 					{data.rotation_duration_days > 0 && (
 						<div className="h-2 rounded-full bg-secondary">

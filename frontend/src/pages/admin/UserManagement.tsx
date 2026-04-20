@@ -1020,6 +1020,7 @@ export default function UserManagement() {
 																))}
 															</select>
 															<Button
+																type="button"
 																onClick={handleAssignSupervisor}
 																disabled={!selectedSupervisorId || isChangingSupervisor}
 															>
@@ -1062,6 +1063,7 @@ export default function UserManagement() {
 																	<Button
 																		variant="ghost"
 																		size="sm"
+																		type="button"
 																		onClick={() =>
 																			handleRemoveStudent(a.id)
 																		}
@@ -1107,6 +1109,7 @@ export default function UserManagement() {
 																))}
 															</select>
 															<Button
+																type="button"
 																onClick={handleAddStudent}
 																disabled={!selectedStudentId || isAddingStudent}
 															>
