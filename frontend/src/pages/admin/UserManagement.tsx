@@ -26,7 +26,7 @@ import type { AssignmentWithDetails } from "@/types/assignment";
 const PAGE_SIZE = 25;
 const MS_PER_DAY = 86_400_000;
 
-type AssignmentMode = "change_dept" | "adjust_day" | "manage_students";
+type AssignmentMode = "change_dept" | "adjust_day" | "manage_students" | "change_supervisor";
 
 export default function UserManagement() {
 	const [users, setUsers] = useState<User[]>([]);
@@ -76,6 +76,15 @@ export default function UserManagement() {
 		string | null
 	>(null);
 	const [selectedStudentId, setSelectedStudentId] = useState("");
+
+	// Academic supervisor tab state
+	const [currentSupervisor, setCurrentSupervisor] =
+		useState<AssignmentWithDetails | null>(null);
+	const [allSupervisors, setAllSupervisors] = useState<User[]>([]);
+	const [isLoadingSupervisor, setIsLoadingSupervisor] = useState(false);
+	const [isChangingSupervisor, setIsChangingSupervisor] = useState(false);
+	const [isRemovingSupervisor, setIsRemovingSupervisor] = useState(false);
+	const [selectedSupervisorId, setSelectedSupervisorId] = useState("");
 
 	const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
 	const [deleteTargetUser, setDeleteTargetUser] = useState<User | null>(null);
@@ -239,18 +248,38 @@ export default function UserManagement() {
 		setAllStudents([]);
 		setSelectedStudentId("");
 		setIsLoadingStudents(false);
+		setCurrentSupervisor(null);
+		setAllSupervisors([]);
+		setSelectedSupervisorId("");
+		setIsLoadingSupervisor(false);
+		setIsChangingSupervisor(false);
+		setIsRemovingSupervisor(false);
 		setIsAssignModalOpen(true);
 
 		if (user.role === "student") {
 			setIsLoadingRotation(true);
-			rotationService.getStudentCurrent(user.id).then((rotation) => {
+			setIsLoadingSupervisor(true);
+			Promise.all([
+				rotationService.getStudentCurrent(user.id),
+				assignmentService.list({
+					student_id: user.id,
+					assignment_type: "primary",
+					limit: 1,
+				}),
+				userService.list({ role: "supervisor", is_active: true, limit: 200 }),
+			]).then(([rotation, assignmentsRes, supervisorsRes]) => {
 				setCurrentRotation(rotation);
 				if (rotation) {
 					const dept = departments.find((d) => d.id === rotation.department_id);
 					const { current } = calcRotationDay(rotation, dept);
 					setAdjustTotalDay(current);
 				}
-			}).catch(() => {}).finally(() => setIsLoadingRotation(false));
+				setCurrentSupervisor(assignmentsRes.items[0] ?? null);
+				setAllSupervisors(supervisorsRes.items);
+			}).catch(() => {}).finally(() => {
+				setIsLoadingRotation(false);
+				setIsLoadingSupervisor(false);
+			});
 		}
 
 		if (user.role === "supervisor") {
@@ -338,6 +367,48 @@ export default function UserManagement() {
 			toast.error("Failed to remove student.");
 		} finally {
 			setIsRemovingStudentId(null);
+		}
+	};
+
+	const handleAssignSupervisor = async () => {
+		if (!assignTarget || !selectedSupervisorId) return;
+		setIsChangingSupervisor(true);
+		try {
+			if (currentSupervisor) {
+				await assignmentService.remove(currentSupervisor.id);
+			}
+			await assignmentService.create({
+				supervisor_id: selectedSupervisorId,
+				student_id: assignTarget.id,
+				assignment_type: "primary",
+			});
+			toast.success("Academic supervisor updated");
+			const res = await assignmentService.list({
+				student_id: assignTarget.id,
+				assignment_type: "primary",
+				limit: 1,
+			});
+			setCurrentSupervisor(res.items[0] ?? null);
+			setSelectedSupervisorId("");
+		} catch {
+			toast.error("Failed to assign supervisor.");
+		} finally {
+			setIsChangingSupervisor(false);
+		}
+	};
+
+	const handleRemoveSupervisor = async () => {
+		if (!currentSupervisor) return;
+		if (!window.confirm("Remove this student's academic supervisor?")) return;
+		setIsRemovingSupervisor(true);
+		try {
+			await assignmentService.remove(currentSupervisor.id);
+			toast.success("Academic supervisor removed");
+			setCurrentSupervisor(null);
+		} catch {
+			toast.error("Failed to remove supervisor.");
+		} finally {
+			setIsRemovingSupervisor(false);
 		}
 	};
 
@@ -787,6 +858,24 @@ export default function UserManagement() {
 										</div>
 									)}
 
+									{/* Academic Supervisor tab — always shown for students */}
+									{isStudent && (
+										<Button
+											type="button"
+											variant={
+												assignMode === "change_supervisor"
+													? "default"
+													: "outline"
+											}
+											size="sm"
+											onClick={() =>
+												setAssignMode("change_supervisor")
+											}
+										>
+											Academic Supervisor
+										</Button>
+									)}
+
 									{/* Tabs for supervisors */}
 									{!isStudent && (
 										<div className="flex gap-2">
@@ -926,6 +1015,83 @@ export default function UserManagement() {
 											</div>
 										)}
 
+									{/* Academic Supervisor tab */}
+									{assignMode === "change_supervisor" && isStudent && (
+										<div className="space-y-4">
+											{isLoadingSupervisor ? (
+												<div className="flex items-center justify-center py-4">
+													<Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+												</div>
+											) : (
+												<>
+													<div className="rounded-md bg-muted p-3 text-sm">
+														<span className="font-medium">Current: </span>
+														{currentSupervisor ? (
+															<span>{currentSupervisor.supervisor_name}</span>
+														) : (
+															<span className="text-muted-foreground">No academic supervisor assigned</span>
+														)}
+													</div>
+
+													{currentSupervisor && (
+														<div className="flex justify-end">
+															<Button
+																type="button"
+																variant="outline"
+																size="sm"
+																onClick={handleRemoveSupervisor}
+																disabled={isRemovingSupervisor}
+															>
+																{isRemovingSupervisor ? (
+																	<Loader2 className="h-4 w-4 animate-spin" />
+																) : (
+																	"Remove Supervisor"
+																)}
+															</Button>
+														</div>
+													)}
+
+													<div className="space-y-2 border-t pt-4">
+														<Label>
+															{currentSupervisor ? "Change to" : "Assign Supervisor"}
+														</Label>
+														<div className="flex gap-2">
+															<select
+																className="flex h-9 flex-1 rounded-md border border-input bg-background px-3 py-1 text-sm"
+																value={selectedSupervisorId}
+																onChange={(e) =>
+																	setSelectedSupervisorId(e.target.value)
+																}
+																disabled={isChangingSupervisor || allSupervisors.length === 0}
+															>
+																<option value="">
+																	{allSupervisors.length === 0
+																		? "No supervisors available"
+																		: "Select a supervisor..."}
+																</option>
+																{allSupervisors.map((s) => (
+																	<option key={s.id} value={s.id}>
+																		{s.full_name}
+																	</option>
+																))}
+															</select>
+															<Button
+																onClick={handleAssignSupervisor}
+																disabled={!selectedSupervisorId || isChangingSupervisor}
+															>
+																{isChangingSupervisor ? (
+																	<Loader2 className="h-4 w-4 animate-spin" />
+																) : (
+																	"Assign"
+																)}
+															</Button>
+														</div>
+													</div>
+												</>
+											)}
+										</div>
+									)}
+
 									{/* Academic Students tab */}
 									{assignMode === "manage_students" && !isStudent && (
 										<div className="space-y-4">
@@ -1021,11 +1187,13 @@ export default function UserManagement() {
 												setIsAssignModalOpen(false)
 											}
 										>
-											{assignMode === "manage_students"
+											{assignMode === "manage_students" ||
+													assignMode === "change_supervisor"
 												? "Close"
 												: "Cancel"}
 										</Button>
-										{assignMode !== "manage_students" && (
+										{assignMode !== "manage_students" &&
+											assignMode !== "change_supervisor" && (
 											<Button
 												type="submit"
 												disabled={
