@@ -44,4 +44,12 @@ export const rotationService = {
 		);
 		return data;
 	},
+
+	async adjustDay(studentId: string, totalDay: number): Promise<Rotation> {
+		const { data } = await api.patch<Rotation>(
+			`/api/rotations/students/${studentId}/day`,
+			{ total_day: totalDay },
+		);
+		return data;
+	},
 };

@@ -1,12 +1,15 @@
 import { render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import VerifyEmail from "@/pages/VerifyEmail";
 
 const mockVerifyEmail = vi.hoisted(() => vi.fn());
+const mockResendVerification = vi.hoisted(() => vi.fn());
 
 vi.mock("@/services/auth", () => ({
 	authService: {
 		verifyEmail: mockVerifyEmail,
+		resendVerification: mockResendVerification,
 	},
 }));
 
@@ -42,15 +45,16 @@ describe("VerifyEmail", () => {
 		});
 	});
 
-	it("shows error state when verification fails", async () => {
+	it("shows error state with resend form when verification fails", async () => {
 		mockVerifyEmail.mockRejectedValue(new Error("Invalid token"));
 		renderWithToken("bad-token");
 
 		await waitFor(() => {
 			expect(screen.getByText(/verification failed/i)).toBeInTheDocument();
 		});
+		expect(screen.getByPlaceholderText(/your@email\.com/i)).toBeInTheDocument();
 		expect(
-			screen.getByRole("link", { name: /register again/i }),
+			screen.getByRole("button", { name: /resend verification email/i }),
 		).toBeInTheDocument();
 	});
 
@@ -61,5 +65,24 @@ describe("VerifyEmail", () => {
 			expect(screen.getByText(/verification failed/i)).toBeInTheDocument();
 		});
 		expect(mockVerifyEmail).not.toHaveBeenCalled();
+	});
+
+	it("shows confirmation after successful resend", async () => {
+		const user = userEvent.setup();
+		mockVerifyEmail.mockRejectedValue(new Error("Invalid token"));
+		mockResendVerification.mockResolvedValue({ message: "Sent" });
+		renderWithToken("bad-token");
+
+		await waitFor(() => {
+			expect(screen.getByPlaceholderText(/your@email\.com/i)).toBeInTheDocument();
+		});
+
+		await user.type(screen.getByPlaceholderText(/your@email\.com/i), "user@test.com");
+		await user.click(screen.getByRole("button", { name: /resend verification email/i }));
+
+		await waitFor(() => {
+			expect(screen.getByText(/check your inbox/i)).toBeInTheDocument();
+		});
+		expect(mockResendVerification).toHaveBeenCalledWith("user@test.com");
 	});
 });

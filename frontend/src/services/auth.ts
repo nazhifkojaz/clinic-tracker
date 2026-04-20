@@ -31,4 +31,12 @@ export const authService = {
 		);
 		return data;
 	},
+
+	async resendVerification(email: string): Promise<{ message: string }> {
+		const { data } = await api.post<{ message: string }>(
+			"/api/auth/resend-verification",
+			{ email },
+		);
+		return data;
+	},
 };

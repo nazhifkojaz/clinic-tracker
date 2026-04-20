@@ -11,6 +11,11 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useAuthStore } from "@/stores/authStore";
+import { authService } from "@/services/auth";
+
+const UNVERIFIED_MSG = "Please verify your email before logging in.";
+
+type ResendState = "idle" | "loading" | "sent" | "error";
 
 export default function Login() {
 	const navigate = useNavigate();
@@ -18,18 +23,41 @@ export default function Login() {
 	const [identifier, setIdentifier] = useState("");
 	const [password, setPassword] = useState("");
 	const [error, setError] = useState("");
+	const [showResend, setShowResend] = useState(false);
+
+	const [resendEmail, setResendEmail] = useState("");
+	const [resendState, setResendState] = useState<ResendState>("idle");
 
 	const handleSubmit = async (e: React.FormEvent) => {
 		e.preventDefault();
 		setError("");
+		setShowResend(false);
+		setResendState("idle");
 		try {
 			await login(identifier, password);
 			navigate("/");
 		} catch (err: unknown) {
-			const msg =
+			const detail =
 				(err as { response?: { data?: { detail?: string } } })?.response?.data
 					?.detail ?? "Invalid credentials. Please try again.";
-			setError(msg);
+			setError(detail);
+			if (detail === UNVERIFIED_MSG) {
+				setShowResend(true);
+				// Pre-fill email if the identifier looks like one
+				if (identifier.includes("@")) {
+					setResendEmail(identifier);
+				}
+			}
+		}
+	};
+
+	const handleResend = async () => {
+		setResendState("loading");
+		try {
+			await authService.resendVerification(resendEmail);
+			setResendState("sent");
+		} catch {
+			setResendState("error");
 		}
 	};
 
@@ -45,6 +73,42 @@ export default function Login() {
 						{error && (
 							<div className="rounded-md bg-destructive/10 p-3 text-sm text-destructive">
 								{error}
+							</div>
+						)}
+						{showResend && (
+							<div className="rounded-md border p-3 space-y-2">
+								{resendState === "sent" ? (
+									<p className="text-sm text-muted-foreground text-center">
+										Check your inbox for a new verification link.
+									</p>
+								) : (
+									<>
+										<p className="text-sm text-muted-foreground">
+											Resend verification email:
+										</p>
+										<Input
+											type="email"
+											placeholder="your@email.com"
+											value={resendEmail}
+											onChange={(e) => setResendEmail(e.target.value)}
+										/>
+										{resendState === "error" && (
+											<p className="text-sm text-destructive">
+												Something went wrong. Please try again.
+											</p>
+										)}
+										<Button
+											type="button"
+											variant="outline"
+											size="sm"
+											className="w-full"
+											disabled={resendState === "loading"}
+											onClick={handleResend}
+										>
+											{resendState === "loading" ? "Sending..." : "Resend link"}
+										</Button>
+									</>
+								)}
 							</div>
 						)}
 						<div className="space-y-2">

@@ -18,3 +18,7 @@ class RefreshRequest(BaseModel):
 
 class RegisterResponse(BaseModel):
     message: str
+
+
+class ResendVerificationRequest(BaseModel):
+    email: str

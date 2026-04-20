@@ -68,6 +68,11 @@ class StudentDashboardResponse(BaseModel):
     progress_over_time: list[ProgressDataPoint]
     show_rotation_warning: bool = False
 
+    # Rotation time progress
+    rotation_days_active: int = 0
+    rotation_duration_days: int = 0
+    rotation_time_pct: float = 0.0
+
 
 class StudentSummary(BaseModel):
     """Lightweight student record for supervisor's student list."""

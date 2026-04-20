@@ -161,16 +161,18 @@ async def _build_student_dashboard(
     current_dept_name = row[1] if row else None
     rotation_duration_days = row[2] if row else None
 
-    # 6b. Compute rotation warning
+    # 6b. Compute rotation time progress and warning
     show_rotation_warning = False
+    rotation_days_active = 0
+    rotation_time_pct = 0.0
     if row and rotation_duration_days is not None and rotation_duration_days > 0:
         current_rotation = row[0]
         now_utc = datetime.now(timezone.utc)
         elapsed = max(
             0, int((now_utc - current_rotation.started_at).total_seconds() // 86400)
         )
-        days_active = current_rotation.days_offset + elapsed
-        time_pct = (days_active / rotation_duration_days) * 100
+        rotation_days_active = current_rotation.days_offset + elapsed
+        rotation_time_pct = (rotation_days_active / rotation_duration_days) * 100
         # Case progress for current department
         current_dept_approved = sum(
             counts.get((cat.id, SubmissionStatus.approved), 0)
@@ -182,7 +184,7 @@ async def _build_student_dashboard(
         )
         if current_dept_required > 0:
             case_pct = (current_dept_approved / current_dept_required) * 100
-            show_rotation_warning = time_pct >= 50 and case_pct < 60
+            show_rotation_warning = rotation_time_pct >= 50 and case_pct < 60
 
     # 7. Recent submissions (last 10)
     recent_query = (
@@ -255,6 +257,9 @@ async def _build_student_dashboard(
         recent_submissions=recent_subs,
         progress_over_time=progress_points,
         show_rotation_warning=show_rotation_warning,
+        rotation_days_active=rotation_days_active,
+        rotation_duration_days=rotation_duration_days or 0,
+        rotation_time_pct=round(min(rotation_time_pct, 100.0), 1),
     )
 
 

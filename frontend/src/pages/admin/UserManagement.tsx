@@ -14,13 +14,19 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useAuthStore } from "@/stores/authStore";
+import { assignmentService } from "@/services/assignments";
 import { departmentService } from "@/services/departments";
 import { rotationService } from "@/services/rotations";
 import { userService } from "@/services/users";
 import type { Department } from "@/types/department";
+import type { Rotation } from "@/types/rotation";
 import type { User, UserCreate, UserRole } from "@/types/user";
+import type { AssignmentWithDetails } from "@/types/assignment";
 
 const PAGE_SIZE = 25;
+const MS_PER_DAY = 86_400_000;
+
+type AssignmentMode = "change_dept" | "manage_students" | "change_supervisor";
 
 export default function UserManagement() {
 	const [users, setUsers] = useState<User[]>([]);
@@ -44,15 +50,40 @@ export default function UserManagement() {
 	const [error, setError] = useState("");
 	const [isSubmitting, setIsSubmitting] = useState(false);
 
-	const [isDeptModalOpen, setIsDeptModalOpen] = useState(false);
-	const [deptOverrideUserId, setDeptOverrideUserId] = useState<string | null>(
+	// Assignment modal state
+	const [isAssignModalOpen, setIsAssignModalOpen] = useState(false);
+	const [assignTarget, setAssignTarget] = useState<User | null>(null);
+	const [assignMode, setAssignMode] = useState<AssignmentMode>("change_dept");
+	const [currentRotation, setCurrentRotation] = useState<Rotation | null>(
 		null,
 	);
-	const [deptOverrideUserName, setDeptOverrideUserName] = useState("");
-	const [departments, setDepartments] = useState<Department[]>([]);
+	const [isLoadingRotation, setIsLoadingRotation] = useState(false);
 	const [selectedDeptId, setSelectedDeptId] = useState("");
-	const [isDeptSubmitting, setIsDeptSubmitting] = useState(false);
-	const [deptError, setDeptError] = useState("");
+	const [startDayOffset, setStartDayOffset] = useState(0);
+	const [isAssignSubmitting, setIsAssignSubmitting] = useState(false);
+	const [assignError, setAssignError] = useState("");
+	const [departments, setDepartments] = useState<Department[]>([]);
+
+	// Academic students tab state
+	const [assignedStudents, setAssignedStudents] = useState<
+		AssignmentWithDetails[]
+	>([]);
+	const [allStudents, setAllStudents] = useState<User[]>([]);
+	const [isLoadingStudents, setIsLoadingStudents] = useState(false);
+	const [isAddingStudent, setIsAddingStudent] = useState(false);
+	const [isRemovingStudentId, setIsRemovingStudentId] = useState<
+		string | null
+	>(null);
+	const [selectedStudentId, setSelectedStudentId] = useState("");
+
+	// Academic supervisor tab state
+	const [currentSupervisor, setCurrentSupervisor] =
+		useState<AssignmentWithDetails | null>(null);
+	const [allSupervisors, setAllSupervisors] = useState<User[]>([]);
+	const [isLoadingSupervisor, setIsLoadingSupervisor] = useState(false);
+	const [isChangingSupervisor, setIsChangingSupervisor] = useState(false);
+	const [isRemovingSupervisor, setIsRemovingSupervisor] = useState(false);
+	const [selectedSupervisorId, setSelectedSupervisorId] = useState("");
 
 	const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
 	const [deleteTargetUser, setDeleteTargetUser] = useState<User | null>(null);
@@ -176,31 +207,207 @@ export default function UserManagement() {
 		}
 	};
 
-	const openDeptOverrideModal = (user: User) => {
-		setDeptOverrideUserId(user.id);
-		setDeptOverrideUserName(user.full_name);
-		setSelectedDeptId("");
-		setDeptError("");
-		setIsDeptModalOpen(true);
+	// --- Assignment modal helpers ---
+
+	const getDeptName = (deptId: string | null) => {
+		if (!deptId) return null;
+		return departments.find((d) => d.id === deptId)?.name ?? null;
 	};
 
-	const handleDeptOverride = async (e: React.FormEvent) => {
-		e.preventDefault();
-		if (!deptOverrideUserId || !selectedDeptId) return;
+	const calcRotationDay = (
+		rotation: Rotation,
+		dept: Department | undefined,
+	) => {
+		if (!dept) return { current: 0, total: 0 };
+		const elapsed = Math.max(
+			0,
+			Math.floor(
+				(Date.now() - new Date(rotation.started_at).getTime()) / MS_PER_DAY,
+			),
+		);
+		const current = rotation.days_offset + elapsed;
+		return { current, total: dept.rotation_duration_days };
+	};
 
-		setIsDeptSubmitting(true);
-		setDeptError("");
-		try {
-			await rotationService.overrideDepartment(deptOverrideUserId, {
-				department_id: selectedDeptId,
+	const getStudentLabel = (a: AssignmentWithDetails) => {
+		const stu = allStudents.find((s) => s.id === a.student_id);
+		const name = a.student_name || "Unknown";
+		return stu?.institutional_id ? `${name} (${stu.institutional_id})` : name;
+	};
+
+	const openAssignModal = (user: User) => {
+		setAssignTarget(user);
+		setAssignError("");
+		setSelectedDeptId("");
+		setStartDayOffset(0);
+		setCurrentRotation(null);
+		setAssignMode("change_dept");
+		setAssignedStudents([]);
+		setAllStudents([]);
+		setSelectedStudentId("");
+		setIsLoadingStudents(false);
+		setCurrentSupervisor(null);
+		setAllSupervisors([]);
+		setSelectedSupervisorId("");
+		setIsLoadingSupervisor(false);
+		setIsChangingSupervisor(false);
+		setIsRemovingSupervisor(false);
+		setIsAssignModalOpen(true);
+
+		if (user.role === "student") {
+			setIsLoadingRotation(true);
+			setIsLoadingSupervisor(true);
+			Promise.all([
+				rotationService.getStudentCurrent(user.id),
+				assignmentService.list({
+					student_id: user.id,
+					assignment_type: "primary",
+					limit: 1,
+				}),
+				userService.list({ role: "supervisor", is_active: true, limit: 200 }),
+			]).then(([rotation, assignmentsRes, supervisorsRes]) => {
+				setCurrentRotation(rotation);
+				if (rotation) {
+					const dept = departments.find((d) => d.id === rotation.department_id);
+					const { current } = calcRotationDay(rotation, dept);
+					setSelectedDeptId(rotation.department_id);
+					setStartDayOffset(current);
+				}
+				setCurrentSupervisor(assignmentsRes.items[0] ?? null);
+				setAllSupervisors(supervisorsRes.items);
+			}).catch(() => {}).finally(() => {
+				setIsLoadingRotation(false);
+				setIsLoadingSupervisor(false);
 			});
-			toast.success("Department updated successfully");
-			setIsDeptModalOpen(false);
+		}
+
+		if (user.role === "supervisor") {
+			setIsLoadingStudents(true);
+			Promise.all([
+				assignmentService.list({
+					supervisor_id: user.id,
+					assignment_type: "primary",
+					limit: 200,
+				}),
+				userService.list({ role: "student", is_active: true, limit: 200 }),
+			]).then(([assignmentsRes, studentsRes]) => {
+				setAssignedStudents(assignmentsRes.items);
+				setAllStudents(studentsRes.items);
+			}).catch(() => {}).finally(() => setIsLoadingStudents(false));
+		}
+	};
+
+	const handleAssignSubmit = async (e: React.FormEvent) => {
+		e.preventDefault();
+		if (!assignTarget) return;
+
+		setIsAssignSubmitting(true);
+		setAssignError("");
+
+		try {
+			if (assignTarget.role === "supervisor") {
+				await userService.update(assignTarget.id, {
+					department_id: selectedDeptId || null,
+				});
+			} else if (currentRotation && selectedDeptId === currentRotation.department_id) {
+				await rotationService.adjustDay(assignTarget.id, startDayOffset);
+			} else {
+				await rotationService.overrideDepartment(assignTarget.id, {
+					department_id: selectedDeptId,
+					days_offset: startDayOffset,
+				});
+			}
+			toast.success("Assignment updated successfully");
+			setIsAssignModalOpen(false);
 			fetchUsers(currentPage);
 		} catch {
-			setDeptError("Failed to update department.");
+			setAssignError("Failed to update assignment.");
 		} finally {
-			setIsDeptSubmitting(false);
+			setIsAssignSubmitting(false);
+		}
+	};
+
+	const handleAddStudent = async () => {
+		if (!assignTarget || !selectedStudentId) return;
+		setIsAddingStudent(true);
+		try {
+			await assignmentService.create({
+				supervisor_id: assignTarget.id,
+				student_id: selectedStudentId,
+				assignment_type: "primary",
+			});
+			toast.success("Student assigned successfully");
+			setSelectedStudentId("");
+			const res = await assignmentService.list({
+				supervisor_id: assignTarget.id,
+				assignment_type: "primary",
+				limit: 200,
+			});
+			setAssignedStudents(res.items);
+		} catch {
+			toast.error(
+				"Failed to assign student. They may already have a supervisor.",
+			);
+		} finally {
+			setIsAddingStudent(false);
+		}
+	};
+
+	const handleRemoveStudent = async (assignmentId: string) => {
+		if (!window.confirm("Remove this student from the supervisor?")) return;
+		setIsRemovingStudentId(assignmentId);
+		try {
+			await assignmentService.remove(assignmentId);
+			toast.success("Student removed successfully");
+			setAssignedStudents((prev) =>
+				prev.filter((a) => a.id !== assignmentId),
+			);
+		} catch {
+			toast.error("Failed to remove student.");
+		} finally {
+			setIsRemovingStudentId(null);
+		}
+	};
+
+	const handleAssignSupervisor = async () => {
+		if (!assignTarget || !selectedSupervisorId) return;
+		setIsChangingSupervisor(true);
+		try {
+			if (currentSupervisor) {
+				await assignmentService.remove(currentSupervisor.id);
+			}
+			await assignmentService.create({
+				supervisor_id: selectedSupervisorId,
+				student_id: assignTarget.id,
+				assignment_type: "primary",
+			});
+			toast.success("Academic supervisor updated");
+			const res = await assignmentService.list({
+				student_id: assignTarget.id,
+				assignment_type: "primary",
+				limit: 1,
+			});
+			setCurrentSupervisor(res.items[0] ?? null);
+			setSelectedSupervisorId("");
+		} catch {
+			toast.error("Failed to assign supervisor.");
+		} finally {
+			setIsChangingSupervisor(false);
+		}
+	};
+
+	const handleRemoveSupervisor = async () => {
+		if (!currentSupervisor) return;
+		if (!window.confirm("Remove this student's academic supervisor?")) return;
+		setIsRemovingSupervisor(true);
+		try {
+			await assignmentService.remove(currentSupervisor.id);
+			toast.success("Academic supervisor removed");
+			setCurrentSupervisor(null);
+		} catch {
+			toast.error("Failed to remove supervisor.");
+		} finally {
+			setIsRemovingSupervisor(false);
 		}
 	};
 
@@ -238,6 +445,31 @@ export default function UserManagement() {
 		student:
 			"bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300",
 	};
+
+	// Derived values for assignment modal
+	const assignDeptName = assignTarget
+		? currentRotation
+			? getDeptName(currentRotation.department_id)
+			: getDeptName(assignTarget.department_id)
+		: null;
+
+	const assignRotationInfo = (() => {
+		if (!currentRotation || !assignTarget) return null;
+		const dept = departments.find(
+			(d) => d.id === currentRotation.department_id,
+		);
+		return calcRotationDay(currentRotation, dept);
+	})();
+
+	const isStudent = assignTarget?.role === "student";
+	const hasRotation = currentRotation !== null;
+
+	const assignedStudentIds = new Set(
+		assignedStudents.map((a) => a.student_id),
+	);
+	const unassignedStudents = allStudents.filter(
+		(s) => !assignedStudentIds.has(s.id),
+	);
 
 	return (
 		<div className="space-y-6">
@@ -349,12 +581,13 @@ export default function UserManagement() {
 										</td>
 										<td className="p-4">
 											<div className="flex items-center gap-1">
-												{user.role === "student" && (
+												{(user.role === "student" ||
+													user.role === "supervisor") && (
 													<Button
 														variant="ghost"
 														size="sm"
-														onClick={() => openDeptOverrideModal(user)}
-														title="Change Department"
+														onClick={() => openAssignModal(user)}
+														title="Manage Assignment"
 													>
 														<RotateCw className="h-4 w-4" />
 													</Button>
@@ -537,63 +770,399 @@ export default function UserManagement() {
 				</div>
 			)}
 
-			{/* Department Override Modal */}
-			{isDeptModalOpen && (
+			{/* Manage Assignment Modal */}
+			{isAssignModalOpen && assignTarget && (
 				<div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-					<Card className="w-full max-w-md">
+					<Card className={"w-full " + (assignMode === "manage_students" ? "max-w-xl" : "max-w-md")}>
 						<CardHeader>
-							<CardTitle>Change Department — {deptOverrideUserName}</CardTitle>
+							<CardTitle>
+								Manage Assignment — {assignTarget.full_name}
+							</CardTitle>
 						</CardHeader>
 						<CardContent>
-							<form onSubmit={handleDeptOverride} className="space-y-4">
-								{deptError && (
-									<div className="rounded-md bg-destructive/10 p-3 text-sm text-destructive">
-										{deptError}
-									</div>
-								)}
-								<div className="space-y-2">
-									<Label htmlFor="dept-select">New Department</Label>
-									<select
-										id="dept-select"
-										className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm"
-										value={selectedDeptId}
-										onChange={(e) => setSelectedDeptId(e.target.value)}
-										required
-									>
-										<option value="" disabled>
-											Select a department
-										</option>
-										{departments.map((dept) => (
-											<option key={dept.id} value={dept.id}>
-												{dept.name}
-											</option>
-										))}
-									</select>
+							{isLoadingRotation ? (
+								<div className="flex items-center justify-center py-8">
+									<Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
 								</div>
-								<p className="text-xs text-muted-foreground">
-									This will deactivate the student's current rotation and assign them to the
-									selected department. Previous case progress is preserved.
-								</p>
-								<div className="flex justify-end gap-2">
-									<Button
-										type="button"
-										variant="outline"
-										onClick={() => setIsDeptModalOpen(false)}
-									>
-										Cancel
-									</Button>
-									<Button type="submit" disabled={isDeptSubmitting || !selectedDeptId}>
-										{isDeptSubmitting ? (
-											<>
-												<Loader2 className="mr-2 h-4 w-4 animate-spin" />
-												Updating...
-											</>
-										) : (
-											"Change Department"
+							) : (
+								<form
+									onSubmit={handleAssignSubmit}
+									className="space-y-4"
+								>
+									{assignError && (
+										<div className="rounded-md bg-destructive/10 p-3 text-sm text-destructive">
+											{assignError}
+										</div>
+									)}
+
+									{/* Current state display */}
+									{isStudent && hasRotation && assignRotationInfo ? (
+										<div className="rounded-md bg-muted p-3 text-sm">
+											<div className="font-medium">
+												Current: {assignDeptName ?? "Unknown"}
+											</div>
+											<div className="text-muted-foreground">
+												Day {assignRotationInfo.current} of{" "}
+												{assignRotationInfo.total}
+											</div>
+										</div>
+									) : isStudent && !hasRotation ? (
+										<div className="rounded-md bg-muted p-3 text-sm text-muted-foreground">
+											No active rotation
+										</div>
+									) : (
+										<div className="rounded-md bg-muted p-3 text-sm">
+											<div className="font-medium">
+												Current:{" "}
+												{assignDeptName ?? (
+													<span className="text-muted-foreground">
+														No department assigned
+													</span>
+												)}
+											</div>
+										</div>
+									)}
+
+									{/* Tabs for students */}
+									{isStudent && (
+										<div className="flex gap-2">
+											<Button
+												type="button"
+												variant={
+													assignMode === "change_dept"
+														? "default"
+														: "outline"
+												}
+												size="sm"
+												onClick={() =>
+													setAssignMode("change_dept")
+												}
+											>
+												Change Department
+											</Button>
+											<Button
+												type="button"
+												variant={
+													assignMode === "change_supervisor"
+														? "default"
+														: "outline"
+												}
+												size="sm"
+												onClick={() =>
+													setAssignMode("change_supervisor")
+												}
+											>
+												Academic Supervisor
+											</Button>
+										</div>
+									)}
+
+									{/* Tabs for supervisors */}
+									{!isStudent && (
+										<div className="flex gap-2">
+											<Button
+												type="button"
+												variant={
+													assignMode === "change_dept"
+														? "default"
+														: "outline"
+												}
+												size="sm"
+												onClick={() =>
+													setAssignMode("change_dept")
+												}
+											>
+												Department
+											</Button>
+											<Button
+												type="button"
+												variant={
+													assignMode === "manage_students"
+														? "default"
+														: "outline"
+												}
+												size="sm"
+												onClick={() =>
+													setAssignMode("manage_students")
+												}
+											>
+												Academic Students
+											</Button>
+										</div>
+									)}
+
+									{/* Change Department fields */}
+									{assignMode === "change_dept" && (
+										<>
+											<div className="space-y-2">
+												<Label htmlFor="assign-dept-select">
+													{isStudent && !hasRotation
+														? "Department"
+														: "New Department"}
+												</Label>
+												<select
+													id="assign-dept-select"
+													className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm"
+													value={selectedDeptId}
+													onChange={(e) =>
+														setSelectedDeptId(e.target.value)
+													}
+													required
+												>
+													<option value="" disabled>
+														Select a department
+													</option>
+													{departments.map((dept) => (
+														<option
+															key={dept.id}
+															value={dept.id}
+														>
+															{dept.name}
+														</option>
+													))}
+												</select>
+											</div>
+
+											{isStudent && (
+												<div className="space-y-2">
+													<Label htmlFor="start-day-offset">
+														Start at day
+													</Label>
+													<Input
+														id="start-day-offset"
+														type="number"
+														min={0}
+														value={startDayOffset}
+														onChange={(e) =>
+															setStartDayOffset(
+																Number(e.target.value),
+															)
+														}
+													/>
+													<p className="text-xs text-muted-foreground">
+														Number of days to credit toward
+														progress in the new department.
+													</p>
+												</div>
+											)}
+
+											{isStudent && hasRotation && (
+												<p className="text-xs text-muted-foreground">
+													This will deactivate the
+													student&apos;s current
+													rotation and assign them to
+													the selected department.
+													Previous case progress is
+													preserved.
+												</p>
+											)}
+										</>
+									)}
+
+									{/* Academic Supervisor tab */}
+									{assignMode === "change_supervisor" && isStudent && (
+										<div className="space-y-4">
+											{isLoadingSupervisor ? (
+												<div className="flex items-center justify-center py-4">
+													<Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+												</div>
+											) : (
+												<>
+													<div className="rounded-md bg-muted p-3 text-sm">
+														<span className="font-medium">Current: </span>
+														{currentSupervisor ? (
+															<span>{currentSupervisor.supervisor_name}</span>
+														) : (
+															<span className="text-muted-foreground">No academic supervisor assigned</span>
+														)}
+													</div>
+
+													{currentSupervisor && (
+														<div className="flex justify-end">
+															<Button
+																type="button"
+																variant="outline"
+																size="sm"
+																onClick={handleRemoveSupervisor}
+																disabled={isRemovingSupervisor}
+															>
+																{isRemovingSupervisor ? (
+																	<Loader2 className="h-4 w-4 animate-spin" />
+																) : (
+																	"Remove Supervisor"
+																)}
+															</Button>
+														</div>
+													)}
+
+													<div className="space-y-2 border-t pt-4">
+														<Label>
+															{currentSupervisor ? "Change to" : "Assign Supervisor"}
+														</Label>
+														<div className="flex gap-2">
+															<select
+																className="flex h-9 flex-1 rounded-md border border-input bg-background px-3 py-1 text-sm"
+																value={selectedSupervisorId}
+																onChange={(e) =>
+																	setSelectedSupervisorId(e.target.value)
+																}
+																disabled={isChangingSupervisor || allSupervisors.length === 0}
+															>
+																<option value="">
+																	{allSupervisors.length === 0
+																		? "No supervisors available"
+																		: "Select a supervisor..."}
+																</option>
+																{allSupervisors.map((s) => (
+																	<option key={s.id} value={s.id}>
+																		{s.full_name}
+																	</option>
+																))}
+															</select>
+															<Button
+																type="button"
+																onClick={handleAssignSupervisor}
+																disabled={!selectedSupervisorId || isChangingSupervisor}
+															>
+																{isChangingSupervisor ? (
+																	<Loader2 className="h-4 w-4 animate-spin" />
+																) : (
+																	"Assign"
+																)}
+															</Button>
+														</div>
+													</div>
+												</>
+											)}
+										</div>
+									)}
+
+									{/* Academic Students tab */}
+									{assignMode === "manage_students" && !isStudent && (
+										<div className="space-y-4">
+											{isLoadingStudents ? (
+												<div className="flex items-center justify-center py-4">
+													<Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+												</div>
+											) : (
+												<>
+													{assignedStudents.length === 0 ? (
+														<p className="py-4 text-center text-sm text-muted-foreground">
+															No students assigned yet.
+														</p>
+													) : (
+														<div className="space-y-2">
+															{assignedStudents.map((a) => (
+																<div
+																	key={a.id}
+																	className="flex items-center justify-between rounded-md border px-3 py-2"
+																>
+																	<span className="text-sm font-medium">
+																		{getStudentLabel(a)}
+																	</span>
+																	<Button
+																		variant="ghost"
+																		size="sm"
+																		type="button"
+																		onClick={() =>
+																			handleRemoveStudent(a.id)
+																		}
+																		disabled={
+																			isRemovingStudentId === a.id
+																		}
+																	>
+																		{isRemovingStudentId === a.id ? (
+																			<Loader2 className="h-4 w-4 animate-spin" />
+																		) : (
+																			<Trash2 className="h-4 w-4 text-destructive" />
+																		)}
+																	</Button>
+																</div>
+															))}
+														</div>
+													)}
+
+													{/* Add student */}
+													<div className="space-y-2 border-t pt-4">
+														<Label>Add Student</Label>
+														<div className="flex gap-2">
+															<select
+																className="flex h-9 flex-1 rounded-md border border-input bg-background px-3 py-1 text-sm"
+																value={selectedStudentId}
+																onChange={(e) =>
+																	setSelectedStudentId(e.target.value)
+																}
+																disabled={isAddingStudent || unassignedStudents.length === 0}
+															>
+																<option value="">
+																	{unassignedStudents.length === 0
+																		? "No unassigned students"
+																		: "Select a student..."}
+																</option>
+																{unassignedStudents.map((s) => (
+																	<option key={s.id} value={s.id}>
+																		{s.full_name}
+																		{s.institutional_id
+																			? ` (${s.institutional_id})`
+																			: ""}
+																	</option>
+																))}
+															</select>
+															<Button
+																type="button"
+																onClick={handleAddStudent}
+																disabled={!selectedStudentId || isAddingStudent}
+															>
+																{isAddingStudent ? (
+																	<Loader2 className="h-4 w-4 animate-spin" />
+																) : (
+																	"Add"
+																)}
+															</Button>
+														</div>
+													</div>
+												</>
+											)}
+										</div>
+									)}
+
+									<div className="flex justify-end gap-2">
+										<Button
+											type="button"
+											variant="outline"
+											onClick={() =>
+												setIsAssignModalOpen(false)
+											}
+										>
+											{assignMode === "manage_students" ||
+													assignMode === "change_supervisor"
+												? "Close"
+												: "Cancel"}
+										</Button>
+										{assignMode !== "manage_students" &&
+											assignMode !== "change_supervisor" && (
+											<Button
+												type="submit"
+												disabled={
+													isAssignSubmitting ||
+													(assignMode ===
+														"change_dept" &&
+														!selectedDeptId)
+												}
+											>
+												{isAssignSubmitting ? (
+													<>
+														<Loader2 className="mr-2 h-4 w-4 animate-spin" />
+														Updating...
+													</>
+												) : (
+													"Apply"
+												)}
+											</Button>
 										)}
-									</Button>
-								</div>
-							</form>
+									</div>
+								</form>
+							)}
 						</CardContent>
 					</Card>
 				</div>

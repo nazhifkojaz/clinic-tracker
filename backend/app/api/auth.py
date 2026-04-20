@@ -18,6 +18,7 @@ from app.core.security import (
     verify_email_verification_token,
     verify_password,
 )
+from app.models.assignment import AssignmentType, SupervisorAssignment
 from app.models.department import Department
 from app.models.invite_code import InviteCode, InviteCodeStatus
 from app.models.user import UserRole, User
@@ -25,6 +26,7 @@ from app.schemas.auth import (
     LoginRequest,
     RefreshRequest,
     RegisterResponse,
+    ResendVerificationRequest,
     TokenResponse,
 )
 from app.schemas.user import UserRegisterRequest
@@ -165,6 +167,16 @@ async def register(
     try:
         await db.flush()
 
+        if user.role == UserRole.supervisor and user.department_id is not None:
+            db.add(
+                SupervisorAssignment(
+                    supervisor_id=user.id,
+                    department_id=user.department_id,
+                    assignment_type=AssignmentType.department,
+                )
+            )
+            await db.flush()
+
         # Consume invite code if this is an admin registration
         if invite is not None:
             invite.status = InviteCodeStatus.used
@@ -249,3 +261,28 @@ async def verify_email(
     await db.commit()
 
     return {"message": "Email verified. Your account is pending admin approval."}
+
+
+@router.post("/resend-verification")
+@limiter.limit("3/minute")
+async def resend_verification(
+    request: Request,
+    body: ResendVerificationRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """Resend email verification link. Always returns 200 to prevent user enumeration."""
+    result = await db.execute(select(User).where(User.email == body.email))
+    user = result.scalar_one_or_none()
+
+    if user is not None and not user.email_verified:
+        token = create_email_verification_token(str(user.id))
+        verification_link = f"{settings.FRONTEND_URL}/#/verify-email?token={token}"
+        await send_verification_email(
+            to=user.email,
+            full_name=user.full_name,
+            verification_link=verification_link,
+        )
+
+    return {
+        "message": "If your email is registered and unverified, a new verification link has been sent."
+    }

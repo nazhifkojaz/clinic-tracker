@@ -59,11 +59,31 @@ export default function StudentDashboard() {
 
 			{/* Current rotation banner */}
 			{data.current_department && (
-				<div className="rounded-lg border bg-primary/5 px-4 py-3">
-					<span className="text-sm text-muted-foreground">
-						Current Rotation:
-					</span>{" "}
-					<span className="font-semibold">{data.current_department}</span>
+				<div className="rounded-lg border bg-primary/5 px-4 py-3 space-y-2">
+					<div className="flex items-center justify-between">
+						<div>
+							<span className="text-sm text-muted-foreground">
+								Current Rotation:
+							</span>{" "}
+							<span className="font-semibold">{data.current_department}</span>
+						</div>
+						{data.rotation_duration_days > 0 && (
+						<span className="text-sm font-medium">
+							Day {data.rotation_days_active} of{" "}
+							{data.rotation_duration_days}
+						</span>
+						)}
+					</div>
+					{data.rotation_duration_days > 0 && (
+						<div className="h-2 rounded-full bg-secondary">
+							<div
+								className="h-2 rounded-full bg-primary transition-all"
+								style={{
+									width: `${Math.min(data.rotation_time_pct, 100)}%`,
+								}}
+							/>
+						</div>
+					)}
 				</div>
 			)}
 

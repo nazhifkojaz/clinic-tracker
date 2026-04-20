@@ -12,6 +12,7 @@ from app.models.rotation import StudentRotation
 from app.models.user import User, UserRole
 from app.schemas.pagination import PaginatedResponse
 from app.schemas.rotation import (
+    DayAdjustmentRequest,
     DepartmentOverrideRequest,
     RotationCreate,
     RotationOffsetUpdate,
@@ -20,6 +21,20 @@ from app.schemas.rotation import (
 from app.utils.audit import record_audit
 
 router = APIRouter(prefix="/api/rotations", tags=["rotations"])
+
+SECONDS_PER_DAY = 86400
+
+
+def _resume_prior_rotation(prior: StudentRotation) -> StudentRotation:
+    prior_segment_days = max(
+        0,
+        int((prior.ended_at - prior.started_at).total_seconds() // SECONDS_PER_DAY),
+    )
+    prior.days_offset = prior.days_offset + prior_segment_days
+    prior.started_at = datetime.now(timezone.utc)
+    prior.ended_at = None
+    prior.is_current = True
+    return prior
 
 
 @router.get("/current", response_model=RotationResponse | None)
@@ -97,16 +112,7 @@ async def set_rotation(
     prior = prior_result.scalar_one_or_none()
 
     if prior and prior.ended_at:
-        # Accumulate active days from the prior segment
-        prior_segment_days = max(
-            0,
-            int((prior.ended_at - prior.started_at).total_seconds() // 86400),
-        )
-        prior.days_offset = prior.days_offset + prior_segment_days
-        prior.started_at = datetime.now(timezone.utc)
-        prior.ended_at = None
-        prior.is_current = True
-        rotation = prior
+        rotation = _resume_prior_rotation(prior)
     else:
         # Create new rotation
         rotation = StudentRotation(
@@ -260,20 +266,13 @@ async def override_student_department(
     prior = prior_result.scalar_one_or_none()
 
     if prior and prior.ended_at:
-        prior_segment_days = max(
-            0,
-            int((prior.ended_at - prior.started_at).total_seconds() // 86400),
-        )
-        prior.days_offset = prior.days_offset + prior_segment_days
-        prior.started_at = datetime.now(timezone.utc)
-        prior.ended_at = None
-        prior.is_current = True
-        rotation = prior
+        rotation = _resume_prior_rotation(prior)
     else:
         rotation = StudentRotation(
             student_id=student_id,
             department_id=body.department_id,
             is_current=True,
+            days_offset=body.days_offset,
         )
         db.add(rotation)
 
@@ -290,9 +289,72 @@ async def override_student_department(
             "student_id": str(student_id),
             "department_id": str(body.department_id),
             "is_current": True,
+            "days_offset": body.days_offset,
         },
     )
 
+    await db.commit()
+    await db.refresh(rotation)
+    return rotation
+
+
+@router.patch(
+    "/students/{student_id}/day",
+    response_model=RotationResponse,
+)
+async def adjust_student_day(
+    student_id: UUID,
+    body: DayAdjustmentRequest,
+    admin: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Admin-only: adjust a student's rotation day by setting the total effective day.
+
+    Calculates the required days_offset so that (days_offset + elapsed) == total_day.
+    """
+    student = await db.get(User, student_id)
+    if not student or student.role != UserRole.student:
+        raise HTTPException(status_code=404, detail="Student not found")
+
+    result = await db.execute(
+        select(StudentRotation).where(
+            StudentRotation.student_id == student_id,
+            StudentRotation.is_current.is_(True),
+        )
+    )
+    rotation = result.scalar_one_or_none()
+    if not rotation:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Student has no active rotation",
+        )
+
+    elapsed = max(
+        0,
+        int(
+            (datetime.now(timezone.utc) - rotation.started_at).total_seconds()
+            // SECONDS_PER_DAY
+        ),
+    )
+    new_offset = max(0, body.total_day - elapsed)
+
+    old_values = {"student_id": str(student_id), "days_offset": rotation.days_offset}
+    rotation.days_offset = new_offset
+    await db.flush()
+
+    await record_audit(
+        db,
+        user_id=admin.id,
+        action="update",
+        table_name="student_rotations",
+        record_id=rotation.id,
+        old_values=old_values,
+        new_values={
+            "student_id": str(student_id),
+            "days_offset": new_offset,
+            "requested_total_day": body.total_day,
+        },
+    )
     await db.commit()
     await db.refresh(rotation)
     return rotation

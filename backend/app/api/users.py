@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.dependencies import get_current_user, require_admin
 from app.core.database import get_db
 from app.core.security import hash_password, verify_password
+from app.models.assignment import AssignmentType, SupervisorAssignment
 from app.models.department import Department
 from app.models.pending_profile_change import PendingChangeStatus, PendingProfileChange
 from app.models.user import User, UserRole
@@ -31,6 +32,33 @@ router = APIRouter(prefix="/api/users", tags=["users"])
 class DeleteMode(str, enum.Enum):
     soft = "soft"
     hard = "hard"
+
+
+async def sync_department_assignment(
+    db: AsyncSession, supervisor_id: uuid.UUID, new_dept_id: uuid.UUID | None
+):
+    result = await db.execute(
+        select(SupervisorAssignment).where(
+            SupervisorAssignment.supervisor_id == supervisor_id,
+            SupervisorAssignment.assignment_type == AssignmentType.department,
+        )
+    )
+    existing = result.scalar_one_or_none()
+
+    if new_dept_id is not None:
+        if existing:
+            existing.department_id = new_dept_id
+        else:
+            db.add(
+                SupervisorAssignment(
+                    supervisor_id=supervisor_id,
+                    department_id=new_dept_id,
+                    assignment_type=AssignmentType.department,
+                )
+            )
+    else:
+        if existing:
+            await db.delete(existing)
 
 
 @router.get("/me", response_model=UserResponse)
@@ -263,6 +291,9 @@ async def approve_pending_change(
         new_val = change.new_value
     setattr(target_user, change.field_name, new_val)
 
+    if change.field_name == "department_id" and target_user.role == UserRole.supervisor:
+        await sync_department_assignment(db, target_user.id, new_val)
+
     change.status = PendingChangeStatus.approved
     change.reviewed_by = admin.id
     change.reviewed_at = datetime.now(timezone.utc)
@@ -449,8 +480,15 @@ async def update_user(
     if "password" in update_data:
         update_data["password_hash"] = await hash_password(update_data.pop("password"))
 
+    original_role = user.role
     for field, value in update_data.items():
         setattr(user, field, value)
+
+    role_changed = "role" in update_data and original_role != user.role
+    if (
+        "department_id" in update_data or role_changed
+    ) and user.role == UserRole.supervisor:
+        await sync_department_assignment(db, user.id, user.department_id)
 
     new_values = {
         "email": user.email,
