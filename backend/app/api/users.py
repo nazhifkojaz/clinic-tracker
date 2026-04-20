@@ -32,6 +32,10 @@ from app.schemas.user import (
 )
 from app.utils.audit import record_audit
 from app.utils.email import send_verification_email
+from app.utils.profile_change_notifications import (
+    notify_admins_new_request,
+    notify_user_of_decision,
+)
 
 router = APIRouter(prefix="/api/users", tags=["users"])
 logger = logging.getLogger(__name__)
@@ -264,6 +268,7 @@ async def update_own_profile(
         )
 
     # --- Create PendingProfileChange records ---
+    created_changes: list[PendingProfileChange] = []
     for field, new_value in update_data.items():
         # Resolve old_value to a human-readable string
         if field == "department_id":
@@ -285,15 +290,15 @@ async def update_own_profile(
         else:
             old_value = str(getattr(user, field) or "")
 
-        db.add(
-            PendingProfileChange(
-                user_id=user.id,
-                field_name=field,
-                old_value=old_value,
-                new_value=str(new_value) if new_value is not None else None,
-                reason=reason,
-            )
+        change = PendingProfileChange(
+            user_id=user.id,
+            field_name=field,
+            old_value=old_value,
+            new_value=str(new_value) if new_value is not None else None,
+            reason=reason,
         )
+        db.add(change)
+        created_changes.append(change)
 
     await db.flush()
     await record_audit(
@@ -305,6 +310,11 @@ async def update_own_profile(
         new_values=update_data,
     )
     await db.commit()
+
+    # Post-commit: notify admins of each new change request
+    for change in created_changes:
+        await notify_admins_new_request(db, change, user)
+
     await db.refresh(user)
     return user
 
@@ -573,6 +583,9 @@ async def approve_pending_change(
                 "Failed to send verification email after email change approval"
             )
 
+    # Post-commit: notify user of approval
+    await notify_user_of_decision(db, change, target_user, admin)
+
 
 @router.post(
     "/pending-changes/{change_id}/reject", status_code=status.HTTP_204_NO_CONTENT
@@ -599,6 +612,8 @@ async def reject_pending_change(
             detail="Change has already been reviewed",
         )
 
+    target_user = await db.get(User, change.user_id)
+
     change.status = PendingChangeStatus.rejected
     change.reviewed_by = admin.id
     change.reviewed_at = datetime.now(timezone.utc)
@@ -614,6 +629,10 @@ async def reject_pending_change(
         new_values={"field": change.field_name, "status": "rejected"},
     )
     await db.commit()
+
+    # Post-commit: notify user of rejection
+    if target_user:
+        await notify_user_of_decision(db, change, target_user, admin)
 
 
 @router.get("", response_model=PaginatedResponse[UserResponse])
