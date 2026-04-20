@@ -21,14 +21,3 @@ export interface AssignmentCreate {
 	assignment_type: AssignmentType;
 	department_id?: string | null;
 }
-
-export interface MyStudent {
-	assignment_id: string;
-	student_id: string;
-	student_name: string;
-	student_email: string;
-	student_code: string | null;
-	assignment_type: AssignmentType;
-	department_id: string | null;
-	department_name: string | null;
-}

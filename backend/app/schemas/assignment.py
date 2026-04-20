@@ -48,16 +48,3 @@ class AssignmentWithDetailsResponse(AssignmentResponse):
     supervisor_name: str
     student_name: str | None = None
     department_name: str | None = None
-
-
-class MyStudentResponse(BaseModel):
-    """Response for get_my_students endpoint."""
-
-    assignment_id: str
-    student_id: str
-    student_name: str
-    student_email: str
-    student_code: str | None
-    assignment_type: str
-    department_id: str | None
-    department_name: str | None
