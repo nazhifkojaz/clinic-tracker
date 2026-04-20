@@ -882,3 +882,93 @@ async def test_supervisor_dashboard_empty_result_pagination(
     assert data["students"]["total"] == 0
     assert data["students"]["items"] == []
     assert data["students"]["has_more"] is False
+
+
+async def test_supervisor_dashboard_assignment_type_primary(
+    client, supervisor_user, supervisor_token, db_session
+):
+    """Primary supervisees should have assignment_type='primary'."""
+    student = User(
+        email=f"primary_{_random_suffix()}@test.com",
+        password_hash="$2b$12$dummy",
+        full_name="Primary Student",
+        role=UserRole.student,
+        is_active=True,
+    )
+    db_session.add(student)
+    await db_session.commit()
+    await db_session.refresh(student)
+
+    assignment = SupervisorAssignment(
+        supervisor_id=supervisor_user.id,
+        student_id=student.id,
+        assignment_type=AssignmentType.primary,
+    )
+    db_session.add(assignment)
+    await db_session.commit()
+
+    response = await client.get(
+        "/api/dashboard/supervisor",
+        headers=auth_header(supervisor_token),
+    )
+    assert response.status_code == 200
+    entry = next(
+        s for s in response.json()["students"]["items"] if s["student_name"] == "Primary Student"
+    )
+    assert entry["assignment_type"] == "primary"
+
+
+async def test_supervisor_dashboard_assignment_type_department(
+    client, supervisor_user, supervisor_token, db_session
+):
+    """Students rotating in a supervised department should have assignment_type='department'."""
+    dept = await create_department(db_session)
+
+    assignment = SupervisorAssignment(
+        supervisor_id=supervisor_user.id,
+        department_id=dept.id,
+        assignment_type=AssignmentType.department,
+    )
+    db_session.add(assignment)
+
+    student = User(
+        email=f"dept_{_random_suffix()}@test.com",
+        password_hash="$2b$12$dummy",
+        full_name="Dept Student",
+        role=UserRole.student,
+        is_active=True,
+    )
+    db_session.add(student)
+    await db_session.commit()
+    await db_session.refresh(student)
+
+    rotation = StudentRotation(
+        student_id=student.id,
+        department_id=dept.id,
+        is_current=True,
+    )
+    db_session.add(rotation)
+    await db_session.commit()
+
+    response = await client.get(
+        "/api/dashboard/supervisor",
+        headers=auth_header(supervisor_token),
+    )
+    assert response.status_code == 200
+    entry = next(
+        s for s in response.json()["students"]["items"] if s["student_name"] == "Dept Student"
+    )
+    assert entry["assignment_type"] == "department"
+
+
+async def test_admin_dashboard_assignment_type_null(
+    client, admin_token
+):
+    """Admin sees all students with assignment_type=null."""
+    response = await client.get(
+        "/api/dashboard/supervisor",
+        headers=auth_header(admin_token),
+    )
+    assert response.status_code == 200
+    for item in response.json()["students"]["items"]:
+        assert item["assignment_type"] is None

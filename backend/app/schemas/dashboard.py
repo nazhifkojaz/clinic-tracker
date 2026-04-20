@@ -86,6 +86,7 @@ class StudentSummary(BaseModel):
     total_required: int
     total_completed: int
     status: str  # "on_track", "at_risk", "behind"
+    assignment_type: str | None = None  # "primary" | "department" | null
 
 
 class SupervisorDashboardResponse(BaseModel):

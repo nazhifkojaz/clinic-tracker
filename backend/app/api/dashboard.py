@@ -335,8 +335,11 @@ def _classify_status(completion_percentage: float) -> str:
 
 async def _get_supervised_student_ids(
     supervisor_id: UUID, db: AsyncSession
-) -> list[UUID]:
-    """Get all student IDs a supervisor is responsible for.
+) -> dict[UUID, str]:
+    """Get all student IDs a supervisor is responsible for with their assignment type.
+
+    Returns a dict mapping student_id -> assignment_type ("primary" or "department").
+    Primary takes precedence if a student has both assignment types.
 
     Uses concurrent queries to fetch primary assignments and department assignments
     in parallel, reducing round-trips.
@@ -358,11 +361,13 @@ async def _get_supervised_student_ids(
         ),
     )
 
-    primary_ids = {row[0] for row in primary_result.all()}
+    student_types: dict[UUID, str] = {}
+    for row in primary_result.all():
+        student_types[row[0]] = "primary"
+
     supervised_dept_ids = [row[0] for row in dept_result.all()]
 
     # Fetch students rotating in supervised departments
-    dept_student_ids: set[UUID] = set()
     if supervised_dept_ids:
         rot_result = await db.execute(
             select(StudentRotation.student_id).where(
@@ -370,9 +375,12 @@ async def _get_supervised_student_ids(
                 StudentRotation.is_current.is_(True),
             )
         )
-        dept_student_ids = {row[0] for row in rot_result.all()}
+        for row in rot_result.all():
+            # Primary takes precedence over department
+            if row[0] not in student_types:
+                student_types[row[0]] = "department"
 
-    return list(primary_ids | dept_student_ids)
+    return student_types
 
 
 @router.get("/supervisor", response_model=SupervisorDashboardResponse)
@@ -396,8 +404,8 @@ async def get_supervisor_dashboard(
             User.is_active.is_(True),
         )
     else:
-        student_ids = await _get_supervised_student_ids(user.id, db)
-        if not student_ids:
+        student_types = await _get_supervised_student_ids(user.id, db)
+        if not student_types:
             return SupervisorDashboardResponse(
                 total_students=0,
                 on_track_count=0,
@@ -407,7 +415,7 @@ async def get_supervisor_dashboard(
             )
         # Build base query for counting
         base_students_query = select(User).where(
-            User.id.in_(student_ids),
+            User.id.in_(student_types),
             User.is_active.is_(True),
         )
 
@@ -425,7 +433,7 @@ async def get_supervisor_dashboard(
     else:
         students_query = select(
             User.id, User.full_name, User.email, User.institutional_id
-        ).where(User.id.in_(student_ids), User.is_active.is_(True))
+        ).where(User.id.in_(student_types), User.is_active.is_(True))
 
     # Apply pagination
     students_query = (
@@ -504,6 +512,7 @@ async def get_supervisor_dashboard(
                 total_required=total_required_global,
                 total_completed=completed,
                 status=status,
+                assignment_type=student_types.get(student_id) if user.role == UserRole.supervisor else None,
             )
         )
 
@@ -516,7 +525,7 @@ async def get_supervisor_dashboard(
         )
     else:
         all_student_ids_query = select(User.id).where(
-            User.id.in_(student_ids),
+            User.id.in_(student_types),
             User.is_active.is_(True),
         )
 

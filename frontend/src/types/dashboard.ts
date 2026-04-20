@@ -62,6 +62,7 @@ export interface StudentSummary {
 	total_required: number;
 	total_completed: number;
 	status: StudentStatus;
+	assignment_type: "primary" | "department" | null;
 }
 
 export interface SupervisorDashboardData {

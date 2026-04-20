@@ -22,6 +22,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { dashboardService } from "@/services/dashboard";
+import { useAuthStore } from "@/stores/authStore";
 import type {
 	DepartmentProgress,
 	StudentDashboardData,
@@ -39,6 +40,8 @@ const STATUS_STYLES: Record<
 };
 
 export default function SupervisorDashboard() {
+	const { user } = useAuthStore();
+	const isSupervisor = user?.role === "supervisor";
 	const [data, setData] = useState<SupervisorDashboardData | null>(null);
 	const [loading, setLoading] = useState(true);
 	const [error, setError] = useState("");
@@ -214,6 +217,9 @@ export default function SupervisorDashboard() {
 									<tr className="border-b text-left text-muted-foreground">
 										<th className="pb-2 font-medium">Student</th>
 										<th className="pb-2 font-medium">Department</th>
+										{isSupervisor && (
+											<th className="pb-2 font-medium">Assignment</th>
+										)}
 										<th className="pb-2 font-medium text-right">Progress</th>
 										<th className="pb-2 font-medium text-right">Status</th>
 										<th className="pb-2 font-medium text-right">Action</th>
@@ -245,6 +251,17 @@ export default function SupervisorDashboard() {
 												<td className="py-3">
 													{student.current_department || "—"}
 												</td>
+												{isSupervisor && (
+													<td className="py-3">
+														{student.assignment_type === "primary" ? (
+															<span className="inline-block rounded-full px-2 py-0.5 text-xs font-medium bg-blue-100 text-blue-700">Academic</span>
+														) : student.assignment_type === "department" ? (
+															<span className="inline-block rounded-full px-2 py-0.5 text-xs font-medium bg-secondary text-muted-foreground">Rotating</span>
+														) : (
+															"—"
+														)}
+													</td>
+												)}
 												<td className="py-3 text-right">
 													<div className="flex items-center justify-end gap-2">
 														<div className="w-20 rounded-full bg-secondary h-2">
