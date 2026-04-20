@@ -1,5 +1,5 @@
 import { Loader2, Save } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -7,9 +7,11 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useAuthStore } from "@/stores/authStore";
 import { departmentService } from "@/services/departments";
+import { studentService } from "@/services/students";
 import { userService } from "@/services/users";
 import type { Department } from "@/types/department";
-import type { PendingChange, ProfileUpdateRequest } from "@/types/user";
+import type { ReviewerInfo } from "@/types/submission";
+import type { PendingChange, ProfileUpdateRequest, User } from "@/types/user";
 
 const roleBadgeColor: Record<string, string> = {
 	admin: "bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300",
@@ -27,11 +29,22 @@ const fieldLabels: Record<string, string> = {
 	full_name: "Full Name",
 	institutional_id: "Institutional ID",
 	department_id: "Department",
+	email: "Email",
+	supervisor_id: "Academic Supervisor",
 };
 
 export default function Settings() {
 	const { user, initialize } = useAuthStore();
 	const [departments, setDepartments] = useState<Department[]>([]);
+
+	// Student-specific data
+	const [currentSupervisor, setCurrentSupervisor] =
+		useState<ReviewerInfo | null>(null);
+	const [supervisors, setSupervisors] = useState<User[]>([]);
+	const [selectedSupervisorId, setSelectedSupervisorId] = useState<
+		string | null
+	>(null);
+	const [isRequestingSupervisor, setIsRequestingSupervisor] = useState(false);
 
 	// Password form
 	const [pwForm, setPwForm] = useState({
@@ -47,6 +60,7 @@ export default function Settings() {
 		full_name: user?.full_name ?? "",
 		institutional_id: user?.institutional_id ?? "",
 		department_id: user?.department_id ?? null,
+		email: user?.email ?? "",
 	});
 	const [profileError, setProfileError] = useState("");
 	const [isSavingProfile, setIsSavingProfile] = useState(false);
@@ -54,21 +68,45 @@ export default function Settings() {
 	// Pending changes
 	const [pendingChanges, setPendingChanges] = useState<PendingChange[]>([]);
 
+	const pendingFields = useMemo(
+		() =>
+			new Set(
+				pendingChanges
+					.filter((c) => c.status === "pending")
+					.map((c) => c.field_name),
+			),
+		[pendingChanges],
+	);
+
 	useEffect(() => {
 		if (user) {
 			setProfileForm({
 				full_name: user.full_name,
 				institutional_id: user.institutional_id ?? "",
 				department_id: user.department_id ?? null,
+				email: user.email,
 			});
 		}
 	}, [user]);
 
 	useEffect(() => {
-		if (user?.role === "supervisor") {
+		if (user?.role === "supervisor" || user?.role === "student") {
 			departmentService.list().then((depts) =>
 				setDepartments(depts.filter((d) => d.is_active)),
 			);
+		}
+	}, [user?.role]);
+
+	useEffect(() => {
+		if (user?.role === "student") {
+			studentService
+				.getAcademicSupervisor()
+				.then((res) => setCurrentSupervisor(res.supervisor))
+				.catch(() => {});
+			userService
+				.list({ role: "supervisor", is_active: true, limit: 200 })
+				.then((res) => setSupervisors(res.items))
+				.catch(() => {});
 		}
 	}, [user?.role]);
 
@@ -126,10 +164,17 @@ export default function Settings() {
 			updateData.institutional_id = profileForm.institutional_id || null;
 		}
 		if (
-			user?.role === "supervisor" &&
+			(user?.role === "supervisor" || user?.role === "student") &&
 			profileForm.department_id !== user?.department_id
 		) {
 			updateData.department_id = profileForm.department_id;
+		}
+		if (
+			user?.role !== "admin" &&
+			profileForm.email &&
+			profileForm.email !== user?.email
+		) {
+			updateData.email = profileForm.email;
 		}
 
 		if (!Object.keys(updateData).length) {
@@ -154,6 +199,24 @@ export default function Settings() {
 			setProfileError(detail);
 		} finally {
 			setIsSavingProfile(false);
+		}
+	};
+
+	const handleRequestSupervisorChange = async () => {
+		if (!selectedSupervisorId) return;
+		setIsRequestingSupervisor(true);
+		try {
+			await userService.updateOwnProfile({ supervisor_id: selectedSupervisorId });
+			toast.success("Supervisor change submitted for admin approval");
+			setSelectedSupervisorId(null);
+			userService.getMyPendingChanges().then(setPendingChanges);
+		} catch (err: unknown) {
+			const detail =
+				(err as { response?: { data?: { detail?: string } } })?.response?.data
+					?.detail || "Failed to request supervisor change";
+			toast.error(detail);
+		} finally {
+			setIsRequestingSupervisor(false);
 		}
 	};
 
@@ -284,7 +347,14 @@ export default function Settings() {
 							</div>
 						)}
 						<div className="space-y-2">
-							<Label htmlFor="profile_full_name">Full Name</Label>
+							<div className="flex items-center gap-2">
+								<Label htmlFor="profile_full_name">Full Name</Label>
+								{pendingFields.has("full_name") && (
+									<span className="rounded-full bg-yellow-100 px-2 py-0.5 text-xs font-medium text-yellow-700 dark:bg-yellow-900 dark:text-yellow-300">
+										Pending
+									</span>
+								)}
+							</div>
 							<Input
 								id="profile_full_name"
 								value={profileForm.full_name ?? ""}
@@ -294,13 +364,21 @@ export default function Settings() {
 										full_name: e.target.value,
 									})
 								}
+								disabled={pendingFields.has("full_name")}
 								required
 							/>
 						</div>
 						<div className="space-y-2">
-							<Label htmlFor="profile_institutional_id">
-								{user.role === "student" ? "Student ID" : "Staff ID"}
-							</Label>
+							<div className="flex items-center gap-2">
+								<Label htmlFor="profile_institutional_id">
+									{user.role === "student" ? "Student ID" : "Staff ID"}
+								</Label>
+								{pendingFields.has("institutional_id") && (
+									<span className="rounded-full bg-yellow-100 px-2 py-0.5 text-xs font-medium text-yellow-700 dark:bg-yellow-900 dark:text-yellow-300">
+										Pending
+									</span>
+								)}
+							</div>
 							<Input
 								id="profile_institutional_id"
 								value={profileForm.institutional_id ?? ""}
@@ -310,11 +388,47 @@ export default function Settings() {
 										institutional_id: e.target.value,
 									})
 								}
+								disabled={pendingFields.has("institutional_id")}
 							/>
 						</div>
-						{user.role === "supervisor" && (
+						{user.role !== "admin" && (
 							<div className="space-y-2">
-								<Label htmlFor="profile_department">Department</Label>
+								<div className="flex items-center gap-2">
+									<Label htmlFor="profile_email">Email</Label>
+									{pendingFields.has("email") && (
+										<span className="rounded-full bg-yellow-100 px-2 py-0.5 text-xs font-medium text-yellow-700 dark:bg-yellow-900 dark:text-yellow-300">
+											Pending
+										</span>
+									)}
+								</div>
+								<Input
+									id="profile_email"
+									type="email"
+									value={profileForm.email ?? ""}
+									onChange={(e) =>
+										setProfileForm({
+											...profileForm,
+											email: e.target.value,
+										})
+									}
+									disabled={pendingFields.has("email")}
+								/>
+								<p className="text-xs text-muted-foreground">
+									Changing your email requires admin approval, then verification
+									of the new address.
+								</p>
+							</div>
+						)}
+						{(user.role === "supervisor" || user.role === "student") && (
+							<div className="space-y-2">
+								<div className="flex items-center gap-2">
+									<Label htmlFor="profile_department">Department</Label>
+									{pendingFields.has("department_id") && (
+										<span className="rounded-full bg-yellow-100 px-2 py-0.5 text-xs font-medium text-yellow-700 dark:bg-yellow-900 dark:text-yellow-300">
+											Pending
+										</span>
+									)}
+								</div>
 								<select
 									id="profile_department"
 									className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm"
@@ -325,6 +439,7 @@ export default function Settings() {
 											department_id: e.target.value || null,
 										})
 									}
+									disabled={pendingFields.has("department_id")}
 								>
 									<option value="">No department</option>
 									{departments.map((dept) => (
@@ -354,6 +469,72 @@ export default function Settings() {
 				</CardContent>
 			</Card>
 
+			{/* Academic Supervisor (students only) */}
+			{user.role === "student" && (
+				<Card>
+					<CardHeader>
+						<CardTitle>Academic Supervisor</CardTitle>
+					</CardHeader>
+					<CardContent className="space-y-4">
+						<div>
+							<span className="text-sm text-muted-foreground">
+								Current Supervisor
+							</span>
+							<p className="font-medium">
+								{currentSupervisor?.full_name ?? "No supervisor assigned"}
+							</p>
+						</div>
+						<div className="space-y-2">
+							<div className="flex items-center gap-2">
+								<Label htmlFor="supervisor_select">
+									Request Supervisor Change
+								</Label>
+								{pendingFields.has("supervisor_id") && (
+									<span className="rounded-full bg-yellow-100 px-2 py-0.5 text-xs font-medium text-yellow-700 dark:bg-yellow-900 dark:text-yellow-300">
+										Pending
+									</span>
+								)}
+							</div>
+							<select
+								id="supervisor_select"
+								className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm"
+								value={selectedSupervisorId ?? ""}
+								onChange={(e) =>
+									setSelectedSupervisorId(e.target.value || null)
+								}
+								disabled={pendingFields.has("supervisor_id")}
+							>
+								<option value="">Select a supervisor...</option>
+								{supervisors.map((sup) => (
+									<option key={sup.id} value={sup.id}>
+										{sup.full_name}
+									</option>
+								))}
+							</select>
+						</div>
+						<div className="flex justify-end">
+							<Button
+								onClick={handleRequestSupervisorChange}
+								disabled={
+									!selectedSupervisorId ||
+									isRequestingSupervisor ||
+									pendingFields.has("supervisor_id")
+								}
+							>
+								{isRequestingSupervisor ? (
+									<>
+										<Loader2 className="mr-2 h-4 w-4 animate-spin" />
+										Submitting...
+									</>
+								) : (
+									"Request Change"
+								)}
+							</Button>
+						</div>
+					</CardContent>
+				</Card>
+			)}
+
 			{/* Pending Changes */}
 			{pendingChanges.length > 0 && (
 				<Card>
@@ -376,12 +557,15 @@ export default function Settings() {
 									{pendingChanges.map((change) => (
 										<tr key={change.id} className="border-b last:border-0">
 											<td className="p-4 font-medium">
-												{fieldLabels[change.field_name] || change.field_name}
+												{fieldLabels[change.field_name] ||
+													change.field_name}
 											</td>
 											<td className="p-4 text-muted-foreground">
 												{change.old_value || "—"}
 											</td>
-											<td className="p-4">{change.new_value || "—"}</td>
+											<td className="p-4">
+												{change.new_value || "—"}
+											</td>
 											<td className="p-4">
 												<span
 													className={`rounded-full px-2 py-1 text-xs font-medium capitalize ${statusBadgeColor[change.status]}`}
