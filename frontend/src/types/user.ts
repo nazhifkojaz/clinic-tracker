@@ -50,6 +50,7 @@ export interface PendingChange {
 	field_name: string;
 	old_value: string | null;
 	new_value: string | null;
+	reason: string | null;
 	status: PendingChangeStatus;
 	reviewed_by: string | null;
 	reviewed_at: string | null;
@@ -70,4 +71,8 @@ export interface ProfileUpdateRequest {
 	full_name?: string;
 	institutional_id?: string | null;
 	department_id?: string | null;
+	email?: string;
+	supervisor_id?: string | null;
+	remove_student_id?: string | null;
+	reason?: string | null;
 }
