@@ -50,9 +50,6 @@ def _validate_email_config() -> None:
 
 _validate_email_config()
 
-# Mock mode is now explicitly configured
-_MOCK_MODE = settings.EMAIL_MOCK_MODE
-
 # Resolve EMAIL_FROM: use GMAIL_USER if EMAIL_FROM is still the default
 if settings.EMAIL_FROM == "noreply@example.com" and settings.GMAIL_USER:
     _EMAIL_FROM = settings.GMAIL_USER
@@ -107,7 +104,7 @@ async def send_email(
         Logs the email details instead of sending.
         Use this for development without Gmail credentials.
     """
-    if _MOCK_MODE:
+    if settings.EMAIL_MOCK_MODE:
         logger.info("Email sent in mock mode (not actually sent)")
         return None
 
@@ -125,7 +122,7 @@ async def send_email(
 
 def is_mock_mode() -> bool:
     """Check if email is running in mock mode."""
-    return _MOCK_MODE
+    return settings.EMAIL_MOCK_MODE
 
 
 async def send_verification_email(

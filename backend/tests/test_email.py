@@ -32,115 +32,82 @@ class TestSanitizeForEmail:
 
 
 class TestMockMode:
-    """Verify mock mode behavior — send_email returns None when in mock mode."""
+    """Verify mock mode behavior — send_email returns None when in mock mode.
+
+    conftest.py forces EMAIL_MOCK_MODE=true for all tests, so no patching needed here.
+    """
 
     @pytest.mark.asyncio
     async def test_send_email_returns_none_in_mock_mode(self):
-        import app.utils.email as email_module
+        result = await send_email(
+            to="test@example.com", subject="Test", html="<p>Hello</p>"
+        )
+        assert result is None
 
-        original = email_module._MOCK_MODE
-        email_module._MOCK_MODE = True
-        try:
-            result = await send_email(
-                to="test@example.com", subject="Test", html="<p>Hello</p>"
-            )
-            assert result is None
-        finally:
-            email_module._MOCK_MODE = original
-
-    def test_is_mock_mode_reflects_module_state(self):
-        import app.utils.email as email_module
-
-        original = email_module._MOCK_MODE
-        email_module._MOCK_MODE = True
-        try:
-            assert is_mock_mode() is True
-        finally:
-            email_module._MOCK_MODE = original
+    def test_is_mock_mode_reflects_settings(self):
+        assert is_mock_mode() is True
 
     @pytest.mark.asyncio
     async def test_send_verification_email_returns_none_in_mock_mode(self):
-        import app.utils.email as email_module
-
-        original = email_module._MOCK_MODE
-        email_module._MOCK_MODE = True
-        try:
-            result = await send_verification_email(
-                to="test@example.com",
-                full_name="Test User",
-                verification_link="http://localhost/verify?token=abc",
-            )
-            assert result is None
-        finally:
-            email_module._MOCK_MODE = original
+        result = await send_verification_email(
+            to="test@example.com",
+            full_name="Test User",
+            verification_link="http://localhost/verify?token=abc",
+        )
+        assert result is None
 
 
 @patch("app.utils.email._send_smtp")
 class TestSmtpSending:
     """Test the actual SMTP path by mocking the sync send function.
 
-    These tests override mock mode to exercise the SMTP code path.
+    These tests patch settings to disable mock mode and exercise the SMTP code path.
     """
 
     @pytest.mark.asyncio
     async def test_send_email_calls_smtp(self, mock_send):
         """send_email should call _send_smtp with correct arguments."""
-        import app.utils.email as email_module
-
-        original = email_module._MOCK_MODE
-        email_module._MOCK_MODE = False
-        try:
+        with patch("app.utils.email.settings") as mock_settings:
+            mock_settings.EMAIL_MOCK_MODE = False
             await send_email(
                 to="recipient@example.com",
                 subject="Test Subject",
                 html="<p>Hello</p>",
             )
-            mock_send.assert_called_once_with(
-                ["recipient@example.com"],
-                "Test Subject",
-                "<p>Hello</p>",
-            )
-        finally:
-            email_module._MOCK_MODE = original
+        mock_send.assert_called_once_with(
+            ["recipient@example.com"],
+            "Test Subject",
+            "<p>Hello</p>",
+        )
 
     @pytest.mark.asyncio
     async def test_send_email_handles_list_of_recipients(self, mock_send):
         """send_email should accept a list of recipients."""
-        import app.utils.email as email_module
-
-        original = email_module._MOCK_MODE
-        email_module._MOCK_MODE = False
-        try:
+        with patch("app.utils.email.settings") as mock_settings:
+            mock_settings.EMAIL_MOCK_MODE = False
             await send_email(
                 to=["a@example.com", "b@example.com"],
                 subject="Multi",
                 html="<p>Hi</p>",
             )
-            mock_send.assert_called_once_with(
-                ["a@example.com", "b@example.com"],
-                "Multi",
-                "<p>Hi</p>",
-            )
-        finally:
-            email_module._MOCK_MODE = original
+        mock_send.assert_called_once_with(
+            ["a@example.com", "b@example.com"],
+            "Multi",
+            "<p>Hi</p>",
+        )
 
     @pytest.mark.asyncio
     async def test_send_email_raises_on_smtp_failure(self, mock_send):
         """send_email should re-raise SMTP errors."""
-        import app.utils.email as email_module
-
-        original = email_module._MOCK_MODE
-        email_module._MOCK_MODE = False
         mock_send.side_effect = Exception("SMTP connection failed")
-        try:
+        with patch("app.utils.email.settings") as mock_settings:
+            mock_settings.EMAIL_MOCK_MODE = False
             with pytest.raises(Exception, match="SMTP connection failed"):
                 await send_email(
                     to="test@example.com",
                     subject="Fail",
                     html="<p>Nope</p>",
                 )
-        finally:
-            email_module._MOCK_MODE = original
 
 
 class TestSendSmtp:
@@ -160,11 +127,10 @@ class TestSendSmtp:
         mock_server.starttls.assert_called_once()
         mock_server.login.assert_called_once()
         mock_server.sendmail.assert_called_once()
-        # Verify the email message contains the right headers
         sent_message = mock_server.sendmail.call_args[0][2]
         assert "Subject: Subject" in sent_message
         assert "to@example.com" in sent_message
-        assert "text/html" in sent_message  # HTML MIME part present
+        assert "text/html" in sent_message
 
     @patch("app.utils.email.smtplib.SMTP")
     def test_smtp_raises_on_refused_recipients(self, mock_smtp_cls):
