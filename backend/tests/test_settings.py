@@ -137,19 +137,48 @@ async def test_student_profile_queues_for_approval(client, db_session):
     assert change.new_value == "Queued Name"
 
 
-async def test_student_cannot_change_department(client, db_session):
-    """Students cannot change their own department."""
+async def test_student_can_request_department_change(client, db_session):
+    """Students can request a department change (queued for approval)."""
+    from app.models.department import Department
+
+    dept = Department(name="Test Dept", is_active=True)
+    db_session.add(dept)
+    await db_session.flush()
+
     user = await _create_user(db_session, role=UserRole.student)
     token = _token_for(user)
 
+    response = await client.patch(
+        "/api/users/me/profile",
+        json={"department_id": str(dept.id)},
+        headers=auth_header(token),
+    )
+    assert response.status_code == 200
+
+    result = await db_session.execute(
+        select(PendingProfileChange).where(
+            PendingProfileChange.user_id == user.id,
+            PendingProfileChange.field_name == "department_id",
+        )
+    )
+    change = result.scalar_one()
+    assert change.new_value == str(dept.id)
+    assert change.status == PendingChangeStatus.pending
+
+
+async def test_student_department_change_validates_dept(client, db_session):
+    """Students cannot request change to an inactive or nonexistent department."""
     import uuid
+
+    user = await _create_user(db_session, role=UserRole.student)
+    token = _token_for(user)
 
     response = await client.patch(
         "/api/users/me/profile",
         json={"department_id": str(uuid.uuid4())},
         headers=auth_header(token),
     )
-    assert response.status_code == 403
+    assert response.status_code == 400
 
 
 async def test_profile_update_no_changes_returns_400(client, db_session):
@@ -165,26 +194,28 @@ async def test_profile_update_no_changes_returns_400(client, db_session):
     assert response.status_code == 400
 
 
-async def test_duplicate_pending_change_replaces(client, db_session):
-    """Submitting the same field again replaces the existing pending change."""
+async def test_duplicate_pending_change_blocked(client, db_session):
+    """Submitting the same field again is blocked while a request is pending."""
     user = await _create_user(db_session, full_name="Original", role=UserRole.student)
     token = _token_for(user)
 
     # First submission
-    await client.patch(
+    response = await client.patch(
         "/api/users/me/profile",
         json={"full_name": "First Change"},
         headers=auth_header(token),
     )
+    assert response.status_code == 200
 
-    # Second submission — should replace
-    await client.patch(
+    # Second submission — should be blocked
+    response = await client.patch(
         "/api/users/me/profile",
         json={"full_name": "Second Change"},
         headers=auth_header(token),
     )
+    assert response.status_code == 409
 
-    # Should only have ONE pending change for full_name
+    # Original pending change should still be there
     result = await db_session.execute(
         select(PendingProfileChange).where(
             PendingProfileChange.user_id == user.id,
@@ -194,7 +225,7 @@ async def test_duplicate_pending_change_replaces(client, db_session):
     )
     changes = result.scalars().all()
     assert len(changes) == 1
-    assert changes[0].new_value == "Second Change"
+    assert changes[0].new_value == "First Change"
 
 
 # ===========================================================================

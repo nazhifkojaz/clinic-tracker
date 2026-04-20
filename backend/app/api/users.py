@@ -91,6 +91,37 @@ async def change_password(
     await db.commit()
 
 
+STUDENT_REQUESTABLE_FIELDS = {
+    "full_name", "institutional_id", "email", "department_id", "supervisor_id",
+}
+SUPERVISOR_REQUESTABLE_FIELDS = {
+    "full_name", "institutional_id", "department_id", "remove_student_id",
+}
+
+
+async def _resolve_department_name(db: AsyncSession, dept_id: uuid.UUID | None) -> str:
+    if dept_id is None:
+        return "None"
+    dept = await db.get(Department, dept_id)
+    return dept.name if dept else str(dept_id)
+
+
+async def _resolve_supervisor_name(
+    db: AsyncSession, supervisor_id: uuid.UUID | None
+) -> str:
+    if supervisor_id is None:
+        return "None"
+    sup = await db.get(User, supervisor_id)
+    return sup.full_name if sup else str(supervisor_id)
+
+
+async def _resolve_student_name(db: AsyncSession, student_id: uuid.UUID | None) -> str:
+    if student_id is None:
+        return "None"
+    stu = await db.get(User, student_id)
+    return stu.full_name if stu else str(student_id)
+
+
 @router.patch("/me/profile", response_model=UserResponse)
 async def update_own_profile(
     body: ProfileUpdateRequest,
@@ -99,6 +130,9 @@ async def update_own_profile(
 ):
     """Update current user's profile. Non-admins queue changes for approval."""
     update_data = body.model_dump(exclude_unset=True)
+    # Extract reason separately — not a field to track as a pending change
+    reason = update_data.pop("reason", None)
+
     if not update_data:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -106,7 +140,9 @@ async def update_own_profile(
         )
 
     if user.role == UserRole.admin:
-        for field, value in update_data.items():
+        # Admin changes apply immediately; only allow direct user fields
+        admin_fields = {k: v for k, v in update_data.items() if k in {"full_name", "institutional_id", "department_id"}}
+        for field, value in admin_fields.items():
             setattr(user, field, value)
         try:
             await db.flush()
@@ -116,7 +152,7 @@ async def update_own_profile(
                 action="self_update",
                 table_name="users",
                 record_id=user.id,
-                new_values=update_data,
+                new_values=admin_fields,
             )
             await db.commit()
         except IntegrityError:
@@ -128,39 +164,119 @@ async def update_own_profile(
         await db.refresh(user)
         return user
 
-    # Students cannot change department via self-service
-    if user.role == UserRole.student and "department_id" in update_data:
+    # --- Non-admin: validate field permissions ---
+    allowed = (
+        STUDENT_REQUESTABLE_FIELDS
+        if user.role == UserRole.student
+        else SUPERVISOR_REQUESTABLE_FIELDS
+    )
+    disallowed = set(update_data.keys()) - allowed
+    if disallowed:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Students cannot change their department. Contact an administrator.",
+            detail=f"You cannot request changes to: {', '.join(sorted(disallowed))}",
         )
 
-    # Non-admin: queue each changed field as a PendingProfileChange
-    for field, new_value in update_data.items():
-        old_value = str(getattr(user, field) or "")
+    # --- Field-specific validation ---
+    # Students: validate department_id target
+    if "department_id" in update_data and user.role == UserRole.student:
+        new_dept_id = update_data["department_id"]
+        if new_dept_id is not None:
+            dept = await db.get(Department, new_dept_id)
+            if dept is None or not dept.is_active:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Selected department not found or inactive.",
+                )
 
-        # Replace existing pending change for the same field
-        existing_result = await db.execute(
-            select(PendingProfileChange).where(
-                PendingProfileChange.user_id == user.id,
-                PendingProfileChange.field_name == field,
-                PendingProfileChange.status == PendingChangeStatus.pending,
+    # Students: validate supervisor_id target
+    if "supervisor_id" in update_data and user.role == UserRole.student:
+        sup_id = update_data["supervisor_id"]
+        if sup_id is not None:
+            sup = await db.get(User, sup_id)
+            if sup is None or not sup.is_active or sup.role != UserRole.supervisor:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Selected supervisor not found, inactive, or not a supervisor.",
+                )
+
+    # Students/supervisors: validate email uniqueness
+    if "email" in update_data:
+        new_email = update_data["email"]
+        if new_email and new_email != user.email:
+            existing = await db.execute(
+                select(User).where(User.email == new_email)
             )
-        )
-        existing = existing_result.scalar_one_or_none()
+            if existing.scalar_one_or_none() is not None:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="Email address already in use by another user.",
+                )
 
-        if existing:
-            existing.old_value = old_value
-            existing.new_value = str(new_value) if new_value is not None else None
-        else:
-            db.add(
-                PendingProfileChange(
-                    user_id=user.id,
-                    field_name=field,
-                    old_value=old_value,
-                    new_value=str(new_value) if new_value is not None else None,
+    # Supervisors: validate remove_student_id
+    if "remove_student_id" in update_data and user.role == UserRole.supervisor:
+        student_id = update_data["remove_student_id"]
+        if student_id is not None:
+            assignment = await db.execute(
+                select(SupervisorAssignment).where(
+                    SupervisorAssignment.supervisor_id == user.id,
+                    SupervisorAssignment.student_id == student_id,
+                    SupervisorAssignment.assignment_type == AssignmentType.primary,
                 )
             )
+            if assignment.scalar_one_or_none() is None:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="This student is not assigned to you.",
+                )
+
+    # --- Check for duplicate pending requests ---
+    pending_result = await db.execute(
+        select(PendingProfileChange.field_name).where(
+            PendingProfileChange.user_id == user.id,
+            PendingProfileChange.field_name.in_(update_data.keys()),
+            PendingProfileChange.status == PendingChangeStatus.pending,
+        )
+    )
+    already_pending = {row[0] for row in pending_result.all()}
+    if already_pending:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"You already have a pending request for: {', '.join(sorted(already_pending))}. "
+            "Please wait for it to be reviewed before submitting a new one.",
+        )
+
+    # --- Create PendingProfileChange records ---
+    for field, new_value in update_data.items():
+        # Resolve old_value to a human-readable string
+        if field == "department_id":
+            old_value = await _resolve_department_name(db, user.department_id)
+        elif field == "supervisor_id":
+            # Get student's current academic supervisor
+            current_sup = await db.execute(
+                select(SupervisorAssignment.supervisor_id).where(
+                    SupervisorAssignment.student_id == user.id,
+                    SupervisorAssignment.assignment_type == AssignmentType.primary,
+                )
+            )
+            current_sup_id = current_sup.scalar_one_or_none()
+            old_value = await _resolve_supervisor_name(db, current_sup_id)
+        elif field == "remove_student_id":
+            old_value = user.full_name
+        elif field == "email":
+            old_value = user.email
+        else:
+            old_value = str(getattr(user, field) or "")
+
+        db.add(
+            PendingProfileChange(
+                user_id=user.id,
+                field_name=field,
+                old_value=old_value,
+                new_value=str(new_value) if new_value is not None else None,
+                reason=reason,
+            )
+        )
 
     await db.flush()
     await record_audit(
@@ -235,6 +351,7 @@ async def list_pending_changes(
                 field_name=change.field_name,
                 old_value=change.old_value,
                 new_value=change.new_value,
+                reason=change.reason,
                 status=change.status,
                 reviewed_by=change.reviewed_by,
                 reviewed_at=change.reviewed_at,
