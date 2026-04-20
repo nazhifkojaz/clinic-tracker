@@ -9,8 +9,10 @@ from sqlalchemy.orm import selectinload
 from app.api.dependencies import get_current_user, require_admin
 from app.core.cache import categories_cache, departments_cache
 from app.core.database import get_db
+from app.models.assignment import AssignmentType, SupervisorAssignment
 from app.models.department import Department, TaskCategory
-from app.models.user import User
+from app.models.user import User, display_name
+from app.schemas.submission import ReviewerInfo
 from app.schemas.department import (
     DepartmentCreate,
     DepartmentResponse,
@@ -220,6 +222,26 @@ async def update_department(
         created_at=department.created_at,
         updated_at=department.updated_at,
     )
+
+
+@router.get("/{department_id}/supervisors", response_model=list[ReviewerInfo])
+async def list_department_supervisors(
+    department_id: UUID,
+    _user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(
+        select(User)
+        .join(SupervisorAssignment, SupervisorAssignment.supervisor_id == User.id)
+        .where(
+            SupervisorAssignment.department_id == department_id,
+            SupervisorAssignment.assignment_type == AssignmentType.department,
+            User.is_active.is_(True),
+        )
+        .order_by(User.full_name)
+    )
+    supervisors = result.scalars().all()
+    return [ReviewerInfo(id=sv.id, full_name=display_name(sv)) for sv in supervisors]
 
 
 # --- Task Category Endpoints ---

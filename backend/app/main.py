@@ -16,6 +16,7 @@ from app.api.departments import router as departments_router
 from app.api.invite_codes import router as invite_codes_router
 from app.api.notifications import router as notifications_router
 from app.api.rotations import router as rotations_router
+from app.api.students import router as students_router
 from app.api.submissions import router as submissions_router
 from app.api.users import router as users_router
 from app.core.config import settings
@@ -121,6 +122,7 @@ app.include_router(invite_codes_router)
 app.include_router(users_router)
 app.include_router(departments_router)
 app.include_router(rotations_router)
+app.include_router(students_router)
 app.include_router(submissions_router)
 app.include_router(assignments_router)
 app.include_router(dashboard_router)

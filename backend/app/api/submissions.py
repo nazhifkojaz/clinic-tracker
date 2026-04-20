@@ -26,6 +26,7 @@ from app.schemas.submission import (
     SubmissionListResponse,
     SubmissionResponse,
     SubmissionReview,
+    SubmissionUpdate,
     UploadUrlRequest,
     UploadUrlResponse,
 )
@@ -53,18 +54,12 @@ async def _get_submission_or_403(
     user: User,
     db: AsyncSession,
 ) -> CaseSubmission:
-    """Fetch submission (non-deleted) and verify student ownership.
+    """Fetch submission (non-deleted) and verify access.
 
-    Args:
-        submission_id: ID of submission to fetch
-        user: Current authenticated user
-        db: Database session
-
-    Returns:
-        The submission if found and user has access
-
-    Raises:
-        HTTPException: 404 if not found or deleted, 403 if access denied
+    Students: own submissions only.
+    Department supervisors: submissions in their assigned departments.
+    Academic supervisors: submissions from their primary-assigned students.
+    Admins: all submissions.
     """
     result = await db.execute(
         select(CaseSubmission).where(
@@ -76,11 +71,70 @@ async def _get_submission_or_403(
     if not submission:
         raise HTTPException(status_code=404, detail="Submission not found")
 
-    # Students can only see their own submissions
-    if user.role == UserRole.student and submission.student_id != user.id:
-        raise HTTPException(status_code=403, detail="Access denied")
+    if user.role == UserRole.student:
+        if submission.student_id != user.id:
+            raise HTTPException(status_code=403, detail="Access denied")
+    elif user.role == UserRole.supervisor:
+        is_primary_sv = (
+            await db.execute(
+                select(SupervisorAssignment.id).where(
+                    SupervisorAssignment.student_id == submission.student_id,
+                    SupervisorAssignment.supervisor_id == user.id,
+                    SupervisorAssignment.assignment_type == AssignmentType.primary,
+                )
+            )
+        ).scalar_one_or_none()
+        is_dept_sv = (
+            await db.execute(
+                select(SupervisorAssignment.id).where(
+                    SupervisorAssignment.department_id == submission.department_id,
+                    SupervisorAssignment.supervisor_id == user.id,
+                    SupervisorAssignment.assignment_type == AssignmentType.department,
+                )
+            )
+        ).scalar_one_or_none()
+        if not is_primary_sv and not is_dept_sv:
+            raise HTTPException(status_code=403, detail="Access denied")
 
     return submission
+
+
+async def _get_target_sv_info(
+    submission: CaseSubmission, db: AsyncSession
+) -> ReviewerInfo | None:
+    """Fetch target supervisor info for a submission."""
+    if not submission.target_supervisor_id:
+        return None
+    sv_result = await db.execute(
+        select(User).where(User.id == submission.target_supervisor_id)
+    )
+    sv_user = sv_result.scalar_one_or_none()
+    if not sv_user:
+        return None
+    return ReviewerInfo(id=sv_user.id, full_name=display_name(sv_user))
+
+
+def _build_submission_response(
+    submission: CaseSubmission, target_sv: ReviewerInfo | None = None
+) -> SubmissionResponse:
+    """Build SubmissionResponse from scalar fields only (avoids lazy relationship access)."""
+    return SubmissionResponse(
+        id=submission.id,
+        student_id=submission.student_id,
+        department_id=submission.department_id,
+        task_category_id=submission.task_category_id,
+        case_count=submission.case_count,
+        proof_key=submission.proof_key,
+        notes=submission.notes,
+        status=submission.status,
+        target_supervisor_id=submission.target_supervisor_id,
+        target_supervisor=target_sv,
+        reviewed_by=submission.reviewed_by,
+        review_notes=submission.review_notes,
+        created_at=submission.created_at,
+        updated_at=submission.updated_at,
+        deleted_at=submission.deleted_at,
+    )
 
 
 @router.post("", response_model=SubmissionResponse, status_code=status.HTTP_201_CREATED)
@@ -114,6 +168,20 @@ async def create_submission(
             detail="Task category not found, inactive, or does not belong to this department",
         )
 
+    # Verify target supervisor is assigned to this department
+    sv_result = await db.execute(
+        select(SupervisorAssignment).where(
+            SupervisorAssignment.supervisor_id == body.target_supervisor_id,
+            SupervisorAssignment.department_id == body.department_id,
+            SupervisorAssignment.assignment_type == AssignmentType.department,
+        )
+    )
+    if not sv_result.scalar_one_or_none():
+        raise HTTPException(
+            status_code=400,
+            detail="Selected supervisor is not assigned to this department",
+        )
+
     submission = CaseSubmission(
         student_id=user.id,
         **body.model_dump(),
@@ -131,12 +199,15 @@ async def create_submission(
             "department_id": str(submission.department_id),
             "task_category_id": str(submission.task_category_id),
             "case_count": submission.case_count,
+            "target_supervisor_id": str(submission.target_supervisor_id),
         },
     )
     await db.commit()
     await db.refresh(submission)
 
-    return submission
+    return _build_submission_response(
+        submission, await _get_target_sv_info(submission, db)
+    )
 
 
 @router.get("", response_model=PaginatedResponse[SubmissionListResponse])
@@ -148,7 +219,7 @@ async def list_submissions(
     limit: int = Query(50, ge=1, le=200, description="Items per page"),
     offset: int = Query(0, ge=0, description="Items to skip"),
 ):
-    """List submissions with pagination. Students see their own; supervisors/admins see all."""
+    """List submissions with pagination. Role-based visibility with can_review flag."""
     query = (
         select(CaseSubmission, User)
         .join(User, CaseSubmission.student_id == User.id)
@@ -188,19 +259,25 @@ async def list_submissions(
     result = await db.execute(query)
 
     reviewer_ids: set[UUID] = set()
+    target_sv_ids: set[UUID] = set()
     submissions_data = []
     for row in result.all():
         submission, student_user = row
         submissions_data.append((submission, student_user))
         if submission.reviewed_by:
             reviewer_ids.add(submission.reviewed_by)
+        if submission.target_supervisor_id:
+            target_sv_ids.add(submission.target_supervisor_id)
 
-    reviewers_map: dict[UUID, User] = {}
-    if reviewer_ids:
-        reviewers_result = await db.execute(
-            select(User).where(User.id.in_(list(reviewer_ids)))
-        )
-        reviewers_map = {r.id: r for r in reviewers_result.scalars().all()}
+    # Batch-load all referenced users (reviewers + target supervisors)
+    user_ids = reviewer_ids | target_sv_ids
+    users_map: dict[UUID, User] = {}
+    if user_ids:
+        users_result = await db.execute(select(User).where(User.id.in_(list(user_ids))))
+        users_map = {u.id: u for u in users_result.scalars().all()}
+
+    # Pre-compute supervisor's accessible data for can_review
+    is_admin = user.role == UserRole.admin
 
     submissions = []
     for submission, student_user in submissions_data:
@@ -212,12 +289,28 @@ async def list_submissions(
         )
 
         reviewer_info = None
-        if submission.reviewed_by and submission.reviewed_by in reviewers_map:
-            reviewer_user = reviewers_map[submission.reviewed_by]
+        if submission.reviewed_by and submission.reviewed_by in users_map:
+            reviewer_user = users_map[submission.reviewed_by]
             reviewer_info = ReviewerInfo(
                 id=reviewer_user.id,
                 full_name=display_name(reviewer_user),
             )
+
+        target_sv_info = None
+        if (
+            submission.target_supervisor_id
+            and submission.target_supervisor_id in users_map
+        ):
+            target_sv_user = users_map[submission.target_supervisor_id]
+            target_sv_info = ReviewerInfo(
+                id=target_sv_user.id,
+                full_name=display_name(target_sv_user),
+            )
+
+        can_review = is_admin or (
+            user.role == UserRole.supervisor
+            and submission.target_supervisor_id == user.id
+        )
 
         submissions.append(
             SubmissionListResponse(
@@ -230,9 +323,12 @@ async def list_submissions(
                 proof_key=submission.proof_key,
                 notes=submission.notes,
                 status=submission.status,
+                target_supervisor_id=submission.target_supervisor_id,
+                target_supervisor=target_sv_info,
                 reviewed_by=submission.reviewed_by,
                 reviewer=reviewer_info,
                 review_notes=submission.review_notes,
+                can_review=can_review,
                 created_at=submission.created_at,
                 updated_at=submission.updated_at,
                 deleted_at=submission.deleted_at,
@@ -318,9 +414,12 @@ async def list_deleted_submissions(
                 proof_key=submission.proof_key,
                 notes=submission.notes,
                 status=submission.status,
+                target_supervisor_id=submission.target_supervisor_id,
+                target_supervisor=None,
                 reviewed_by=submission.reviewed_by,
                 reviewer=None,
                 review_notes=submission.review_notes,
+                can_review=False,
                 created_at=submission.created_at,
                 updated_at=submission.updated_at,
                 deleted_at=submission.deleted_at,
@@ -338,9 +437,61 @@ async def get_submission(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Get a submission detail. Students can only view their own."""
+    """Get a submission detail with target supervisor info."""
     submission = await _get_submission_or_403(submission_id, user, db)
-    return submission
+
+    return _build_submission_response(
+        submission, await _get_target_sv_info(submission, db)
+    )
+
+
+@router.put("/{submission_id}", response_model=SubmissionResponse)
+async def update_submission(
+    submission_id: UUID,
+    body: SubmissionUpdate,
+    user: User = Depends(require_student),
+    db: AsyncSession = Depends(get_db),
+):
+    """Edit a pending submission. Students can only change case_count, proof_key, notes."""
+    submission = await _get_submission_or_403(submission_id, user, db)
+
+    if submission.status != SubmissionStatus.pending:
+        raise HTTPException(
+            status_code=400,
+            detail="Only pending submissions can be edited",
+        )
+
+    old_values = {
+        "case_count": submission.case_count,
+        "proof_key": submission.proof_key,
+        "notes": submission.notes,
+    }
+
+    updates = body.model_dump(exclude_unset=True)
+    if not updates:
+        return _build_submission_response(
+            submission, await _get_target_sv_info(submission, db)
+        )
+
+    for field, value in updates.items():
+        setattr(submission, field, value)
+
+    await db.flush()
+    await record_audit(
+        db,
+        user_id=user.id,
+        action="update",
+        table_name="case_submissions",
+        record_id=submission.id,
+        old_values=old_values,
+        new_values=updates,
+    )
+    await db.commit()
+    await db.refresh(submission)
+
+    return _build_submission_response(
+        submission, await _get_target_sv_info(submission, db)
+    )
 
 
 @router.patch("/{submission_id}/review", response_model=SubmissionResponse)
@@ -350,7 +501,7 @@ async def review_submission(
     user: User = Depends(require_supervisor),
     db: AsyncSession = Depends(get_db),
 ):
-    """Approve or reject a submission. Supervisor/admin only."""
+    """Approve or reject a submission. Only target supervisor or admin."""
     status_enum = SubmissionStatus(body.status)
 
     result = await db.execute(
@@ -368,6 +519,14 @@ async def review_submission(
             status_code=400,
             detail=f"Submission already {submission.status.value}",
         )
+
+    # Only the target supervisor or admin can review
+    if user.role != UserRole.admin:
+        if submission.target_supervisor_id != user.id:
+            raise HTTPException(
+                status_code=403,
+                detail="Only the assigned supervisor can review this submission",
+            )
 
     old_values = {
         "status": submission.status.value,
@@ -396,7 +555,9 @@ async def review_submission(
     await db.commit()
     await db.refresh(submission)
 
-    return submission
+    return _build_submission_response(
+        submission, await _get_target_sv_info(submission, db)
+    )
 
 
 @router.delete("/{submission_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -484,7 +645,10 @@ async def restore_submission(
     )
     await db.commit()
     await db.refresh(submission)
-    return submission
+
+    return _build_submission_response(
+        submission, await _get_target_sv_info(submission, db)
+    )
 
 
 @router.get("/{submission_id}/proof-url")
