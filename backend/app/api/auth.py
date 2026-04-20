@@ -18,6 +18,7 @@ from app.core.security import (
     verify_email_verification_token,
     verify_password,
 )
+from app.models.assignment import AssignmentType, SupervisorAssignment
 from app.models.department import Department
 from app.models.invite_code import InviteCode, InviteCodeStatus
 from app.models.user import UserRole, User
@@ -165,6 +166,14 @@ async def register(
     db.add(user)
     try:
         await db.flush()
+
+        if user.role == UserRole.supervisor and user.department_id is not None:
+            db.add(SupervisorAssignment(
+                supervisor_id=user.id,
+                department_id=user.department_id,
+                assignment_type=AssignmentType.department,
+            ))
+            await db.flush()
 
         # Consume invite code if this is an admin registration
         if invite is not None:
