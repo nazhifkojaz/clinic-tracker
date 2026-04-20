@@ -47,6 +47,7 @@ export default function SupervisorDashboard() {
 	const [error, setError] = useState("");
 	const [search, setSearch] = useState("");
 	const [statusFilter, setStatusFilter] = useState<string>("all");
+	const [assignmentFilter, setAssignmentFilter] = useState<string>("all");
 	const [selectedStudent, setSelectedStudent] =
 		useState<StudentDashboardData | null>(null);
 	const [studentLoading, setStudentLoading] = useState(false);
@@ -104,9 +105,23 @@ export default function SupervisorDashboard() {
 				(s.student_code &&
 					s.student_code.toLowerCase().includes(search.toLowerCase()));
 			const matchesStatus = statusFilter === "all" || s.status === statusFilter;
-			return matchesSearch && matchesStatus;
+			const matchesAssignment =
+				assignmentFilter === "all" || s.assignment_type === assignmentFilter;
+			return matchesSearch && matchesStatus && matchesAssignment;
 		});
-	}, [data, search, statusFilter]);
+	}, [data, search, statusFilter, assignmentFilter]);
+
+	const summaryCounts = useMemo(() => {
+		let onTrack = 0;
+		let atRisk = 0;
+		let behind = 0;
+		for (const s of filteredStudents) {
+			if (s.status === "on_track") onTrack++;
+			else if (s.status === "at_risk") atRisk++;
+			else behind++;
+		}
+		return { total: filteredStudents.length, onTrack, atRisk, behind };
+	}, [filteredStudents]);
 
 	if (loading) {
 		return <DashboardSkeleton />;
@@ -131,7 +146,7 @@ export default function SupervisorDashboard() {
 					<CardContent className="flex items-center gap-3 pt-6">
 						<Users className="h-8 w-8 text-muted-foreground" />
 						<div>
-							<div className="text-2xl font-bold">{data.total_students}</div>
+							<div className="text-2xl font-bold">{summaryCounts.total}</div>
 							<p className="text-sm text-muted-foreground">Total Students</p>
 						</div>
 					</CardContent>
@@ -140,7 +155,7 @@ export default function SupervisorDashboard() {
 					<CardContent className="flex items-center gap-3 pt-6">
 						<CheckCircle className="h-8 w-8 text-green-500" />
 						<div>
-							<div className="text-2xl font-bold">{data.on_track_count}</div>
+							<div className="text-2xl font-bold">{summaryCounts.onTrack}</div>
 							<p className="text-sm text-muted-foreground">On Track</p>
 						</div>
 					</CardContent>
@@ -149,7 +164,7 @@ export default function SupervisorDashboard() {
 					<CardContent className="flex items-center gap-3 pt-6">
 						<AlertTriangle className="h-8 w-8 text-yellow-500" />
 						<div>
-							<div className="text-2xl font-bold">{data.at_risk_count}</div>
+							<div className="text-2xl font-bold">{summaryCounts.atRisk}</div>
 							<p className="text-sm text-muted-foreground">At Risk</p>
 						</div>
 					</CardContent>
@@ -158,7 +173,7 @@ export default function SupervisorDashboard() {
 					<CardContent className="flex items-center gap-3 pt-6">
 						<XCircle className="h-8 w-8 text-red-500" />
 						<div>
-							<div className="text-2xl font-bold">{data.behind_count}</div>
+							<div className="text-2xl font-bold">{summaryCounts.behind}</div>
 							<p className="text-sm text-muted-foreground">Behind</p>
 						</div>
 					</CardContent>
@@ -172,9 +187,9 @@ export default function SupervisorDashboard() {
 				</CardHeader>
 				<CardContent>
 					<StudentDistribution
-						onTrack={data.on_track_count}
-						atRisk={data.at_risk_count}
-						behind={data.behind_count}
+						onTrack={summaryCounts.onTrack}
+						atRisk={summaryCounts.atRisk}
+						behind={summaryCounts.behind}
 					/>
 				</CardContent>
 			</Card>
@@ -203,6 +218,17 @@ export default function SupervisorDashboard() {
 							<option value="at_risk">At Risk</option>
 							<option value="behind">Behind</option>
 						</select>
+						{isSupervisor && (
+							<select
+								value={assignmentFilter}
+								onChange={(e) => setAssignmentFilter(e.target.value)}
+								className="rounded-md border bg-background px-3 py-2 text-sm"
+							>
+								<option value="all">All Assignments</option>
+								<option value="primary">Academic</option>
+								<option value="department">Rotating</option>
+							</select>
+						)}
 					</div>
 				</CardHeader>
 				<CardContent>
