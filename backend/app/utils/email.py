@@ -1,22 +1,4 @@
-"""
-Email utility for sending notifications via Gmail SMTP.
-
-In local development (when GMAIL_USER/GMAIL_APP_PASSWORD are not configured),
-this module runs in MOCK mode and logs emails instead of sending.
-
-SETUP GUIDE FOR GMAIL SMTP:
-1. Go to https://myaccount.google.com/security
-2. Enable 2-Step Verification (required for App Passwords)
-3. Go to https://myaccount.google.com/apppasswords
-4. Create a new App Password (select "Mail" → "Other", name it "Smart Clinic Tracker")
-5. Copy the 16-character password
-6. Add these to your .env file:
-   GMAIL_USER=yourname@gmail.com
-   GMAIL_APP_PASSWORD=xxxx xxxx xxxx xxxx
-   EMAIL_MOCK_MODE=False
-
-Free tier: 500 emails/day via Gmail SMTP.
-"""
+"""Email utility — configurable SMTP transport with mock mode for tests/dev."""
 
 import asyncio
 import html
@@ -29,22 +11,17 @@ from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
-_SMTP_SERVER = "smtp.gmail.com"
-_SMTP_PORT = 587
-
 
 def _validate_email_config() -> None:
-    """Validate email configuration on module load.
-
-    Raises:
-        RuntimeError: If non-mock mode is enabled but Gmail credentials are missing.
-    """
-    if not settings.EMAIL_MOCK_MODE and (
-        not settings.GMAIL_USER or not settings.GMAIL_APP_PASSWORD
+    """Validate email configuration on module load."""
+    if (
+        not settings.EMAIL_MOCK_MODE
+        and settings.SMTP_REQUIRE_AUTH
+        and (not settings.GMAIL_USER or not settings.GMAIL_APP_PASSWORD)
     ):
         raise RuntimeError(
-            "GMAIL_USER and GMAIL_APP_PASSWORD are required when EMAIL_MOCK_MODE=False. "
-            "Either set Gmail credentials or enable EMAIL_MOCK_MODE for development."
+            "GMAIL_USER and GMAIL_APP_PASSWORD are required when SMTP_REQUIRE_AUTH=True. "
+            "For local dev with Mailpit set SMTP_REQUIRE_AUTH=False and point SMTP_HOST at localhost."
         )
 
 
@@ -77,9 +54,11 @@ def _send_smtp(to: list[str], subject: str, html_body: str) -> None:
     msg["Subject"] = subject
     msg.attach(MIMEText(html_body, "html", "utf-8"))
 
-    with smtplib.SMTP(_SMTP_SERVER, _SMTP_PORT, timeout=30) as server:
-        server.starttls()
-        server.login(settings.GMAIL_USER, settings.GMAIL_APP_PASSWORD)
+    with smtplib.SMTP(settings.SMTP_HOST, settings.SMTP_PORT, timeout=30) as server:
+        if settings.SMTP_USE_TLS:
+            server.starttls()
+        if settings.SMTP_REQUIRE_AUTH:
+            server.login(settings.GMAIL_USER, settings.GMAIL_APP_PASSWORD)
         refused = server.sendmail(_EMAIL_FROM, to, msg.as_string())
         if refused:
             raise smtplib.SMTPRecipientsRefused(refused)

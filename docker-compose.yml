@@ -1,4 +1,12 @@
 services:
+  mailpit:
+    image: axllent/mailpit:latest
+    container_name: dashko-mailpit
+    ports:
+      - "1025:1025"   # SMTP
+      - "8025:8025"   # Web UI
+    restart: unless-stopped
+
   postgres-test:
     image: postgres:17-alpine
     container_name: dashko-test-db

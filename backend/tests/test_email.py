@@ -121,7 +121,14 @@ class TestSendSmtp:
         mock_smtp_cls.return_value.__enter__ = MagicMock(return_value=mock_server)
         mock_smtp_cls.return_value.__exit__ = MagicMock(return_value=False)
 
-        _send_smtp(["to@example.com"], "Subject", "<p>Body</p>")
+        with patch("app.utils.email.settings") as mock_settings:
+            mock_settings.SMTP_HOST = "smtp.gmail.com"
+            mock_settings.SMTP_PORT = 587
+            mock_settings.SMTP_USE_TLS = True
+            mock_settings.SMTP_REQUIRE_AUTH = True
+            mock_settings.GMAIL_USER = "test@gmail.com"
+            mock_settings.GMAIL_APP_PASSWORD = "testpass"
+            _send_smtp(["to@example.com"], "Subject", "<p>Body</p>")
 
         mock_smtp_cls.assert_called_once_with("smtp.gmail.com", 587, timeout=30)
         mock_server.starttls.assert_called_once()
