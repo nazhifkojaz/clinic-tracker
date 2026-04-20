@@ -14,7 +14,6 @@ const DashboardRouter = lazy(() => import("@/pages/DashboardRouter"));
 const CaseInputForm = lazy(() => import("@/pages/CaseInputForm"));
 const RotationTracker = lazy(() => import("@/pages/RotationTracker"));
 const SubmissionHistory = lazy(() => import("@/pages/SubmissionHistory"));
-const SendNotification = lazy(() => import("@/pages/SendNotification"));
 const NotificationHistory = lazy(() => import("@/pages/NotificationHistory"));
 const UserManagement = lazy(() => import("@/pages/admin/UserManagement"));
 const DepartmentManagement = lazy(
@@ -69,10 +68,6 @@ function App() {
 							<Route path="/cases/new" element={<CaseInputForm />} />
 							<Route path="/rotation-tracker" element={<RotationTracker />} />
 							<Route path="/submissions" element={<SubmissionHistory />} />
-							<Route
-								path="/notifications/send"
-								element={<SendNotification />}
-							/>
 							<Route path="/notifications" element={<NotificationHistory />} />
 							<Route path="/settings" element={<Settings />} />
 							<Route element={<ProtectedRoute allowedRoles={["admin"]} />}>

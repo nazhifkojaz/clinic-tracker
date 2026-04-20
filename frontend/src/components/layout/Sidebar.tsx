@@ -7,7 +7,6 @@ import {
 	LayoutDashboard,
 	Link2,
 	ScrollText,
-	Send,
 	Settings,
 	Timer,
 	Trash2,
@@ -31,14 +30,12 @@ const navItems = {
 	supervisor: [
 		{ to: "/", label: "Dashboard", icon: LayoutDashboard },
 		{ to: "/submissions", label: "Submissions", icon: ClipboardList },
-		{ to: "/notifications/send", label: "Send Notification", icon: Send },
 		{ to: "/notifications", label: "Notification History", icon: Bell },
 		{ to: "/settings", label: "Settings", icon: Settings },
 	],
 	admin: [
 		{ to: "/", label: "Dashboard", icon: LayoutDashboard },
 		{ to: "/submissions", label: "Submissions", icon: ClipboardList },
-		{ to: "/notifications/send", label: "Send Notification", icon: Send },
 		{ to: "/notifications", label: "Notification History", icon: Bell },
 		{ to: "/admin/users", label: "Users", icon: Users },
 		{ to: "/admin/invite-codes", label: "Invite Codes", icon: KeyRound },
