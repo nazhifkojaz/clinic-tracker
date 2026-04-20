@@ -4,6 +4,7 @@ import type {
 	Submission,
 	SubmissionCreate,
 	SubmissionReview,
+	SubmissionUpdate,
 	UploadUrlRequest,
 	UploadUrlResponse,
 } from "@/types/submission";
@@ -20,6 +21,14 @@ export const submissionService = {
 
 	async create(body: SubmissionCreate): Promise<Submission> {
 		const { data } = await api.post<Submission>("/api/submissions", body);
+		return data;
+	},
+
+	async update(id: string, body: SubmissionUpdate): Promise<Submission> {
+		const { data } = await api.put<Submission>(
+			`/api/submissions/${id}`,
+			body,
+		);
 		return data;
 	},
 
