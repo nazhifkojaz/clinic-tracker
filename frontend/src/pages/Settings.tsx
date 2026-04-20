@@ -6,10 +6,12 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useAuthStore } from "@/stores/authStore";
+import { assignmentService } from "@/services/assignments";
 import { departmentService } from "@/services/departments";
 import { studentService } from "@/services/students";
 import { userService } from "@/services/users";
 import type { Department } from "@/types/department";
+import type { AssignmentWithDetails } from "@/types/assignment";
 import type { ReviewerInfo } from "@/types/submission";
 import type { PendingChange, ProfileUpdateRequest, User } from "@/types/user";
 
@@ -31,6 +33,7 @@ const fieldLabels: Record<string, string> = {
 	department_id: "Department",
 	email: "Email",
 	supervisor_id: "Academic Supervisor",
+	remove_student_id: "Remove Student",
 };
 
 export default function Settings() {
@@ -45,6 +48,15 @@ export default function Settings() {
 		string | null
 	>(null);
 	const [isRequestingSupervisor, setIsRequestingSupervisor] = useState(false);
+
+	// Supervisor-specific data
+	const [assignedStudents, setAssignedStudents] = useState<
+		AssignmentWithDetails[]
+	>([]);
+	const [removalReasons, setRemovalReasons] = useState<Record<string, string>>(
+		{},
+	);
+	const [isRemoving, setIsRemoving] = useState<string | null>(null);
 
 	// Password form
 	const [pwForm, setPwForm] = useState({
@@ -78,6 +90,21 @@ export default function Settings() {
 		[pendingChanges],
 	);
 
+	const pendingRemovalIds = useMemo(
+		() =>
+			new Set(
+				pendingChanges
+					.filter(
+						(c) =>
+							c.field_name === "remove_student_id" &&
+							c.status === "pending" &&
+							c.new_value,
+					)
+					.map((c) => c.new_value!),
+			),
+		[pendingChanges],
+	);
+
 	useEffect(() => {
 		if (user) {
 			setProfileForm({
@@ -106,6 +133,16 @@ export default function Settings() {
 			userService
 				.list({ role: "supervisor", is_active: true, limit: 200 })
 				.then((res) => setSupervisors(res.items))
+				.catch(() => {});
+		}
+		if (user?.role === "supervisor") {
+			assignmentService
+				.list({ assignment_type: "primary" })
+				.then((res) =>
+					setAssignedStudents(
+						res.items.filter((a) => a.student_id !== null),
+					),
+				)
 				.catch(() => {});
 		}
 	}, [user?.role]);
@@ -217,6 +254,30 @@ export default function Settings() {
 			toast.error(detail);
 		} finally {
 			setIsRequestingSupervisor(false);
+		}
+	};
+
+	const handleRequestRemoval = async (studentId: string) => {
+		setIsRemoving(studentId);
+		try {
+			await userService.updateOwnProfile({
+				remove_student_id: studentId,
+				reason: removalReasons[studentId] || null,
+			});
+			toast.success("Student removal submitted for admin approval");
+			setRemovalReasons((prev) => {
+				const next = { ...prev };
+				delete next[studentId];
+				return next;
+			});
+			userService.getMyPendingChanges().then(setPendingChanges);
+		} catch (err: unknown) {
+			const detail =
+				(err as { response?: { data?: { detail?: string } } })?.response?.data
+					?.detail || "Failed to request student removal";
+			toast.error(detail);
+		} finally {
+			setIsRemoving(null);
 		}
 	};
 
@@ -531,6 +592,105 @@ export default function Settings() {
 								)}
 							</Button>
 						</div>
+					</CardContent>
+				</Card>
+			)}
+
+			{/* Assigned Students (supervisors only) */}
+			{user.role === "supervisor" && assignedStudents.length > 0 && (
+				<Card>
+					<CardHeader>
+						<CardTitle>Assigned Students</CardTitle>
+					</CardHeader>
+					<CardContent className="space-y-3">
+						{assignedStudents.map((assignment) => {
+							const studentId = assignment.student_id!;
+							const hasPendingRemoval = pendingRemovalIds.has(studentId);
+							const isExpanded = removalReasons[studentId] !== undefined || hasPendingRemoval;
+
+							return (
+								<div
+									key={assignment.id}
+									className="rounded-md border p-3 space-y-2"
+								>
+									<div className="flex items-center justify-between">
+										<div>
+											<p className="font-medium">
+												{assignment.student_name}
+											</p>
+											<p className="text-sm text-muted-foreground">
+												{assignment.department_name ?? "No department"}
+											</p>
+										</div>
+										{hasPendingRemoval ? (
+											<span className="rounded-full bg-yellow-100 px-2 py-0.5 text-xs font-medium text-yellow-700 dark:bg-yellow-900 dark:text-yellow-300">
+												Removal pending
+											</span>
+										) : (
+											<Button
+												variant="outline"
+												size="sm"
+												onClick={() =>
+													setRemovalReasons((prev) => ({
+														...prev,
+														[studentId]: prev[studentId] ?? "",
+													}))
+												}
+												disabled={isRemoving !== null}
+											>
+												Request Removal
+											</Button>
+										)}
+									</div>
+									{isExpanded && !hasPendingRemoval && (
+										<div className="space-y-2 pt-1">
+											<textarea
+												className="flex min-h-[60px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+												placeholder="Reason (optional)..."
+												value={removalReasons[studentId] ?? ""}
+												onChange={(e) =>
+													setRemovalReasons((prev) => ({
+														...prev,
+														[studentId]: e.target.value,
+													}))
+												}
+											/>
+											<div className="flex justify-end gap-2">
+												<Button
+													variant="ghost"
+													size="sm"
+													onClick={() =>
+														setRemovalReasons((prev) => {
+															const next = { ...prev };
+															delete next[studentId];
+															return next;
+														})
+													}
+												>
+													Cancel
+												</Button>
+												<Button
+													size="sm"
+													disabled={isRemoving === studentId}
+													onClick={() =>
+														handleRequestRemoval(studentId)
+													}
+												>
+													{isRemoving === studentId ? (
+														<>
+															<Loader2 className="mr-2 h-4 w-4 animate-spin" />
+															Submitting...
+														</>
+													) : (
+														"Submit"
+													)}
+												</Button>
+											</div>
+										</div>
+									)}
+								</div>
+							);
+						})}
 					</CardContent>
 				</Card>
 			)}
