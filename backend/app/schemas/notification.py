@@ -3,17 +3,7 @@
 import uuid
 from datetime import datetime
 
-from pydantic import BaseModel, Field
-
-
-class NotificationSend(BaseModel):
-    """Request schema for sending a notification."""
-
-    recipient_ids: list[uuid.UUID] = Field(..., min_length=1, max_length=20)
-    subject: str = Field(..., min_length=1, max_length=255)
-    message: str = Field(..., min_length=1, max_length=5000)
-    template_key: str | None = None
-    template_vars: dict[str, str] | None = None
+from pydantic import BaseModel
 
 
 class NotificationResponse(BaseModel):
@@ -29,11 +19,3 @@ class NotificationResponse(BaseModel):
     sent_at: datetime
 
     model_config = {"from_attributes": True}
-
-
-class NotificationTemplateResponse(BaseModel):
-    """Response schema for a notification template."""
-
-    key: str
-    subject: str
-    message: str
