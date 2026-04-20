@@ -7,13 +7,16 @@ import {
 	Eye,
 	FileImage,
 	Loader2,
+	Pencil,
 	ThumbsDown,
 	ThumbsUp,
 	Trash2,
+	Upload,
 	X,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { MAX_PROOF_FILE_SIZE } from "@/lib/constants";
 import { TableSkeleton } from "@/components/skeletons/TableSkeleton";
 import { departmentService } from "@/services/departments";
 import { submissionService } from "@/services/submissions";
@@ -22,7 +25,7 @@ import type {
 	DepartmentWithCategories,
 	TaskCategory,
 } from "@/types/department";
-import type { Submission, SubmissionStatus } from "@/types/submission";
+import type { Submission, SubmissionStatus, SubmissionUpdate } from "@/types/submission";
 
 const statusConfig: Record<
 	SubmissionStatus,
@@ -77,6 +80,16 @@ export default function SubmissionHistory() {
 
 	// Delete state
 	const [deletingId, setDeletingId] = useState<string | null>(null);
+
+	// Edit modal state
+	const [editingSubmission, setEditingSubmission] = useState<Submission | null>(null);
+	const [editCaseCount, setEditCaseCount] = useState(1);
+	const [editNotes, setEditNotes] = useState("");
+	const [editImageFile, setEditImageFile] = useState<File | null>(null);
+	const [editImagePreview, setEditImagePreview] = useState("");
+	const [editUploadedObjectKey, setEditUploadedObjectKey] = useState("");
+	const [isEditUploading, setIsEditUploading] = useState(false);
+	const [isEditSubmitting, setIsEditSubmitting] = useState(false);
 
 	// Fetch departments and categories once on mount (independent of filters)
 	useEffect(() => {
@@ -222,6 +235,93 @@ export default function SubmissionHistory() {
 		}
 	};
 
+	const handleOpenEdit = (sub: Submission) => {
+		setEditingSubmission(sub);
+		setEditCaseCount(sub.case_count);
+		setEditNotes(sub.notes || "");
+		setEditImageFile(null);
+		setEditImagePreview("");
+		setEditUploadedObjectKey("");
+	};
+
+	const handleCloseEdit = () => {
+		if (editImagePreview) URL.revokeObjectURL(editImagePreview);
+		setEditingSubmission(null);
+		setEditImageFile(null);
+		setEditImagePreview("");
+		setEditUploadedObjectKey("");
+	};
+
+	const handleEditImageSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+		const file = e.target.files?.[0];
+		if (!file) return;
+
+		if (file.size > MAX_PROOF_FILE_SIZE) {
+			setError("Image file must be less than 5MB");
+			return;
+		}
+
+		if (!file.type.startsWith("image/")) {
+			setError("Please select an image file");
+			return;
+		}
+
+		setEditImageFile(file);
+		setError("");
+
+		const previewUrl = URL.createObjectURL(file);
+		setEditImagePreview(previewUrl);
+
+		try {
+			setIsEditUploading(true);
+
+			const uploadData = await submissionService.getUploadUrl({
+				filename: file.name,
+				content_type: file.type,
+			});
+
+			const uploadResponse = await fetch(uploadData.upload_url, {
+				method: "PUT",
+				body: file,
+				headers: { "Content-Type": file.type },
+			});
+
+			if (!uploadResponse.ok) throw new Error("Failed to upload image");
+
+			setEditUploadedObjectKey(uploadData.object_key);
+		} catch {
+			setError("Failed to upload image. Please try again.");
+			setEditImageFile(null);
+			if (editImagePreview) URL.revokeObjectURL(editImagePreview);
+			setEditImagePreview("");
+			setEditUploadedObjectKey("");
+		} finally {
+			setIsEditUploading(false);
+		}
+	};
+
+	const handleEditSubmit = async () => {
+		if (!editingSubmission) return;
+
+		try {
+			setIsEditSubmitting(true);
+			const update: SubmissionUpdate = {
+				case_count: editCaseCount,
+				notes: editNotes || null,
+			};
+			if (editUploadedObjectKey) {
+				update.proof_key = editUploadedObjectKey;
+			}
+			await submissionService.update(editingSubmission.id, update);
+			await fetchData();
+			handleCloseEdit();
+		} catch {
+			setError("Failed to update submission");
+		} finally {
+			setIsEditSubmitting(false);
+		}
+	};
+
 	const getStatusBadge = (status: SubmissionStatus) => {
 		const config = statusConfig[status];
 		return (
@@ -329,6 +429,7 @@ export default function SubmissionHistory() {
 									Task Category
 								</th>
 								<th className="px-4 py-3 text-left font-medium">Cases</th>
+								<th className="px-4 py-3 text-left font-medium">Assigned Reviewer</th>
 								<th className="px-4 py-3 text-left font-medium">Status</th>
 								<th className="px-4 py-3 text-left font-medium">Actions</th>
 							</tr>
@@ -362,6 +463,13 @@ export default function SubmissionHistory() {
 										{getTaskCategoryName(sub.task_category_id)}
 									</td>
 									<td className="px-4 py-3">{sub.case_count}</td>
+									<td className="px-4 py-3">
+										{sub.target_supervisor?.full_name ? (
+											<span className="font-medium">{sub.target_supervisor.full_name}</span>
+										) : (
+											<span className="text-muted-foreground">—</span>
+										)}
+									</td>
 									<td className="px-4 py-3">{getStatusBadge(sub.status)}</td>
 									<td className="px-4 py-3">
 										<div className="flex items-center gap-1">
@@ -372,6 +480,15 @@ export default function SubmissionHistory() {
 												<Eye className="h-3 w-3" />
 												View
 											</button>
+											{isStudent && sub.status === "pending" && (
+												<button
+													onClick={() => handleOpenEdit(sub)}
+													className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium hover:bg-accent"
+												>
+													<Pencil className="h-3 w-3" />
+													Edit
+												</button>
+											)}
 											{sub.status === "pending" && (
 												<button
 													onClick={() => handleDelete(sub.id)}
@@ -474,6 +591,12 @@ export default function SubmissionHistory() {
 										{new Date(selectedSubmission.created_at).toLocaleString()}
 									</span>
 								</div>
+								<div>
+									<span className="text-muted-foreground">Assigned Reviewer: </span>
+									<span className="font-medium">
+										{selectedSubmission.target_supervisor?.full_name || "—"}
+									</span>
+								</div>
 							</div>
 
 							{/* Notes */}
@@ -540,8 +663,8 @@ export default function SubmissionHistory() {
 								</div>
 							</div>
 
-							{/* Review Actions - Supervisor only */}
-							{!isStudent && selectedSubmission.status === "pending" && (
+							{/* Review Actions - target supervisor only */}
+							{selectedSubmission.can_review && selectedSubmission.status === "pending" && (
 								<div className="space-y-3 border-t pt-4">
 									<span className="text-sm font-medium">Review Action</span>
 									<textarea
@@ -579,6 +702,153 @@ export default function SubmissionHistory() {
 									</div>
 								</div>
 							)}
+						</div>
+					</div>
+				</div>
+			)}
+
+			{/* Edit Modal */}
+			{editingSubmission && (
+				<div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+					<div className="max-h-[90vh] w-full max-w-lg overflow-auto rounded-lg bg-card p-6 shadow-lg">
+						<div className="flex items-start justify-between">
+							<h2 className="text-lg font-semibold">Edit Submission</h2>
+							<button
+								onClick={handleCloseEdit}
+								className="rounded-full p-1 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+							>
+								<X className="h-5 w-5" />
+							</button>
+						</div>
+
+						<div className="mt-4 space-y-4">
+							{/* Read-only info */}
+							<div className="rounded-md bg-muted/50 p-3 text-sm space-y-1">
+								<div>
+									<span className="text-muted-foreground">Department: </span>
+									<span className="font-medium">{getDepartmentName(editingSubmission.department_id)}</span>
+								</div>
+								<div>
+									<span className="text-muted-foreground">Task Category: </span>
+									<span className="font-medium">{getTaskCategoryName(editingSubmission.task_category_id)}</span>
+								</div>
+								<div>
+									<span className="text-muted-foreground">Assigned Reviewer: </span>
+									<span className="font-medium">{editingSubmission.target_supervisor?.full_name || "—"}</span>
+								</div>
+							</div>
+
+							{/* Editable: Case Count */}
+							<div className="space-y-1">
+								<label htmlFor="editCaseCount" className="text-sm font-medium">
+									Number of Cases <span className="text-destructive">*</span>
+								</label>
+								<input
+									id="editCaseCount"
+									type="number"
+									min="1"
+									value={editCaseCount}
+									onChange={(e) =>
+										setEditCaseCount(Math.max(1, parseInt(e.target.value) || 1))
+									}
+									className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+								/>
+							</div>
+
+							{/* Editable: Proof Image */}
+							<div className="space-y-1">
+								<label className="text-sm font-medium">Proof Image</label>
+								{editImagePreview ? (
+									<div className="relative rounded-lg border bg-muted/20 p-3">
+										<div className="flex items-center gap-3">
+											<img
+												src={editImagePreview}
+												alt="New proof preview"
+												className="h-16 w-16 rounded-md object-cover"
+											/>
+											<div className="flex-1 text-sm">
+												<p className="font-medium">{editImageFile?.name}</p>
+												{editUploadedObjectKey ? (
+													<p className="flex items-center gap-1 text-xs text-green-600 dark:text-green-400">
+														<CheckCircle className="h-3 w-3" />
+														Uploaded successfully
+													</p>
+												) : isEditUploading ? (
+													<p className="flex items-center gap-1 text-xs text-muted-foreground">
+														<Loader2 className="h-3 w-3 animate-spin" />
+														Uploading...
+													</p>
+												) : null}
+											</div>
+											<button
+												type="button"
+												onClick={() => {
+													if (editImagePreview) URL.revokeObjectURL(editImagePreview);
+													setEditImageFile(null);
+													setEditImagePreview("");
+													setEditUploadedObjectKey("");
+												}}
+												className="rounded-full p-1 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+											>
+												<X className="h-4 w-4" />
+											</button>
+										</div>
+									</div>
+								) : (
+									<div className="rounded-md border border-dashed border-input bg-muted/20 p-3 text-sm text-muted-foreground">
+										<p>Current proof image on file. Upload a new one to replace it.</p>
+										<label className="mt-2 inline-flex cursor-pointer items-center gap-2 rounded-md border px-3 py-1.5 text-xs font-medium hover:bg-accent">
+											<Upload className="h-3 w-3" />
+											Replace Image
+											<input
+												type="file"
+												accept="image/jpeg,image/png,image/gif,image/webp"
+												onChange={handleEditImageSelect}
+												disabled={isEditUploading}
+												className="hidden"
+											/>
+										</label>
+									</div>
+								)}
+							</div>
+
+							{/* Editable: Notes */}
+							<div className="space-y-1">
+								<label htmlFor="editNotes" className="text-sm font-medium">
+									Notes <span className="text-muted-foreground">(optional)</span>
+								</label>
+								<textarea
+									id="editNotes"
+									value={editNotes}
+									onChange={(e) => setEditNotes(e.target.value)}
+									rows={3}
+									placeholder="Add any additional notes..."
+									className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+								/>
+							</div>
+
+							<div className="flex justify-end gap-3 border-t pt-4">
+								<button
+									onClick={handleCloseEdit}
+									className="rounded-md border border-input px-4 py-2 text-sm font-medium hover:bg-accent"
+								>
+									Cancel
+								</button>
+								<button
+									onClick={handleEditSubmit}
+									disabled={isEditSubmitting || isEditUploading || editCaseCount < 1}
+									className="flex min-w-[100px] items-center justify-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
+								>
+									{isEditSubmitting ? (
+										<>
+											<Loader2 className="h-4 w-4 animate-spin" />
+											Saving...
+										</>
+									) : (
+										"Save Changes"
+									)}
+								</button>
+							</div>
 						</div>
 					</div>
 				</div>
