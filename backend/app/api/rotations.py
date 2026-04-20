@@ -194,32 +194,17 @@ async def update_rotation_offset(
     return rotation
 
 
-@router.post(
-    "/students/{student_id}/override-department",
-    response_model=RotationResponse,
-    status_code=status.HTTP_201_CREATED,
-)
-async def override_student_department(
+async def perform_department_override(
+    db: AsyncSession,
     student_id: UUID,
-    body: DepartmentOverrideRequest,
-    admin: User = Depends(require_admin),
-    db: AsyncSession = Depends(get_db),
-):
-    """Admin-only: override a student's current department rotation.
+    new_department_id: UUID,
+    admin_id: UUID,
+    days_offset: int = 0,
+) -> StudentRotation:
+    """Deactivate a student's current rotation and create/resume one in a new department.
 
-    Deactivates the student's current rotation (preserving history) and
-    creates a new one in the specified department.
+    Does NOT commit — the caller is responsible for committing the transaction.
     """
-    # Verify student exists
-    student = await db.get(User, student_id)
-    if not student or student.role != UserRole.student:
-        raise HTTPException(status_code=404, detail="Student not found")
-
-    # Verify department exists and is active
-    dept = await db.get(Department, body.department_id)
-    if not dept or not dept.is_active:
-        raise HTTPException(status_code=404, detail="Department not found or inactive")
-
     # Get current rotation (if any)
     current_result = await db.execute(
         select(StudentRotation).where(
@@ -229,23 +214,21 @@ async def override_student_department(
     )
     current = current_result.scalar_one_or_none()
 
-    old_values = None
     if current:
-        old_values = {
-            "is_current": True,
-            "department_id": str(current.department_id),
-        }
         current.is_current = False
         current.ended_at = func.now()
         await db.flush()
 
         await record_audit(
             db,
-            user_id=admin.id,
+            user_id=admin_id,
             action="update",
             table_name="student_rotations",
             record_id=current.id,
-            old_values=old_values,
+            old_values={
+                "is_current": True,
+                "department_id": str(current.department_id),
+            },
             new_values={
                 "is_current": False,
                 "department_id": str(current.department_id),
@@ -257,7 +240,7 @@ async def override_student_department(
         select(StudentRotation)
         .where(
             StudentRotation.student_id == student_id,
-            StudentRotation.department_id == body.department_id,
+            StudentRotation.department_id == new_department_id,
             StudentRotation.is_current.is_(False),
         )
         .order_by(StudentRotation.started_at.desc())
@@ -270,9 +253,9 @@ async def override_student_department(
     else:
         rotation = StudentRotation(
             student_id=student_id,
-            department_id=body.department_id,
+            department_id=new_department_id,
             is_current=True,
-            days_offset=body.days_offset,
+            days_offset=days_offset,
         )
         db.add(rotation)
 
@@ -280,19 +263,49 @@ async def override_student_department(
 
     await record_audit(
         db,
-        user_id=admin.id,
+        user_id=admin_id,
         action="create",
         table_name="student_rotations",
         record_id=rotation.id,
         old_values=None,
         new_values={
             "student_id": str(student_id),
-            "department_id": str(body.department_id),
+            "department_id": str(new_department_id),
             "is_current": True,
-            "days_offset": body.days_offset,
+            "days_offset": days_offset,
         },
     )
 
+    return rotation
+
+
+@router.post(
+    "/students/{student_id}/override-department",
+    response_model=RotationResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def override_student_department(
+    student_id: UUID,
+    body: DepartmentOverrideRequest,
+    admin: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Admin-only: override a student's current department rotation."""
+    student = await db.get(User, student_id)
+    if not student or student.role != UserRole.student:
+        raise HTTPException(status_code=404, detail="Student not found")
+
+    dept = await db.get(Department, body.department_id)
+    if not dept or not dept.is_active:
+        raise HTTPException(status_code=404, detail="Department not found or inactive")
+
+    rotation = await perform_department_override(
+        db,
+        student_id,
+        body.department_id,
+        admin.id,
+        body.days_offset,
+    )
     await db.commit()
     await db.refresh(rotation)
     return rotation

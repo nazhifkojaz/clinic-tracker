@@ -1,4 +1,5 @@
 import enum
+import logging
 import uuid
 from datetime import datetime, timezone
 
@@ -9,7 +10,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.dependencies import get_current_user, require_admin
 from app.core.database import get_db
-from app.core.security import hash_password, verify_password
+from app.core.config import settings
+from app.core.security import (
+    create_email_verification_token,
+    hash_password,
+    verify_password,
+)
 from app.models.assignment import AssignmentType, SupervisorAssignment
 from app.models.department import Department
 from app.models.pending_profile_change import PendingChangeStatus, PendingProfileChange
@@ -25,8 +31,10 @@ from app.schemas.user import (
     UserUpdate,
 )
 from app.utils.audit import record_audit
+from app.utils.email import send_verification_email
 
 router = APIRouter(prefix="/api/users", tags=["users"])
+logger = logging.getLogger(__name__)
 
 
 class DeleteMode(str, enum.Enum):
@@ -92,10 +100,17 @@ async def change_password(
 
 
 STUDENT_REQUESTABLE_FIELDS = {
-    "full_name", "institutional_id", "email", "department_id", "supervisor_id",
+    "full_name",
+    "institutional_id",
+    "email",
+    "department_id",
+    "supervisor_id",
 }
 SUPERVISOR_REQUESTABLE_FIELDS = {
-    "full_name", "institutional_id", "department_id", "remove_student_id",
+    "full_name",
+    "institutional_id",
+    "department_id",
+    "remove_student_id",
 }
 
 
@@ -141,7 +156,11 @@ async def update_own_profile(
 
     if user.role == UserRole.admin:
         # Admin changes apply immediately; only allow direct user fields
-        admin_fields = {k: v for k, v in update_data.items() if k in {"full_name", "institutional_id", "department_id"}}
+        admin_fields = {
+            k: v
+            for k, v in update_data.items()
+            if k in {"full_name", "institutional_id", "department_id"}
+        }
         for field, value in admin_fields.items():
             setattr(user, field, value)
         try:
@@ -204,9 +223,7 @@ async def update_own_profile(
     if "email" in update_data:
         new_email = update_data["email"]
         if new_email and new_email != user.email:
-            existing = await db.execute(
-                select(User).where(User.email == new_email)
-            )
+            existing = await db.execute(select(User).where(User.email == new_email))
             if existing.scalar_one_or_none() is not None:
                 raise HTTPException(
                     status_code=status.HTTP_409_CONFLICT,
@@ -396,7 +413,6 @@ async def approve_pending_change(
     # Apply the change
     if change.field_name == "department_id":
         new_val = uuid.UUID(change.new_value) if change.new_value else None
-        # Validate department exists and is active
         if new_val is not None:
             dept = await db.get(Department, new_val)
             if dept is None or not dept.is_active:
@@ -404,12 +420,120 @@ async def approve_pending_change(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail="Department not found or inactive. Reject this change and ask the user to resubmit.",
                 )
-    else:
-        new_val = change.new_value
-    setattr(target_user, change.field_name, new_val)
+        setattr(target_user, change.field_name, new_val)
 
-    if change.field_name == "department_id" and target_user.role == UserRole.supervisor:
-        await sync_department_assignment(db, target_user.id, new_val)
+        if target_user.role == UserRole.supervisor:
+            await sync_department_assignment(db, target_user.id, new_val)
+        elif target_user.role == UserRole.student:
+            from app.api.rotations import perform_department_override
+
+            await perform_department_override(db, target_user.id, new_val, admin.id)
+
+    elif change.field_name == "email":
+        new_email = change.new_value
+        # Re-check uniqueness at approval time
+        existing = await db.execute(
+            select(User).where(User.email == new_email, User.id != target_user.id)
+        )
+        if existing.scalar_one_or_none():
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Email address is already in use by another user",
+            )
+        target_user.email = new_email
+        target_user.email_verified = False
+
+    elif change.field_name == "supervisor_id":
+        new_supervisor_id = uuid.UUID(change.new_value)
+        new_supervisor = await db.get(User, new_supervisor_id)
+        if (
+            not new_supervisor
+            or new_supervisor.role != UserRole.supervisor
+            or not new_supervisor.is_active
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Target supervisor no longer exists or is inactive. Reject this change.",
+            )
+        # Find and delete existing primary assignment
+        existing_assignment = await db.execute(
+            select(SupervisorAssignment).where(
+                SupervisorAssignment.student_id == target_user.id,
+                SupervisorAssignment.assignment_type == AssignmentType.primary,
+            )
+        )
+        old_assignment = existing_assignment.scalar_one_or_none()
+        if old_assignment:
+            await record_audit(
+                db,
+                user_id=admin.id,
+                action="delete",
+                table_name="supervisor_assignments",
+                record_id=old_assignment.id,
+                old_values={
+                    "supervisor_id": str(old_assignment.supervisor_id),
+                    "student_id": str(target_user.id),
+                    "assignment_type": "primary",
+                },
+                new_values=None,
+            )
+            await db.delete(old_assignment)
+            await db.flush()
+
+        new_assignment = SupervisorAssignment(
+            supervisor_id=new_supervisor_id,
+            student_id=target_user.id,
+            assignment_type=AssignmentType.primary,
+        )
+        db.add(new_assignment)
+        await db.flush()
+        await record_audit(
+            db,
+            user_id=admin.id,
+            action="create",
+            table_name="supervisor_assignments",
+            record_id=new_assignment.id,
+            old_values=None,
+            new_values={
+                "supervisor_id": str(new_supervisor_id),
+                "student_id": str(target_user.id),
+                "assignment_type": "primary",
+            },
+        )
+
+    elif change.field_name == "remove_student_id":
+        student_id = uuid.UUID(change.new_value)
+        assignment_result = await db.execute(
+            select(SupervisorAssignment).where(
+                SupervisorAssignment.supervisor_id == target_user.id,
+                SupervisorAssignment.student_id == student_id,
+                SupervisorAssignment.assignment_type == AssignmentType.primary,
+            )
+        )
+        assignment = assignment_result.scalar_one_or_none()
+        if not assignment:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Primary assignment no longer exists. The student may have already been removed.",
+            )
+        await record_audit(
+            db,
+            user_id=admin.id,
+            action="delete",
+            table_name="supervisor_assignments",
+            record_id=assignment.id,
+            old_values={
+                "supervisor_id": str(target_user.id),
+                "student_id": str(student_id),
+                "assignment_type": "primary",
+            },
+            new_values=None,
+        )
+        await db.delete(assignment)
+
+    else:
+        # Default: simple field assignment (full_name, institutional_id)
+        setattr(target_user, change.field_name, change.new_value)
 
     change.status = PendingChangeStatus.approved
     change.reviewed_by = admin.id
@@ -433,6 +557,21 @@ async def approve_pending_change(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Could not apply change: value already in use by another user",
         )
+
+    # Post-commit: send verification email for email changes
+    if change.field_name == "email" and change.new_value:
+        try:
+            token = create_email_verification_token(str(target_user.id))
+            verification_link = f"{settings.FRONTEND_URL}/#/verify-email?token={token}"
+            await send_verification_email(
+                to=change.new_value,
+                full_name=target_user.full_name,
+                verification_link=verification_link,
+            )
+        except Exception:
+            logger.exception(
+                "Failed to send verification email after email change approval"
+            )
 
 
 @router.post(
