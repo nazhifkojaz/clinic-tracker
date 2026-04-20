@@ -67,11 +67,6 @@ export interface UploadUrlResponse {
 	object_key: string;
 }
 
-export interface DepartmentSupervisor {
-	id: string;
-	full_name: string;
-}
-
 export interface AcademicSupervisor {
 	supervisor: ReviewerInfo | null;
 }

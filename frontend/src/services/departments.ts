@@ -7,7 +7,7 @@ import type {
 	TaskCategoryCreate,
 	TaskCategoryUpdate,
 } from "@/types/department";
-import type { DepartmentSupervisor } from "@/types/submission";
+import type { ReviewerInfo } from "@/types/submission";
 import api from "./api";
 
 export const departmentService = {
@@ -70,10 +70,8 @@ export const departmentService = {
 
 	// --- Department Supervisors ---
 
-	async listSupervisors(
-		departmentId: string,
-	): Promise<DepartmentSupervisor[]> {
-		const { data } = await api.get<DepartmentSupervisor[]>(
+	async listSupervisors(departmentId: string): Promise<ReviewerInfo[]> {
+		const { data } = await api.get<ReviewerInfo[]>(
 			`/api/departments/${departmentId}/supervisors`,
 		);
 		return data;
