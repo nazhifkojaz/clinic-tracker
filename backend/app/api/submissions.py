@@ -32,8 +32,29 @@ from app.schemas.submission import (
 )
 from app.utils.audit import record_audit
 from app.utils.storage import generate_read_url, generate_upload_url
+from app.utils.submission_notifications import (
+    notify_submission_created,
+    notify_submission_reviewed,
+)
 
 router = APIRouter(prefix="/api/submissions", tags=["submissions"])
+
+
+async def _get_academic_supervisor(db: AsyncSession, student_id: UUID) -> User | None:
+    """Return the primary (academic) supervisor User for a student, or None."""
+    assignment_result = await db.execute(
+        select(SupervisorAssignment).where(
+            SupervisorAssignment.student_id == student_id,
+            SupervisorAssignment.assignment_type == AssignmentType.primary,
+        )
+    )
+    assignment = assignment_result.scalar_one_or_none()
+    if not assignment:
+        return None
+    sv_result = await db.execute(
+        select(User).where(User.id == assignment.supervisor_id)
+    )
+    return sv_result.scalar_one_or_none()
 
 
 @router.post("/upload-url", response_model=UploadUrlResponse)
@@ -202,6 +223,17 @@ async def create_submission(
             "target_supervisor_id": str(submission.target_supervisor_id),
         },
     )
+
+    # Notifications: fetch users needed, then queue records + emails before commit
+    sv_user_result = await db.execute(
+        select(User).where(User.id == submission.target_supervisor_id)
+    )
+    target_sv_user = sv_user_result.scalar_one()
+    academic_sv_user = await _get_academic_supervisor(db, user.id)
+    await notify_submission_created(
+        db, submission, user, target_sv_user, academic_sv_user
+    )
+
     await db.commit()
     await db.refresh(submission)
 
@@ -552,6 +584,15 @@ async def review_submission(
             "review_notes": submission.review_notes,
         },
     )
+
+    # Notifications: fetch users needed, then queue records + emails before commit
+    student_result = await db.execute(
+        select(User).where(User.id == submission.student_id)
+    )
+    student = student_result.scalar_one()
+    academic_sv_user = await _get_academic_supervisor(db, submission.student_id)
+    await notify_submission_reviewed(db, submission, student, user, academic_sv_user)
+
     await db.commit()
     await db.refresh(submission)
 

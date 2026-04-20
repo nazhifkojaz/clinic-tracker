@@ -1139,3 +1139,191 @@ async def test_can_review_false_for_academic_supervisor(
     assert len(items) > 0
     for item in items:
         assert item["can_review"] is False
+
+
+# ---------------------------------------------------------------------------
+# Phase 5: Notification tests
+# ---------------------------------------------------------------------------
+
+
+async def test_create_submission_notifies_target_supervisor(
+    client, student_user, student_token, supervisor_user, db_session
+):
+    """Creating a submission persists a Notification record for the target supervisor."""
+    from sqlalchemy import select as sa_select
+    from app.models.notification import Notification
+
+    dept, cat = await _setup_dept_with_supervisor(db_session, supervisor_user)
+    response = await client.post(
+        "/api/submissions",
+        json=_submission_payload(dept.id, cat.id, supervisor_user.id),
+        headers=auth_header(student_token),
+    )
+    assert response.status_code == 201
+
+    result = await db_session.execute(
+        sa_select(Notification).where(
+            Notification.sender_id == student_user.id,
+            Notification.recipient_id == supervisor_user.id,
+        )
+    )
+    notification = result.scalar_one_or_none()
+    assert notification is not None
+    assert "awaiting your review" in notification.subject
+
+
+async def test_create_submission_ccs_academic_supervisor(
+    client, student_user, student_token, supervisor_user, db_session
+):
+    """Creating a submission also sends a CC Notification to the academic supervisor."""
+    from sqlalchemy import select as sa_select
+    from app.core.security import hash_password
+    from app.models.notification import Notification
+    from app.models.user import User, UserRole
+
+    dept, cat = await _setup_dept_with_supervisor(db_session, supervisor_user)
+
+    # Create academic supervisor and assign them
+    acad_sv = User(
+        email=f"acad_{_random_suffix()}@test.com",
+        password_hash=await hash_password("testpass123"),
+        full_name="Academic Supervisor",
+        role=UserRole.supervisor,
+        is_active=True,
+    )
+    db_session.add(acad_sv)
+    await db_session.commit()
+    await db_session.refresh(acad_sv)
+
+    primary = SupervisorAssignment(
+        supervisor_id=acad_sv.id,
+        student_id=student_user.id,
+        assignment_type=AssignmentType.primary,
+    )
+    db_session.add(primary)
+    await db_session.commit()
+
+    response = await client.post(
+        "/api/submissions",
+        json=_submission_payload(dept.id, cat.id, supervisor_user.id),
+        headers=auth_header(student_token),
+    )
+    assert response.status_code == 201
+
+    result = await db_session.execute(
+        sa_select(Notification).where(
+            Notification.sender_id == student_user.id,
+            Notification.recipient_id == acad_sv.id,
+        )
+    )
+    cc_notification = result.scalar_one_or_none()
+    assert cc_notification is not None
+    assert "[CC]" in cc_notification.subject
+
+
+async def test_create_submission_no_cc_without_academic_supervisor(
+    client, student_token, supervisor_user, db_session
+):
+    """No CC Notification is created when the student has no academic supervisor."""
+    from sqlalchemy import select as sa_select
+    from app.models.notification import Notification
+
+    dept, cat = await _setup_dept_with_supervisor(db_session, supervisor_user)
+    await client.post(
+        "/api/submissions",
+        json=_submission_payload(dept.id, cat.id, supervisor_user.id),
+        headers=auth_header(student_token),
+    )
+
+    result = await db_session.execute(
+        sa_select(Notification).where(Notification.subject.contains("[CC]"))
+    )
+    assert result.scalar_one_or_none() is None
+
+
+async def test_review_submission_notifies_student(
+    client, student_user, student_token, supervisor_user, supervisor_token, db_session
+):
+    """Reviewing a submission persists a Notification record for the student."""
+    from sqlalchemy import select as sa_select
+    from app.models.notification import Notification
+
+    dept, cat = await _setup_dept_with_supervisor(db_session, supervisor_user)
+    create_resp = await client.post(
+        "/api/submissions",
+        json=_submission_payload(dept.id, cat.id, supervisor_user.id),
+        headers=auth_header(student_token),
+    )
+    sub_id = create_resp.json()["id"]
+
+    await client.patch(
+        f"/api/submissions/{sub_id}/review",
+        json={"status": "approved", "review_notes": "Well done"},
+        headers=auth_header(supervisor_token),
+    )
+
+    result = await db_session.execute(
+        sa_select(Notification).where(
+            Notification.sender_id == supervisor_user.id,
+            Notification.recipient_id == student_user.id,
+        )
+    )
+    notification = result.scalar_one_or_none()
+    assert notification is not None
+    assert "approved" in notification.subject
+    assert "Well done" in notification.message
+
+
+async def test_review_submission_ccs_academic_supervisor(
+    client, student_user, student_token, supervisor_user, supervisor_token, db_session
+):
+    """Reviewing a submission also sends a CC Notification to the academic supervisor."""
+    from sqlalchemy import select as sa_select
+    from app.core.security import hash_password
+    from app.models.notification import Notification
+    from app.models.user import User, UserRole
+
+    dept, cat = await _setup_dept_with_supervisor(db_session, supervisor_user)
+
+    acad_sv = User(
+        email=f"acad_review_{_random_suffix()}@test.com",
+        password_hash=await hash_password("testpass123"),
+        full_name="Academic Supervisor Review",
+        role=UserRole.supervisor,
+        is_active=True,
+    )
+    db_session.add(acad_sv)
+    await db_session.commit()
+    await db_session.refresh(acad_sv)
+
+    primary = SupervisorAssignment(
+        supervisor_id=acad_sv.id,
+        student_id=student_user.id,
+        assignment_type=AssignmentType.primary,
+    )
+    db_session.add(primary)
+    await db_session.commit()
+
+    create_resp = await client.post(
+        "/api/submissions",
+        json=_submission_payload(dept.id, cat.id, supervisor_user.id),
+        headers=auth_header(student_token),
+    )
+    sub_id = create_resp.json()["id"]
+
+    await client.patch(
+        f"/api/submissions/{sub_id}/review",
+        json={"status": "rejected", "review_notes": "Needs more detail"},
+        headers=auth_header(supervisor_token),
+    )
+
+    result = await db_session.execute(
+        sa_select(Notification).where(
+            Notification.sender_id == supervisor_user.id,
+            Notification.recipient_id == acad_sv.id,
+        )
+    )
+    cc_notification = result.scalar_one_or_none()
+    assert cc_notification is not None
+    assert "[CC]" in cc_notification.subject
+    assert "rejected" in cc_notification.subject
