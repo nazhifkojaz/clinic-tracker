@@ -26,7 +26,7 @@ import type { AssignmentWithDetails } from "@/types/assignment";
 const PAGE_SIZE = 25;
 const MS_PER_DAY = 86_400_000;
 
-type AssignmentMode = "change_dept" | "adjust_day" | "manage_students" | "change_supervisor";
+type AssignmentMode = "change_dept" | "manage_students" | "change_supervisor";
 
 export default function UserManagement() {
 	const [users, setUsers] = useState<User[]>([]);
@@ -60,7 +60,6 @@ export default function UserManagement() {
 	const [isLoadingRotation, setIsLoadingRotation] = useState(false);
 	const [selectedDeptId, setSelectedDeptId] = useState("");
 	const [startDayOffset, setStartDayOffset] = useState(0);
-	const [adjustTotalDay, setAdjustTotalDay] = useState(0);
 	const [isAssignSubmitting, setIsAssignSubmitting] = useState(false);
 	const [assignError, setAssignError] = useState("");
 	const [departments, setDepartments] = useState<Department[]>([]);
@@ -241,7 +240,6 @@ export default function UserManagement() {
 		setAssignError("");
 		setSelectedDeptId("");
 		setStartDayOffset(0);
-		setAdjustTotalDay(0);
 		setCurrentRotation(null);
 		setAssignMode("change_dept");
 		setAssignedStudents([]);
@@ -272,7 +270,8 @@ export default function UserManagement() {
 				if (rotation) {
 					const dept = departments.find((d) => d.id === rotation.department_id);
 					const { current } = calcRotationDay(rotation, dept);
-					setAdjustTotalDay(current);
+					setSelectedDeptId(rotation.department_id);
+					setStartDayOffset(current);
 				}
 				setCurrentSupervisor(assignmentsRes.items[0] ?? null);
 				setAllSupervisors(supervisorsRes.items);
@@ -310,13 +309,13 @@ export default function UserManagement() {
 				await userService.update(assignTarget.id, {
 					department_id: selectedDeptId || null,
 				});
-			} else if (assignMode === "change_dept" || !currentRotation) {
+			} else if (currentRotation && selectedDeptId === currentRotation.department_id) {
+				await rotationService.adjustDay(assignTarget.id, startDayOffset);
+			} else {
 				await rotationService.overrideDepartment(assignTarget.id, {
 					department_id: selectedDeptId,
 					days_offset: startDayOffset,
 				});
-			} else {
-				await rotationService.adjustDay(assignTarget.id, adjustTotalDay);
 			}
 			toast.success("Assignment updated successfully");
 			setIsAssignModalOpen(false);
@@ -824,8 +823,8 @@ export default function UserManagement() {
 										</div>
 									)}
 
-									{/* Mode tabs for students with rotation */}
-									{isStudent && hasRotation && (
+									{/* Tabs for students */}
+									{isStudent && (
 										<div className="flex gap-2">
 											<Button
 												type="button"
@@ -844,36 +843,18 @@ export default function UserManagement() {
 											<Button
 												type="button"
 												variant={
-													assignMode === "adjust_day"
+													assignMode === "change_supervisor"
 														? "default"
 														: "outline"
 												}
 												size="sm"
 												onClick={() =>
-													setAssignMode("adjust_day")
+													setAssignMode("change_supervisor")
 												}
 											>
-												Adjust Day
+												Academic Supervisor
 											</Button>
 										</div>
-									)}
-
-									{/* Academic Supervisor tab — always shown for students */}
-									{isStudent && (
-										<Button
-											type="button"
-											variant={
-												assignMode === "change_supervisor"
-													? "default"
-													: "outline"
-											}
-											size="sm"
-											onClick={() =>
-												setAssignMode("change_supervisor")
-											}
-										>
-											Academic Supervisor
-										</Button>
 									)}
 
 									{/* Tabs for supervisors */}
@@ -911,10 +892,7 @@ export default function UserManagement() {
 									)}
 
 									{/* Change Department fields */}
-									{assignMode !== "manage_students" &&
-									(assignMode === "change_dept" ||
-										!isStudent ||
-										!hasRotation) && (
+									{assignMode === "change_dept" && (
 										<>
 											<div className="space-y-2">
 												<Label htmlFor="assign-dept-select">
@@ -980,40 +958,6 @@ export default function UserManagement() {
 											)}
 										</>
 									)}
-
-									{/* Adjust Day fields */}
-									{assignMode === "adjust_day" &&
-										isStudent &&
-										hasRotation &&
-										assignRotationInfo && (
-											<div className="space-y-2">
-												<Label htmlFor="adjust-total-day">
-													Set total day to
-												</Label>
-												<div className="flex items-center gap-2">
-													<Input
-														id="adjust-total-day"
-														type="number"
-														min={0}
-														max={
-															assignRotationInfo.total
-														}
-														value={adjustTotalDay}
-														onChange={(e) =>
-															setAdjustTotalDay(
-																Number(
-																	e.target.value,
-																),
-															)
-														}
-														className="w-24"
-													/>
-													<span className="text-sm text-muted-foreground">
-														of {assignRotationInfo.total}
-													</span>
-												</div>
-											</div>
-										)}
 
 									{/* Academic Supervisor tab */}
 									{assignMode === "change_supervisor" && isStudent && (
