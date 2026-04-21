@@ -7,7 +7,9 @@ import {
 	Plus,
 	Trash2,
 } from "lucide-react";
-import React, { useEffect, useState } from "react";
+import { Fragment } from "react";
+import type { FormEvent } from "react";
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -103,7 +105,7 @@ export default function DepartmentManagement() {
 		setIsCategoryModalOpen(true);
 	};
 
-	const handleDeptSubmit = async (e: React.FormEvent) => {
+	const handleDeptSubmit = async (e: FormEvent) => {
 		e.preventDefault();
 		setIsSubmitting(true);
 		setError("");
@@ -127,7 +129,7 @@ export default function DepartmentManagement() {
 		}
 	};
 
-	const handleCategorySubmit = async (e: React.FormEvent) => {
+	const handleCategorySubmit = async (e: FormEvent) => {
 		e.preventDefault();
 		if (!expandedDeptId) return;
 
@@ -247,7 +249,7 @@ export default function DepartmentManagement() {
 							</thead>
 							<tbody>
 								{departments.map((dept) => (
-									<React.Fragment key={dept.id}>
+									<Fragment key={dept.id}>
 										<tr className="border-b last:border-0">
 											<td className="p-4">
 												<Button
@@ -399,7 +401,7 @@ export default function DepartmentManagement() {
 												</td>
 											</tr>
 										)}
-									</React.Fragment>
+									</Fragment>
 								))}
 							</tbody>
 						</table>

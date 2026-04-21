@@ -99,11 +99,6 @@ async def send_email(
     return None
 
 
-def is_mock_mode() -> bool:
-    """Check if email is running in mock mode."""
-    return settings.EMAIL_MOCK_MODE
-
-
 async def send_verification_email(
     to: str, full_name: str, verification_link: str
 ) -> dict | None:

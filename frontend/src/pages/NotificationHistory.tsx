@@ -1,5 +1,6 @@
 import { AlertCircle, Bell, ChevronDown, ChevronUp } from "lucide-react";
-import React, { useCallback, useEffect, useState } from "react";
+import { Fragment } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { TableSkeleton } from "@/components/skeletons/TableSkeleton";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -129,7 +130,7 @@ export default function NotificationHistory() {
 							</thead>
 							<tbody>
 								{notifications.map((notification) => (
-									<React.Fragment key={notification.id}>
+									<Fragment key={notification.id}>
 										<tr
 											className="border-t cursor-pointer hover:bg-muted/50"
 											onClick={() => handleRowClick(notification.id)}
@@ -206,7 +207,7 @@ export default function NotificationHistory() {
 												</td>
 											</tr>
 										)}
-									</React.Fragment>
+									</Fragment>
 								))}
 							</tbody>
 						</table>

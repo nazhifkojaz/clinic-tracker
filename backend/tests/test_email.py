@@ -9,7 +9,6 @@ import pytest
 
 from app.utils.email import (
     _send_smtp,
-    is_mock_mode,
     sanitize_for_email,
     send_email,
     send_verification_email,
@@ -43,9 +42,6 @@ class TestMockMode:
             to="test@example.com", subject="Test", html="<p>Hello</p>"
         )
         assert result is None
-
-    def test_is_mock_mode_reflects_settings(self):
-        assert is_mock_mode() is True
 
     @pytest.mark.asyncio
     async def test_send_verification_email_returns_none_in_mock_mode(self):
