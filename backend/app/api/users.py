@@ -138,7 +138,11 @@ async def _resolve_student_name(db: AsyncSession, student_id: uuid.UUID | None) 
     if student_id is None:
         return "None"
     stu = await db.get(User, student_id)
-    return stu.full_name if stu else str(student_id)
+    if not stu:
+        return str(student_id)
+    if stu.institutional_id:
+        return f"{stu.full_name} ({stu.institutional_id})"
+    return stu.full_name
 
 
 @router.patch("/me/profile", response_model=UserResponse)
@@ -284,7 +288,9 @@ async def update_own_profile(
             current_sup_id = current_sup.scalar_one_or_none()
             old_value = await _resolve_supervisor_name(db, current_sup_id)
         elif field == "remove_student_id":
-            old_value = user.full_name
+            old_value = await _resolve_student_name(
+                db, update_data["remove_student_id"]
+            )
         elif field == "email":
             old_value = user.email
         else:

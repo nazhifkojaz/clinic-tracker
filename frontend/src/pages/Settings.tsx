@@ -33,7 +33,7 @@ const fieldLabels: Record<string, string> = {
 	department_id: "Department",
 	email: "Email",
 	supervisor_id: "Academic Supervisor",
-	remove_student_id: "Remove Student",
+	remove_student_id: "Assigned Students",
 };
 
 export default function Settings() {
@@ -79,6 +79,47 @@ export default function Settings() {
 
 	// Pending changes
 	const [pendingChanges, setPendingChanges] = useState<PendingChange[]>([]);
+
+	const deptLookup = useMemo(
+		() => new Map(departments.map((d) => [d.id, d.name])),
+		[departments],
+	);
+	const supervisorLookup = useMemo(
+		() => new Map(supervisors.map((s) => [s.id, s.full_name])),
+		[supervisors],
+	);
+	const studentLookup = useMemo(() => {
+		const map = new Map<string, string>();
+		for (const a of assignedStudents) {
+			if (a.student_id) map.set(a.student_id, a.student_name ?? "Unknown");
+		}
+		for (const c of pendingChanges) {
+			if (
+				c.field_name === "remove_student_id" &&
+				c.new_value &&
+				c.old_value
+			) {
+				if (!map.has(c.new_value)) map.set(c.new_value, c.old_value);
+			}
+		}
+		return map;
+	}, [assignedStudents, pendingChanges]);
+	const resolveChangeValue = (
+		fieldName: string,
+		value: string | null,
+	): string => {
+		if (!value) return "\u2014";
+		switch (fieldName) {
+			case "department_id":
+				return deptLookup.get(value) ?? value;
+			case "supervisor_id":
+				return supervisorLookup.get(value) ?? value;
+			case "remove_student_id":
+				return studentLookup.get(value) ?? value;
+			default:
+				return value;
+		}
+	};
 
 	const pendingFields = useMemo(
 		() =>
@@ -721,10 +762,21 @@ export default function Settings() {
 													change.field_name}
 											</td>
 											<td className="p-4 text-muted-foreground">
-												{change.old_value || "—"}
+												{change.field_name === "remove_student_id"
+													? change.old_value || "\u2014"
+													: resolveChangeValue(
+															change.field_name,
+															change.old_value,
+														)}
 											</td>
 											<td className="p-4">
-												{change.new_value || "—"}
+												{change.field_name === "remove_student_id"
+													? "Remove"
+													: resolveChangeValue(
+															change.field_name,
+															change.new_value,
+														)
+												}
 											</td>
 											<td className="p-4">
 												<span
