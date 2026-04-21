@@ -129,13 +129,26 @@ export default function DeletedSubmissions() {
 		setProofUrl("");
 		setIsProofLoading(true);
 
+		const requestedId = submission.id;
 		try {
-			const url = await submissionService.getDeletedProofUrl(submission.id);
-			setProofUrl(url);
+			const url = await submissionService.getDeletedProofUrl(requestedId);
+			setSelectedSubmission((current) => {
+				if (current?.id !== requestedId) return current;
+				setProofUrl(url);
+				return current;
+			});
 		} catch {
-			setProofUrl("");
+			setSelectedSubmission((current) => {
+				if (current?.id !== requestedId) return current;
+				setProofUrl("");
+				return current;
+			});
 		} finally {
-			setIsProofLoading(false);
+			setSelectedSubmission((current) => {
+				if (current?.id !== requestedId) return current;
+				setIsProofLoading(false);
+				return current;
+			});
 		}
 	};
 

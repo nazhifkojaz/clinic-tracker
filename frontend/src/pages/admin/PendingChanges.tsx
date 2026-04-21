@@ -80,7 +80,10 @@ export default function PendingChanges() {
 			.then(([departments, supervisors, students]) =>
 				setLookups({ departments, supervisors, students }),
 			)
-			.catch(() => {});
+			.catch((err) => {
+				console.error("Failed to load lookup data", err);
+				toast.error("Failed to load reference data. Names may not display correctly.");
+			});
 	}, []);
 
 	const fetchChanges = async (

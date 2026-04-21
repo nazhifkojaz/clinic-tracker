@@ -146,11 +146,17 @@ export default function MyRequests() {
 			studentService
 				.getAcademicSupervisor()
 				.then((res) => setCurrentSupervisor(res.supervisor))
-				.catch(() => {});
+				.catch((err) => {
+					console.error("Failed to load academic supervisor", err);
+					toast.error("Failed to load supervisor information.");
+				});
 			userService
 				.list({ role: "supervisor", is_active: true, limit: 200 })
 				.then((res) => setSupervisors(res.items))
-				.catch(() => {});
+				.catch((err) => {
+					console.error("Failed to load supervisors", err);
+					toast.error("Failed to load supervisors list.");
+				});
 		}
 		if (user?.role === "supervisor") {
 			assignmentService
@@ -160,12 +166,21 @@ export default function MyRequests() {
 						res.items.filter((a) => a.student_id !== null),
 					),
 				)
-				.catch(() => {});
+				.catch((err) => {
+					console.error("Failed to load assigned students", err);
+					toast.error("Failed to load assigned students.");
+				});
 		}
 	}, [user?.role]);
 
 	useEffect(() => {
-		userService.getMyPendingChanges().then(setPendingChanges).catch(() => {});
+		userService
+			.getMyPendingChanges()
+			.then(setPendingChanges)
+			.catch((err) => {
+				console.error("Failed to load pending changes", err);
+				toast.error("Failed to load pending changes.");
+			});
 	}, []);
 
 	const handleProfileSubmit = async (e: React.FormEvent) => {

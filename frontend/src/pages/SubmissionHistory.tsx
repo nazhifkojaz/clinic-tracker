@@ -292,7 +292,7 @@ export default function SubmissionHistory() {
 		} catch {
 			setError("Failed to upload image. Please try again.");
 			setEditImageFile(null);
-			if (editImagePreview) URL.revokeObjectURL(editImagePreview);
+			URL.revokeObjectURL(previewUrl);
 			setEditImagePreview("");
 			setEditUploadedObjectKey("");
 		} finally {

@@ -111,8 +111,9 @@ export default function CaseInputForm() {
 		const file = e.target.files?.[0];
 		if (!file) return;
 
+		const maxSizeMB = MAX_PROOF_FILE_SIZE / (1024 * 1024);
 		if (file.size > MAX_PROOF_FILE_SIZE) {
-			setError("Image file must be less than 5MB");
+			setError(`Image file must be less than ${maxSizeMB}MB`);
 			return;
 		}
 
@@ -353,31 +354,29 @@ export default function CaseInputForm() {
 					</select>
 
 					{/* Academic supervisor notice */}
-					{!isLoading && (
-						<div
-							className={cn(
-								"flex items-start gap-2 rounded-md p-3 text-sm",
-								academicSupervisor
-									? "bg-blue-50 text-blue-700 dark:bg-blue-950/30 dark:text-blue-400"
-									: "bg-amber-50 text-amber-700 dark:bg-amber-950/30 dark:text-amber-400",
-							)}
-						>
-							<Info className="mt-0.5 h-4 w-4 shrink-0" />
-							{academicSupervisor ? (
-								<span>
-									Your academic supervisor (
-									<span className="font-medium">
-										{academicSupervisor.full_name}
-									</span>
-									) will be notified of this submission.
+					<div
+						className={cn(
+							"flex items-start gap-2 rounded-md p-3 text-sm",
+							academicSupervisor
+								? "bg-blue-50 text-blue-700 dark:bg-blue-950/30 dark:text-blue-400"
+								: "bg-amber-50 text-amber-700 dark:bg-amber-950/30 dark:text-amber-400",
+						)}
+					>
+						<Info className="mt-0.5 h-4 w-4 shrink-0" />
+						{academicSupervisor ? (
+							<span>
+								Your academic supervisor (
+								<span className="font-medium">
+									{academicSupervisor.full_name}
 								</span>
-							) : (
-								<span>
-									No academic supervisor assigned. Consider contacting admin.
-								</span>
-							)}
-						</div>
-					)}
+								) will be notified of this submission.
+							</span>
+						) : (
+							<span>
+								No academic supervisor assigned. Consider contacting admin.
+							</span>
+						)}
+					</div>
 				</div>
 
 				{/* Task Category Selection */}
@@ -436,7 +435,7 @@ export default function CaseInputForm() {
 							<p className="text-sm text-muted-foreground">
 								Upload a photo as proof (JPEG, PNG, GIF, WebP)
 							</p>
-							<p className="text-xs text-muted-foreground">Max size: 5MB</p>
+							<p className="text-xs text-muted-foreground">Max size: {MAX_PROOF_FILE_SIZE / (1024 * 1024)}MB</p>
 							<label className="mt-4 cursor-pointer">
 								<span className="flex items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90">
 									{isUploading ? (

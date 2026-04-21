@@ -111,16 +111,14 @@ export default function SupervisorDashboard() {
 	}, [data, search, statusFilter, assignmentFilter]);
 
 	const summaryCounts = useMemo(() => {
-		let onTrack = 0;
-		let atRisk = 0;
-		let unassigned = 0;
-		for (const s of filteredStudents) {
-			if (s.status === "on_track") onTrack++;
-			else if (s.status === "at_risk") atRisk++;
-			else unassigned++;
-		}
-		return { total: filteredStudents.length, onTrack, atRisk, unassigned };
-	}, [filteredStudents]);
+		if (!data) return { total: 0, onTrack: 0, atRisk: 0, unassigned: 0 };
+		return {
+			total: data.total_students,
+			onTrack: data.on_track_count,
+			atRisk: data.at_risk_count,
+			unassigned: data.unassigned_count,
+		};
+	}, [data]);
 
 	if (loading) {
 		return <DashboardSkeleton />;

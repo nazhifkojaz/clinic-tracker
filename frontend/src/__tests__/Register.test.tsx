@@ -35,7 +35,7 @@ describe("Register", () => {
 		expect(screen.getByLabelText(/confirm password/i)).toBeInTheDocument();
 	});
 
-	it("does not include admin as a selectable role", () => {
+	it("includes admin, student, and supervisor as selectable roles", () => {
 		renderRegister();
 		const roleSelect = screen.getByLabelText(/^role$/i);
 		const options = Array.from((roleSelect as HTMLSelectElement).options).map(
