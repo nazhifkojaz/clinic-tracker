@@ -320,14 +320,28 @@ async def test_list_department_supervisors_returns_assigned(
 async def test_list_department_supervisors_excludes_primary_only(
     client, supervisor_user, student_user, student_token, db_session
 ):
-    """Supervisors with only a primary (academic) assignment are not returned."""
+    """Supervisors with only a primary (academic) assignment are not returned.
+
+    The supervisor has a department-type assignment in other_dept (proving they
+    can appear in dept supervisor lists) but only a primary assignment for dept,
+    so they must not appear in dept's results.
+    """
     dept = await create_department(db_session, name="SV Exclude Dept")
-    primary_assignment = SupervisorAssignment(
-        supervisor_id=supervisor_user.id,
-        student_id=student_user.id,
-        assignment_type=AssignmentType.primary,
+    other_dept = await create_department(db_session, name="SV Other Dept")
+    db_session.add_all(
+        [
+            SupervisorAssignment(
+                supervisor_id=supervisor_user.id,
+                department_id=other_dept.id,
+                assignment_type=AssignmentType.department,
+            ),
+            SupervisorAssignment(
+                supervisor_id=supervisor_user.id,
+                student_id=student_user.id,
+                assignment_type=AssignmentType.primary,
+            ),
+        ]
     )
-    db_session.add(primary_assignment)
     await db_session.commit()
 
     response = await client.get(
@@ -337,6 +351,13 @@ async def test_list_department_supervisors_excludes_primary_only(
     assert response.status_code == 200
     ids = [sv["id"] for sv in response.json()]
     assert str(supervisor_user.id) not in ids
+
+    # Confirm the supervisor does appear in other_dept (validates the mechanism)
+    other_response = await client.get(
+        f"/api/departments/{other_dept.id}/supervisors",
+        headers=auth_header(student_token),
+    )
+    assert str(supervisor_user.id) in [sv["id"] for sv in other_response.json()]
 
 
 async def test_list_department_supervisors_requires_auth(client, db_session):
