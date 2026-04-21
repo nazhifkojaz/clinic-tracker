@@ -16,19 +16,17 @@ type ResendState = "idle" | "loading" | "sent" | "error";
 
 export default function VerifyEmail() {
 	const [searchParams] = useSearchParams();
-	const [state, setState] = useState<VerifyState>("loading");
-	const [message, setMessage] = useState("");
+	const token = searchParams.get("token");
+	const [state, setState] = useState<VerifyState>(token ? "loading" : "error");
+	const [message, setMessage] = useState(
+		token ? "" : "No verification token provided.",
+	);
 
 	const [resendEmail, setResendEmail] = useState("");
 	const [resendState, setResendState] = useState<ResendState>("idle");
 
 	useEffect(() => {
-		const token = searchParams.get("token");
-		if (!token) {
-			setState("error");
-			setMessage("No verification token provided.");
-			return;
-		}
+		if (!token) return;
 
 		authService
 			.verifyEmail(token)
@@ -40,7 +38,7 @@ export default function VerifyEmail() {
 				setState("error");
 				setMessage("This verification link is invalid or has expired.");
 			});
-	}, [searchParams]);
+	}, [token]);
 
 	const handleResend = async (e: React.FormEvent) => {
 		e.preventDefault();

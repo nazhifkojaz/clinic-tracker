@@ -93,18 +93,3 @@ async def record_audit(
     )
     db.add(entry)
     # No commit here - caller must commit to ensure atomicity
-
-
-class DefaultDict(dict):
-    """Dict that returns the key itself for missing values."""
-
-    def __missing__(self, key):
-        return f"{{{key}}}"
-
-
-def format_template(template: str, variables: dict[str, str]) -> str:
-    """Format a template string with variables.
-
-    Missing variables are rendered as placeholders.
-    """
-    return template.format_map(DefaultDict(variables))

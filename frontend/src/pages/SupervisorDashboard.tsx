@@ -1,4 +1,3 @@
-// frontend/src/pages/SupervisorDashboard.tsx
 
 import {
 	AlertCircle,
@@ -22,6 +21,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { dashboardService } from "@/services/dashboard";
+import { useAuthStore } from "@/stores/authStore";
 import type {
 	DepartmentProgress,
 	StudentDashboardData,
@@ -35,15 +35,18 @@ const STATUS_STYLES: Record<
 > = {
 	on_track: { bg: "bg-green-100", text: "text-green-700", label: "On Track" },
 	at_risk: { bg: "bg-yellow-100", text: "text-yellow-700", label: "At Risk" },
-	behind: { bg: "bg-red-100", text: "text-red-700", label: "Behind" },
+	unassigned: { bg: "bg-gray-100", text: "text-gray-700", label: "Unassigned" },
 };
 
 export default function SupervisorDashboard() {
+	const { user } = useAuthStore();
+	const isSupervisor = user?.role === "supervisor";
 	const [data, setData] = useState<SupervisorDashboardData | null>(null);
 	const [loading, setLoading] = useState(true);
 	const [error, setError] = useState("");
 	const [search, setSearch] = useState("");
 	const [statusFilter, setStatusFilter] = useState<string>("all");
+	const [assignmentFilter, setAssignmentFilter] = useState<string>("all");
 	const [selectedStudent, setSelectedStudent] =
 		useState<StudentDashboardData | null>(null);
 	const [studentLoading, setStudentLoading] = useState(false);
@@ -101,9 +104,21 @@ export default function SupervisorDashboard() {
 				(s.student_code &&
 					s.student_code.toLowerCase().includes(search.toLowerCase()));
 			const matchesStatus = statusFilter === "all" || s.status === statusFilter;
-			return matchesSearch && matchesStatus;
+			const matchesAssignment =
+				assignmentFilter === "all" || s.assignment_type === assignmentFilter;
+			return matchesSearch && matchesStatus && matchesAssignment;
 		});
-	}, [data, search, statusFilter]);
+	}, [data, search, statusFilter, assignmentFilter]);
+
+	const summaryCounts = useMemo(() => {
+		if (!data) return { total: 0, onTrack: 0, atRisk: 0, unassigned: 0 };
+		return {
+			total: data.total_students,
+			onTrack: data.on_track_count,
+			atRisk: data.at_risk_count,
+			unassigned: data.unassigned_count,
+		};
+	}, [data]);
 
 	if (loading) {
 		return <DashboardSkeleton />;
@@ -128,7 +143,7 @@ export default function SupervisorDashboard() {
 					<CardContent className="flex items-center gap-3 pt-6">
 						<Users className="h-8 w-8 text-muted-foreground" />
 						<div>
-							<div className="text-2xl font-bold">{data.total_students}</div>
+							<div className="text-2xl font-bold">{summaryCounts.total}</div>
 							<p className="text-sm text-muted-foreground">Total Students</p>
 						</div>
 					</CardContent>
@@ -137,7 +152,7 @@ export default function SupervisorDashboard() {
 					<CardContent className="flex items-center gap-3 pt-6">
 						<CheckCircle className="h-8 w-8 text-green-500" />
 						<div>
-							<div className="text-2xl font-bold">{data.on_track_count}</div>
+							<div className="text-2xl font-bold">{summaryCounts.onTrack}</div>
 							<p className="text-sm text-muted-foreground">On Track</p>
 						</div>
 					</CardContent>
@@ -146,17 +161,17 @@ export default function SupervisorDashboard() {
 					<CardContent className="flex items-center gap-3 pt-6">
 						<AlertTriangle className="h-8 w-8 text-yellow-500" />
 						<div>
-							<div className="text-2xl font-bold">{data.at_risk_count}</div>
+							<div className="text-2xl font-bold">{summaryCounts.atRisk}</div>
 							<p className="text-sm text-muted-foreground">At Risk</p>
 						</div>
 					</CardContent>
 				</Card>
 				<Card>
 					<CardContent className="flex items-center gap-3 pt-6">
-						<XCircle className="h-8 w-8 text-red-500" />
+						<XCircle className="h-8 w-8 text-gray-500" />
 						<div>
-							<div className="text-2xl font-bold">{data.behind_count}</div>
-							<p className="text-sm text-muted-foreground">Behind</p>
+							<div className="text-2xl font-bold">{summaryCounts.unassigned}</div>
+							<p className="text-sm text-muted-foreground">Unassigned</p>
 						</div>
 					</CardContent>
 				</Card>
@@ -169,9 +184,9 @@ export default function SupervisorDashboard() {
 				</CardHeader>
 				<CardContent>
 					<StudentDistribution
-						onTrack={data.on_track_count}
-						atRisk={data.at_risk_count}
-						behind={data.behind_count}
+						onTrack={summaryCounts.onTrack}
+						atRisk={summaryCounts.atRisk}
+						unassigned={summaryCounts.unassigned}
 					/>
 				</CardContent>
 			</Card>
@@ -198,8 +213,19 @@ export default function SupervisorDashboard() {
 							<option value="all">All Statuses</option>
 							<option value="on_track">On Track</option>
 							<option value="at_risk">At Risk</option>
-							<option value="behind">Behind</option>
+							<option value="unassigned">Unassigned</option>
 						</select>
+						{isSupervisor && (
+							<select
+								value={assignmentFilter}
+								onChange={(e) => setAssignmentFilter(e.target.value)}
+								className="rounded-md border bg-background px-3 py-2 text-sm"
+							>
+								<option value="all">All Assignments</option>
+								<option value="primary">Academic</option>
+								<option value="department">Rotating</option>
+							</select>
+						)}
 					</div>
 				</CardHeader>
 				<CardContent>
@@ -214,6 +240,9 @@ export default function SupervisorDashboard() {
 									<tr className="border-b text-left text-muted-foreground">
 										<th className="pb-2 font-medium">Student</th>
 										<th className="pb-2 font-medium">Department</th>
+										{isSupervisor && (
+											<th className="pb-2 font-medium">Assignment</th>
+										)}
 										<th className="pb-2 font-medium text-right">Progress</th>
 										<th className="pb-2 font-medium text-right">Status</th>
 										<th className="pb-2 font-medium text-right">Action</th>
@@ -222,7 +251,7 @@ export default function SupervisorDashboard() {
 								<tbody>
 									{filteredStudents.map((student: StudentSummary) => {
 										const style =
-											STATUS_STYLES[student.status] || STATUS_STYLES.behind;
+											STATUS_STYLES[student.status] || STATUS_STYLES.unassigned;
 										return (
 											<tr
 												key={student.student_id}
@@ -245,6 +274,17 @@ export default function SupervisorDashboard() {
 												<td className="py-3">
 													{student.current_department || "—"}
 												</td>
+												{isSupervisor && (
+													<td className="py-3">
+														{student.assignment_type === "primary" ? (
+															<span className="inline-block rounded-full px-2 py-0.5 text-xs font-medium bg-blue-100 text-blue-700">Academic</span>
+														) : student.assignment_type === "department" ? (
+															<span className="inline-block rounded-full px-2 py-0.5 text-xs font-medium bg-secondary text-muted-foreground">Rotating</span>
+														) : (
+															"—"
+														)}
+													</td>
+												)}
 												<td className="py-3 text-right">
 													<div className="flex items-center justify-end gap-2">
 														<div className="w-20 rounded-full bg-secondary h-2">

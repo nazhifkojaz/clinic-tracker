@@ -116,8 +116,3 @@ def generate_read_url(
         },
         ExpiresIn=expires_in,
     )
-
-
-def is_mock_mode() -> bool:
-    """Check if storage is running in mock mode."""
-    return _MOCK_MODE

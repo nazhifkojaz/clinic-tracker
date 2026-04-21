@@ -14,20 +14,17 @@ const DashboardRouter = lazy(() => import("@/pages/DashboardRouter"));
 const CaseInputForm = lazy(() => import("@/pages/CaseInputForm"));
 const RotationTracker = lazy(() => import("@/pages/RotationTracker"));
 const SubmissionHistory = lazy(() => import("@/pages/SubmissionHistory"));
-const SendNotification = lazy(() => import("@/pages/SendNotification"));
 const NotificationHistory = lazy(() => import("@/pages/NotificationHistory"));
 const UserManagement = lazy(() => import("@/pages/admin/UserManagement"));
 const DepartmentManagement = lazy(
 	() => import("@/pages/admin/DepartmentManagement"),
-);
-const AssignmentManagement = lazy(
-	() => import("@/pages/admin/AssignmentManagement"),
 );
 const AuditLog = lazy(() => import("@/pages/admin/AuditLog"));
 const DeletedSubmissions = lazy(
 	() => import("@/pages/admin/DeletedSubmissions"),
 );
 const Settings = lazy(() => import("@/pages/Settings"));
+const MyRequests = lazy(() => import("@/pages/MyRequests"));
 const PendingChanges = lazy(() => import("@/pages/admin/PendingChanges"));
 const InviteCodes = lazy(() => import("@/pages/admin/InviteCodes"));
 const NotFound = lazy(() => import("@/pages/NotFound"));
@@ -69,21 +66,20 @@ function App() {
 							<Route path="/cases/new" element={<CaseInputForm />} />
 							<Route path="/rotation-tracker" element={<RotationTracker />} />
 							<Route path="/submissions" element={<SubmissionHistory />} />
-							<Route
-								path="/notifications/send"
-								element={<SendNotification />}
-							/>
 							<Route path="/notifications" element={<NotificationHistory />} />
 							<Route path="/settings" element={<Settings />} />
+							<Route
+								element={
+									<ProtectedRoute allowedRoles={["student", "supervisor"]} />
+								}
+							>
+								<Route path="/my-requests" element={<MyRequests />} />
+							</Route>
 							<Route element={<ProtectedRoute allowedRoles={["admin"]} />}>
 								<Route path="/admin/users" element={<UserManagement />} />
 								<Route
 									path="/admin/departments"
 									element={<DepartmentManagement />}
-								/>
-								<Route
-									path="/admin/assignments"
-									element={<AssignmentManagement />}
 								/>
 								<Route path="/admin/audit-log" element={<AuditLog />} />
 								<Route

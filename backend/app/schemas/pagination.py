@@ -4,7 +4,7 @@ These schemas provide a consistent structure for paginated responses across all 
 """
 
 from pydantic import BaseModel, Field
-from typing import Generic, TypeVar, List
+from typing import Generic, TypeVar
 
 T = TypeVar("T")
 
@@ -20,7 +20,7 @@ class PaginatedResponse(BaseModel, Generic[T]):
         has_more: Whether there are more items after this page
     """
 
-    items: List[T]
+    items: list[T]
     total: int
     limit: int = Field(ge=1, le=200, description="Items per page")
     offset: int = Field(ge=0, description="Items to skip")
@@ -29,7 +29,7 @@ class PaginatedResponse(BaseModel, Generic[T]):
     @classmethod
     def create(
         cls,
-        items: List[T],
+        items: list[T],
         total: int,
         limit: int,
         offset: int,

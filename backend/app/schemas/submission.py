@@ -8,8 +8,22 @@ from pydantic import BaseModel, Field, field_validator
 from app.models.submission import SubmissionStatus
 
 
+_PROOF_KEY_PATTERN = re.compile(r"^submissions/[a-zA-Z0-9._-]+$")
+_PROOF_KEY_ERROR = (
+    "proof_key must match pattern: submissions/<filename> "
+    "(alphanumeric, dots, dashes, underscores only)"
+)
+
+
+def _validate_proof_key(v: str | None) -> str | None:
+    if v is not None and not _PROOF_KEY_PATTERN.match(v):
+        raise ValueError(_PROOF_KEY_ERROR)
+    return v
+
+
 class SubmissionCreate(BaseModel):
     department_id: uuid.UUID
+    target_supervisor_id: uuid.UUID
     task_category_id: uuid.UUID
     case_count: int = Field(..., gt=0)
     proof_key: str = Field(..., min_length=1, max_length=1024)
@@ -18,14 +32,18 @@ class SubmissionCreate(BaseModel):
     @field_validator("proof_key")
     @classmethod
     def validate_proof_key(cls, v: str) -> str:
-        """Validate proof_key follows expected pattern."""
-        pattern = r"^submissions/[a-zA-Z0-9._-]+$"
-        if not re.match(pattern, v):
-            raise ValueError(
-                "proof_key must match pattern: submissions/<filename> "
-                "(alphanumeric, dots, dashes, underscores only)"
-            )
-        return v
+        return _validate_proof_key(v)  # type: ignore[return-value]
+
+
+class SubmissionUpdate(BaseModel):
+    case_count: int | None = Field(None, gt=0)
+    proof_key: str | None = Field(None, min_length=1, max_length=1024)
+    notes: str | None = Field(None, max_length=2000)
+
+    @field_validator("proof_key")
+    @classmethod
+    def validate_proof_key(cls, v: str | None) -> str | None:
+        return _validate_proof_key(v)
 
 
 class StudentInfo(BaseModel):
@@ -53,6 +71,8 @@ class SubmissionResponse(BaseModel):
     proof_key: str
     notes: str | None
     status: SubmissionStatus
+    target_supervisor_id: uuid.UUID | None = None
+    target_supervisor: ReviewerInfo | None = None
     reviewed_by: uuid.UUID | None
     review_notes: str | None
     created_at: datetime
@@ -74,9 +94,12 @@ class SubmissionListResponse(BaseModel):
     proof_key: str
     notes: str | None
     status: SubmissionStatus
+    target_supervisor_id: uuid.UUID | None = None
+    target_supervisor: ReviewerInfo | None = None
     reviewed_by: uuid.UUID | None
     reviewer: ReviewerInfo | None
     review_notes: str | None
+    can_review: bool = False
     created_at: datetime
     updated_at: datetime
     deleted_at: datetime | None = None
@@ -87,13 +110,6 @@ class DeletedSubmissionListResponse(SubmissionListResponse):
 
     deleted_by_id: uuid.UUID | None
     deleted_by_name: str | None
-
-
-class SubmissionWithDetailsResponse(SubmissionResponse):
-    student_name: str
-    department_name: str
-    task_category_name: str
-    reviewer_name: str | None = None
 
 
 class SubmissionReview(BaseModel):
@@ -111,3 +127,9 @@ class UploadUrlRequest(BaseModel):
 class UploadUrlResponse(BaseModel):
     upload_url: str
     object_key: str
+
+
+class AcademicSupervisorResponse(BaseModel):
+    """Student's academic (primary) supervisor."""
+
+    supervisor: ReviewerInfo | None = None

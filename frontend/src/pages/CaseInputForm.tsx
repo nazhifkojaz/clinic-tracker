@@ -2,6 +2,7 @@ import {
 	AlertCircle,
 	CheckCircle,
 	FileImage,
+	Info,
 	Loader2,
 	Plus,
 	Upload,
@@ -9,14 +10,15 @@ import {
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { MAX_PROOF_FILE_SIZE } from "@/lib/constants";
+import { cn } from "@/lib/utils";
 import { departmentService } from "@/services/departments";
 import { rotationService } from "@/services/rotations";
+import { studentService } from "@/services/students";
 import { submissionService } from "@/services/submissions";
 import { useAuthStore } from "@/stores/authStore";
 import type { Department, TaskCategory } from "@/types/department";
-import type { UploadUrlResponse } from "@/types/submission";
-
-const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
+import type { ReviewerInfo, UploadUrlResponse } from "@/types/submission";
 
 export default function CaseInputForm() {
 	const { user } = useAuthStore();
@@ -25,6 +27,7 @@ export default function CaseInputForm() {
 	// Form state
 	const [departmentId, setDepartmentId] = useState("");
 	const [taskCategoryId, setTaskCategoryId] = useState("");
+	const [supervisorId, setSupervisorId] = useState("");
 	const [caseCount, setCaseCount] = useState(1);
 	const [notes, setNotes] = useState("");
 
@@ -37,33 +40,34 @@ export default function CaseInputForm() {
 	// Data loading
 	const [departments, setDepartments] = useState<Department[]>([]);
 	const [categories, setCategories] = useState<TaskCategory[]>([]);
+	const [supervisors, setSupervisors] = useState<ReviewerInfo[]>([]);
+	const [academicSupervisor, setAcademicSupervisor] =
+		useState<ReviewerInfo | null>(null);
 
 	// UI state
 	const [isSubmitting, setIsSubmitting] = useState(false);
 	const [isLoading, setIsLoading] = useState(true);
+	const [isLoadingSupervisors, setIsLoadingSupervisors] = useState(false);
 	const [error, setError] = useState("");
 	const [success, setSuccess] = useState(false);
 
-	// Fetch departments and current rotation on mount
+	// Fetch departments, current rotation, and academic supervisor on mount
 	useEffect(() => {
 		const initData = async () => {
 			try {
 				setIsLoading(true);
-				const [deptsData, currentRotation] = await Promise.all([
+				const [deptsData, currentRotation, academicSvData] = await Promise.all([
 					departmentService.list(),
 					rotationService.getCurrent(),
+					studentService.getAcademicSupervisor(),
 				]);
 				const activeDepts = deptsData.filter((d) => d.is_active);
 				setDepartments(activeDepts);
+				setAcademicSupervisor(academicSvData.supervisor);
 
-				// Pre-select current rotation's department
+				// Pre-select current rotation's department; dept-change effect handles fetching
 				if (currentRotation) {
 					setDepartmentId(currentRotation.department_id);
-					// Load categories for that department
-					const cats = await departmentService.listCategories(
-						currentRotation.department_id,
-					);
-					setCategories(cats.filter((c) => c.is_active));
 				}
 			} catch {
 				setError("Failed to load initial data");
@@ -74,36 +78,45 @@ export default function CaseInputForm() {
 		initData();
 	}, []);
 
-	// Load categories when department changes
+	// Load categories and supervisors when department changes
 	useEffect(() => {
 		if (!departmentId) {
 			setCategories([]);
+			setSupervisors([]);
 			setTaskCategoryId("");
+			setSupervisorId("");
 			return;
 		}
-		const loadCategories = async () => {
+		const loadDeptData = async () => {
 			try {
-				const cats = await departmentService.listCategories(departmentId);
+				setIsLoadingSupervisors(true);
+				const [cats, svs] = await Promise.all([
+					departmentService.listCategories(departmentId),
+					departmentService.listSupervisors(departmentId),
+				]);
 				setCategories(cats.filter((c) => c.is_active));
-				setTaskCategoryId(""); // Clear selected category
+				setSupervisors(svs);
+				setTaskCategoryId("");
+				setSupervisorId("");
 			} catch {
-				setError("Failed to load task categories");
+				setError("Failed to load department data");
+			} finally {
+				setIsLoadingSupervisors(false);
 			}
 		};
-		loadCategories();
+		loadDeptData();
 	}, [departmentId]);
 
 	const handleImageSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
 		const file = e.target.files?.[0];
 		if (!file) return;
 
-		// Validate file size
-		if (file.size > MAX_FILE_SIZE) {
-			setError("Image file must be less than 5MB");
+		const maxSizeMB = MAX_PROOF_FILE_SIZE / (1024 * 1024);
+		if (file.size > MAX_PROOF_FILE_SIZE) {
+			setError(`Image file must be less than ${maxSizeMB}MB`);
 			return;
 		}
 
-		// Validate file type
 		if (!file.type.startsWith("image/")) {
 			setError("Please select an image file");
 			return;
@@ -112,36 +125,26 @@ export default function CaseInputForm() {
 		setImageFile(file);
 		setError("");
 
-		// Show preview
 		const previewUrl = URL.createObjectURL(file);
 		setImagePreview(previewUrl);
 
-		// Upload immediately to R2
 		try {
 			setIsUploading(true);
-			setError("");
 
-			// Step 1: Get presigned URL
 			const uploadData: UploadUrlResponse =
 				await submissionService.getUploadUrl({
 					filename: file.name,
 					content_type: file.type,
 				});
 
-			// Step 2: Upload directly to R2 via presigned URL
 			const uploadResponse = await fetch(uploadData.upload_url, {
 				method: "PUT",
 				body: file,
-				headers: {
-					"Content-Type": file.type,
-				},
+				headers: { "Content-Type": file.type },
 			});
 
-			if (!uploadResponse.ok) {
-				throw new Error("Failed to upload image");
-			}
+			if (!uploadResponse.ok) throw new Error("Failed to upload image");
 
-			// Step 3: Store the object key for form submission
 			setUploadedObjectKey(uploadData.object_key);
 		} catch {
 			setError("Failed to upload image. Please try again.");
@@ -156,9 +159,7 @@ export default function CaseInputForm() {
 	// Cleanup object URL on unmount or when imagePreview changes
 	useEffect(() => {
 		return () => {
-			if (imagePreview) {
-				URL.revokeObjectURL(imagePreview);
-			}
+			if (imagePreview) URL.revokeObjectURL(imagePreview);
 		};
 	}, [imagePreview]);
 
@@ -166,18 +167,15 @@ export default function CaseInputForm() {
 		setImageFile(null);
 		setImagePreview("");
 		setUploadedObjectKey("");
-		if (imagePreview) {
-			URL.revokeObjectURL(imagePreview);
-		}
+		if (imagePreview) URL.revokeObjectURL(imagePreview);
 	};
 
 	const handleSubmit = async (e: React.FormEvent) => {
 		e.preventDefault();
 		setError("");
 
-		// Validation
-		if (!departmentId || !taskCategoryId) {
-			setError("Please select department and task category");
+		if (!departmentId || !taskCategoryId || !supervisorId) {
+			setError("Please select department, task category, and supervisor");
 			return;
 		}
 		if (caseCount < 1) {
@@ -193,12 +191,12 @@ export default function CaseInputForm() {
 			setIsSubmitting(true);
 			await submissionService.create({
 				department_id: departmentId,
+				target_supervisor_id: supervisorId,
 				task_category_id: taskCategoryId,
 				case_count: caseCount,
 				proof_key: uploadedObjectKey,
 				notes: notes || null,
 			});
-
 			setSuccess(true);
 		} catch {
 			setError("Failed to submit case. Please try again.");
@@ -210,6 +208,7 @@ export default function CaseInputForm() {
 	const handleReset = () => {
 		setDepartmentId("");
 		setTaskCategoryId("");
+		setSupervisorId("");
 		setCaseCount(1);
 		setNotes("");
 		clearImage();
@@ -220,6 +219,7 @@ export default function CaseInputForm() {
 	const canSubmit =
 		departmentId &&
 		taskCategoryId &&
+		supervisorId &&
 		caseCount > 0 &&
 		uploadedObjectKey &&
 		!isUploading;
@@ -284,7 +284,9 @@ export default function CaseInputForm() {
 					</div>
 					<div>
 						<span className="text-muted-foreground">Student ID: </span>
-						<span className="font-medium">{user?.institutional_id || "N/A"}</span>
+						<span className="font-medium">
+							{user?.institutional_id || "N/A"}
+						</span>
 					</div>
 					<div>
 						<span className="text-muted-foreground">Email: </span>
@@ -320,6 +322,61 @@ export default function CaseInputForm() {
 							</option>
 						))}
 					</select>
+				</div>
+
+				{/* Supervisor Selection */}
+				<div className="space-y-2">
+					<label htmlFor="supervisor" className="text-sm font-medium">
+						Assigned Supervisor <span className="text-destructive">*</span>
+					</label>
+					<select
+						id="supervisor"
+						value={supervisorId}
+						onChange={(e) => setSupervisorId(e.target.value)}
+						required
+						disabled={!departmentId || isLoadingSupervisors}
+						className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary disabled:cursor-not-allowed disabled:opacity-50"
+					>
+						<option value="">
+							{isLoadingSupervisors
+								? "Loading supervisors..."
+								: departmentId
+									? supervisors.length === 0
+										? "No supervisors assigned to this department"
+										: "Select supervisor"
+									: "Select department first"}
+						</option>
+						{supervisors.map((sv) => (
+							<option key={sv.id} value={sv.id}>
+								{sv.full_name}
+							</option>
+						))}
+					</select>
+
+					{/* Academic supervisor notice */}
+					<div
+						className={cn(
+							"flex items-start gap-2 rounded-md p-3 text-sm",
+							academicSupervisor
+								? "bg-blue-50 text-blue-700 dark:bg-blue-950/30 dark:text-blue-400"
+								: "bg-amber-50 text-amber-700 dark:bg-amber-950/30 dark:text-amber-400",
+						)}
+					>
+						<Info className="mt-0.5 h-4 w-4 shrink-0" />
+						{academicSupervisor ? (
+							<span>
+								Your academic supervisor (
+								<span className="font-medium">
+									{academicSupervisor.full_name}
+								</span>
+								) will be notified of this submission.
+							</span>
+						) : (
+							<span>
+								No academic supervisor assigned. Consider contacting admin.
+							</span>
+						)}
+					</div>
 				</div>
 
 				{/* Task Category Selection */}
@@ -378,7 +435,7 @@ export default function CaseInputForm() {
 							<p className="text-sm text-muted-foreground">
 								Upload a photo as proof (JPEG, PNG, GIF, WebP)
 							</p>
-							<p className="text-xs text-muted-foreground">Max size: 5MB</p>
+							<p className="text-xs text-muted-foreground">Max size: {MAX_PROOF_FILE_SIZE / (1024 * 1024)}MB</p>
 							<label className="mt-4 cursor-pointer">
 								<span className="flex items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90">
 									{isUploading ? (
@@ -416,7 +473,8 @@ export default function CaseInputForm() {
 									<div>
 										<p className="text-sm font-medium">{imageFile?.name}</p>
 										<p className="text-xs text-muted-foreground">
-											{imageFile && (imageFile.size / 1024 / 1024).toFixed(2)}{" "}
+											{imageFile &&
+												(imageFile.size / 1024 / 1024).toFixed(2)}{" "}
 											MB
 										</p>
 										{uploadedObjectKey && (

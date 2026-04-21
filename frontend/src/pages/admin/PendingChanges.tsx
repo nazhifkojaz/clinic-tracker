@@ -9,6 +9,7 @@ import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { departmentService } from "@/services/departments";
 import { userService } from "@/services/users";
 import type {
 	PendingChangeStatus,
@@ -17,17 +18,31 @@ import type {
 
 const PAGE_SIZE = 25;
 
-const statusBadgeColor: Record<string, string> = {
-	pending: "bg-yellow-100 text-yellow-700 dark:bg-yellow-900 dark:text-yellow-300",
-	approved: "bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300",
-	rejected: "bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300",
-};
+import { fieldLabels, statusBadgeColor } from "@/lib/pendingChanges";
 
-const fieldLabels: Record<string, string> = {
-	full_name: "Full Name",
-	institutional_id: "Institutional ID",
-	department_id: "Department",
-};
+interface LookupMaps {
+	departments: Map<string, string>;
+	supervisors: Map<string, string>;
+	students: Map<string, string>;
+}
+
+function resolveValue(
+	fieldName: string,
+	value: string | null,
+	lookups: LookupMaps,
+): string {
+	if (!value) return "—";
+	switch (fieldName) {
+		case "department_id":
+			return lookups.departments.get(value) ?? value;
+		case "supervisor_id":
+			return lookups.supervisors.get(value) ?? value;
+		case "remove_student_id":
+			return lookups.students.get(value) ?? value;
+		default:
+			return value;
+	}
+}
 
 export default function PendingChanges() {
 	const [changes, setChanges] = useState<PendingChangeWithUser[]>([]);
@@ -37,6 +52,39 @@ export default function PendingChanges() {
 	const [isLoading, setIsLoading] = useState(false);
 	const [statusFilter, setStatusFilter] = useState<PendingChangeStatus | "">("");
 	const [actioningId, setActioningId] = useState<string | null>(null);
+
+	const [lookups, setLookups] = useState<LookupMaps>({
+		departments: new Map(),
+		supervisors: new Map(),
+		students: new Map(),
+	});
+
+	useEffect(() => {
+		Promise.all([
+			departmentService
+				.list()
+				.then((depts) =>
+					new Map(depts.map((d) => [d.id, d.name])),
+				),
+			userService
+				.list({ role: "supervisor", is_active: true, limit: 200 })
+				.then((res) =>
+					new Map(res.items.map((u) => [u.id, u.full_name])),
+				),
+			userService
+				.list({ role: "student", is_active: true, limit: 200 })
+				.then((res) =>
+					new Map(res.items.map((u) => [u.id, u.full_name])),
+				),
+		])
+			.then(([departments, supervisors, students]) =>
+				setLookups({ departments, supervisors, students }),
+			)
+			.catch((err) => {
+				console.error("Failed to load lookup data", err);
+				toast.error("Failed to load reference data. Names may not display correctly.");
+			});
+	}, []);
 
 	const fetchChanges = async (
 		page: number = currentPage,
@@ -129,7 +177,7 @@ export default function PendingChanges() {
 						</div>
 					) : (
 						<div className="overflow-x-auto">
-							<table className="w-full min-w-[700px]">
+							<table className="w-full min-w-[800px]">
 								<thead>
 									<tr className="border-b text-left text-sm text-muted-foreground">
 										<th className="p-4">User</th>
@@ -137,6 +185,7 @@ export default function PendingChanges() {
 										<th className="p-4">Field</th>
 										<th className="p-4">Current</th>
 										<th className="p-4">Requested</th>
+										<th className="p-4">Reason</th>
 										<th className="p-4">Status</th>
 										<th className="p-4">Submitted</th>
 										<th className="p-4">Actions</th>
@@ -156,10 +205,21 @@ export default function PendingChanges() {
 													change.field_name}
 											</td>
 											<td className="p-4 text-muted-foreground">
-												{change.old_value || "—"}
+												{resolveValue(
+													change.field_name,
+													change.old_value,
+													lookups,
+												)}
 											</td>
 											<td className="p-4">
-												{change.new_value || "—"}
+												{resolveValue(
+													change.field_name,
+													change.new_value,
+													lookups,
+												)}
+											</td>
+											<td className="p-4 text-sm text-muted-foreground">
+												{change.reason || "—"}
 											</td>
 											<td className="p-4">
 												<span

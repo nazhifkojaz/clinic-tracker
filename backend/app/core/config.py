@@ -43,11 +43,19 @@ class Settings(BaseSettings):
     R2_SECRET_ACCESS_KEY: str = ""
     R2_BUCKET_NAME: str = "clinic-tracker"
 
-    # Gmail SMTP (email)
-    GMAIL_USER: str = ""  # Your Gmail address (e.g. yourname@gmail.com)
-    GMAIL_APP_PASSWORD: str = ""  # 16-char App Password from Google
+    # Email / SMTP
+    EMAIL_MOCK_MODE: bool = False  # True → log only, never send
     EMAIL_FROM: str = "noreply@example.com"  # Defaults to GMAIL_USER if not set
-    EMAIL_MOCK_MODE: bool = False  # Explicit flag for dev/test
+
+    # SMTP transport (override for local dev to point at Mailpit)
+    SMTP_HOST: str = "smtp.gmail.com"
+    SMTP_PORT: int = 587
+    SMTP_USE_TLS: bool = True  # False for Mailpit
+    SMTP_REQUIRE_AUTH: bool = True  # False for Mailpit
+
+    # Gmail credentials (only required when SMTP_REQUIRE_AUTH=True)
+    GMAIL_USER: str = ""
+    GMAIL_APP_PASSWORD: str = ""
 
     # Frontend URL (used for building email verification links)
     FRONTEND_URL: str = "http://localhost:5173"

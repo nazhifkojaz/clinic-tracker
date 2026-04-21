@@ -1,22 +1,19 @@
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import func, select, union_all
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import aliased
 
-from app.api.dependencies import get_current_user, require_admin, require_supervisor
+from app.api.dependencies import get_current_user, require_admin
 from app.core.database import get_db
 from app.models.assignment import AssignmentType, SupervisorAssignment
 from app.models.department import Department
-from app.models.rotation import StudentRotation
 from app.models.user import User, UserRole
 from app.schemas.assignment import (
     AssignmentCreate,
     AssignmentResponse,
     AssignmentWithDetailsResponse,
-    MyStudentResponse,
 )
 from app.schemas.pagination import PaginatedResponse
 from app.utils.audit import record_audit
@@ -212,117 +209,3 @@ async def delete_assignment(
         old_values=old_values,
     )
     await db.commit()
-
-
-@router.get("/my-students", response_model=list[MyStudentResponse])
-async def get_my_students(
-    user: User = Depends(require_supervisor),
-    db: AsyncSession = Depends(get_db),
-):
-    """Get the supervisor's assigned students with assignment details.
-
-    Returns:
-    - Students with primary assignments to this supervisor
-    - Students currently rotating in departments this supervisor oversees
-    """
-    # Use aliased for proper ORM joins
-    student_user = aliased(User)
-
-    # Get departments this supervisor oversees (department-type assignments)
-    supervised_depts_result = await db.execute(
-        select(SupervisorAssignment.department_id).where(
-            SupervisorAssignment.supervisor_id == user.id,
-            SupervisorAssignment.assignment_type == AssignmentType.department,
-        )
-    )
-    supervised_dept_ids = [row[0] for row in supervised_depts_result.all()]
-
-    # Query 1: Primary assignment students (direct assignment)
-    primary_query = (
-        select(
-            SupervisorAssignment.id.label("assignment_id"),
-            student_user.id.label("student_id"),
-            student_user.full_name.label("student_name"),
-            student_user.email.label("student_email"),
-            student_user.institutional_id.label("student_code"),
-            StudentRotation.department_id.label("dept_id"),
-            Department.name.label("dept_name"),
-            SupervisorAssignment.assignment_type.label("assignment_type"),
-        )
-        .join(student_user, SupervisorAssignment.student_id == student_user.id)
-        .outerjoin(
-            StudentRotation,
-            (StudentRotation.student_id == student_user.id)
-            & StudentRotation.is_current.is_(True),
-        )
-        .outerjoin(Department, StudentRotation.department_id == Department.id)
-        .where(
-            SupervisorAssignment.supervisor_id == user.id,
-            SupervisorAssignment.assignment_type == AssignmentType.primary,
-        )
-    )
-
-    # Query 2: Students currently rotating in supervised departments
-    dept_students_query = None
-    if supervised_dept_ids:
-        dept_students_query = (
-            select(
-                SupervisorAssignment.id.label("assignment_id"),
-                student_user.id.label("student_id"),
-                student_user.full_name.label("student_name"),
-                student_user.email.label("student_email"),
-                student_user.institutional_id.label("student_code"),
-                StudentRotation.department_id.label("dept_id"),
-                Department.name.label("dept_name"),
-                SupervisorAssignment.assignment_type.label("assignment_type"),
-            )
-            .join(
-                SupervisorAssignment,
-                SupervisorAssignment.department_id == StudentRotation.department_id,
-            )
-            .join(student_user, StudentRotation.student_id == student_user.id)
-            .join(Department, StudentRotation.department_id == Department.id)
-            .where(
-                SupervisorAssignment.supervisor_id == user.id,
-                SupervisorAssignment.assignment_type == AssignmentType.department,
-                StudentRotation.is_current.is_(True),
-                StudentRotation.department_id.in_(supervised_dept_ids),
-            )
-        )
-
-    # PERF-11: Combine queries using union_all (Python handles deduplication)
-    if dept_students_query is not None:
-        combined = union_all(primary_query, dept_students_query)
-        combined_subquery = combined.subquery()
-        final_query = select(combined_subquery).order_by(
-            combined_subquery.c.student_name
-        )
-    else:
-        final_query = primary_query.order_by(student_user.full_name)
-
-    result = await db.execute(final_query)
-    students = []
-    seen_student_depts = set()
-
-    for row in result:
-        student_dept_key = (
-            str(row.student_id),
-            str(row.dept_id) if row.dept_id else "primary",
-        )
-        if student_dept_key in seen_student_depts:
-            continue
-        seen_student_depts.add(student_dept_key)
-
-        students.append(
-            MyStudentResponse(
-                assignment_id=str(row.assignment_id),
-                student_id=str(row.student_id),
-                student_name=row.student_name,
-                student_email=row.student_email,
-                student_code=row.student_code,
-                assignment_type=row.assignment_type,
-                department_id=str(row.dept_id) if row.dept_id else None,
-                department_name=row.dept_name,
-            )
-        )
-    return students

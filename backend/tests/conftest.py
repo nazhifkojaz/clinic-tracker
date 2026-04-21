@@ -2,7 +2,7 @@
 import os
 
 # Enable email mock mode for tests (no real emails sent)
-os.environ.setdefault("EMAIL_MOCK_MODE", "true")
+os.environ["EMAIL_MOCK_MODE"] = "true"
 
 import asyncio
 from collections.abc import AsyncGenerator

@@ -1,8 +1,10 @@
 import uuid
 import random
 import string
+from datetime import datetime, timezone
 
 from app.models.department import Department, TaskCategory
+from app.models.rotation import StudentRotation
 from app.models.submission import CaseSubmission, SubmissionStatus
 
 
@@ -79,3 +81,27 @@ async def create_submission(
     await db.commit()
     await db.refresh(sub)
     return sub
+
+
+async def create_rotation(
+    db,
+    student_id: uuid.UUID,
+    department_id: uuid.UUID,
+    is_current: bool = True,
+    started_at: datetime | None = None,
+    days_offset: int = 0,
+) -> StudentRotation:
+    """Create a test student rotation."""
+    if started_at is None:
+        started_at = datetime.now(timezone.utc)
+    rot = StudentRotation(
+        student_id=student_id,
+        department_id=department_id,
+        is_current=is_current,
+        started_at=started_at,
+        days_offset=days_offset,
+    )
+    db.add(rot)
+    await db.commit()
+    await db.refresh(rot)
+    return rot

@@ -6,7 +6,7 @@ and are automatically invalidated after expiry.
 """
 
 import asyncio
-from typing import TypeVar, Optional
+from typing import TypeVar
 
 T = TypeVar("T")
 
@@ -31,7 +31,7 @@ class SimpleAsyncCache:
         self._lock = asyncio.Lock()
         self._disabled = False  # Flag to disable caching (useful for tests)
 
-    async def get(self, key: str) -> Optional[T]:
+    async def get(self, key: str) -> T | None:
         """Get a value from the cache.
 
         Args:
@@ -46,13 +46,13 @@ class SimpleAsyncCache:
         async with self._lock:
             if key in self._cache:
                 value, expiry = self._cache[key]
-                if expiry > asyncio.get_event_loop().time():
+                if expiry > asyncio.get_running_loop().time():
                     return value
                 # Entry expired, remove it
                 del self._cache[key]
         return None
 
-    async def set(self, key: str, value: T, ttl: Optional[int] = None) -> None:
+    async def set(self, key: str, value: T, ttl: int | None = None) -> None:
         """Set a value in the cache.
 
         Args:
@@ -63,7 +63,7 @@ class SimpleAsyncCache:
         if self._disabled:
             return
         async with self._lock:
-            expiry = asyncio.get_event_loop().time() + (ttl or self._ttl)
+            expiry = asyncio.get_running_loop().time() + (ttl or self._ttl)
             self._cache[key] = (value, expiry)
 
     async def invalidate(self, key: str) -> None:
@@ -92,14 +92,6 @@ class SimpleAsyncCache:
     def enable(self) -> None:
         """Enable caching."""
         self._disabled = False
-
-    def is_disabled(self) -> bool:
-        """Check if caching is disabled."""
-        return self._disabled
-
-    def size(self) -> int:
-        """Get the number of entries in the cache (non-async)."""
-        return len(self._cache)
 
 
 # Global cache instances for different data types

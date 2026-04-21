@@ -67,6 +67,10 @@ class ProfileUpdateRequest(BaseModel):
     full_name: str | None = Field(None, min_length=1, max_length=200)
     institutional_id: str | None = Field(None, min_length=1, max_length=50)
     department_id: uuid.UUID | None = None
+    email: EmailStr | None = None
+    supervisor_id: uuid.UUID | None = None
+    remove_student_id: uuid.UUID | None = None
+    reason: str | None = Field(None, max_length=500)
 
 
 class PendingChangeResponse(BaseModel):
@@ -75,6 +79,7 @@ class PendingChangeResponse(BaseModel):
     field_name: str
     old_value: str | None
     new_value: str | None
+    reason: str | None = None
     status: PendingChangeStatus
     reviewed_by: uuid.UUID | None = None
     reviewed_at: datetime | None = None
@@ -91,6 +96,7 @@ class PendingChangeWithUserResponse(BaseModel):
     field_name: str
     old_value: str | None
     new_value: str | None
+    reason: str | None = None
     status: PendingChangeStatus
     reviewed_by: uuid.UUID | None = None
     reviewed_at: datetime | None = None

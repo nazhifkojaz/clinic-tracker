@@ -1,4 +1,3 @@
-// frontend/src/components/charts/ProgressGauge.tsx
 
 import { useMemo } from "react";
 import { PolarAngleAxis, RadialBar, RadialBarChart } from "recharts";

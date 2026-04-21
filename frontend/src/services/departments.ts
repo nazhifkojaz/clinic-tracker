@@ -7,6 +7,7 @@ import type {
 	TaskCategoryCreate,
 	TaskCategoryUpdate,
 } from "@/types/department";
+import type { ReviewerInfo } from "@/types/submission";
 import api from "./api";
 
 export const departmentService = {
@@ -63,6 +64,15 @@ export const departmentService = {
 		const { data } = await api.patch<TaskCategory>(
 			`/api/departments/${departmentId}/categories/${categoryId}`,
 			body,
+		);
+		return data;
+	},
+
+	// --- Department Supervisors ---
+
+	async listSupervisors(departmentId: string): Promise<ReviewerInfo[]> {
+		const { data } = await api.get<ReviewerInfo[]>(
+			`/api/departments/${departmentId}/supervisors`,
 		);
 		return data;
 	},

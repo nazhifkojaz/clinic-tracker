@@ -50,7 +50,7 @@ export interface StudentDashboardData {
 	rotation_time_pct: number;
 }
 
-export type StudentStatus = "on_track" | "at_risk" | "behind";
+export type StudentStatus = "on_track" | "at_risk" | "unassigned";
 
 export interface StudentSummary {
 	student_id: string;
@@ -62,31 +62,15 @@ export interface StudentSummary {
 	total_required: number;
 	total_completed: number;
 	status: StudentStatus;
+	assignment_type: "primary" | "department" | null;
 }
 
 export interface SupervisorDashboardData {
 	total_students: number;
 	on_track_count: number;
 	at_risk_count: number;
-	behind_count: number;
+	unassigned_count: number;
 	students: PaginatedResponse<StudentSummary>;
-}
-
-export interface DepartmentStudentProgress {
-	student_id: string;
-	student_name: string;
-	total_required: number;
-	total_completed: number;
-	completion_percentage: number;
-	status: StudentStatus;
-}
-
-export interface DepartmentDashboardData {
-	department_id: string;
-	department_name: string;
-	total_students: number;
-	average_completion: number;
-	students: DepartmentStudentProgress[];
 }
 
 // --- Rotation Tracker Types ---

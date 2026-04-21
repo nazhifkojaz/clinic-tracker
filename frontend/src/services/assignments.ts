@@ -2,7 +2,6 @@ import type {
 	Assignment,
 	AssignmentCreate,
 	AssignmentWithDetails,
-	MyStudent,
 } from "@/types/assignment";
 import type { PaginatedResponse, PaginationParams } from "@/types/pagination";
 import api from "./api";
@@ -29,10 +28,5 @@ export const assignmentService = {
 
 	async remove(id: string): Promise<void> {
 		await api.delete(`/api/assignments/${id}`);
-	},
-
-	async getMyStudents(): Promise<MyStudent[]> {
-		const { data } = await api.get<MyStudent[]>("/api/assignments/my-students");
-		return data;
 	},
 };

@@ -23,7 +23,7 @@ vi.mock("@/services/dashboard", () => ({
 				total_students: 1,
 				on_track_count: 1,
 				at_risk_count: 0,
-				behind_count: 0,
+				unassigned_count: 0,
 				students: {
 					items: mockStudents,
 					total: 1,
@@ -74,7 +74,7 @@ describe("SupervisorDashboard", () => {
 		expect(await screen.findByText("John Doe")).toBeInTheDocument();
 
 		const headers = screen.getAllByRole("columnheader");
-		expect(headers).toHaveLength(5);
+		expect(headers).toHaveLength(6);
 	});
 
 	it("displays progress bar with percentage in correct column", async () => {
@@ -88,7 +88,7 @@ describe("SupervisorDashboard", () => {
 		const studentRow = screen.getByText("John Doe").closest("tr");
 		if (studentRow) {
 			const cells = within(studentRow).getAllByRole("cell");
-			expect(cells[2]).toHaveTextContent("75.5%");
+			expect(cells[3]).toHaveTextContent("75.5%");
 			expect(cells[1]).toHaveTextContent("Oral Surgery");
 		}
 	});

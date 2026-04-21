@@ -1,249 +1,23 @@
 """Notification API endpoints.
 
-Supervisors can send email notifications to students and view notification history.
-Admins can send to any student and view all notifications.
+Supervisors and admins can view notification history.
+Notifications are created automatically by the submission workflow.
 """
 
-import asyncio
-import logging
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.api.dependencies import get_current_user, require_supervisor
+from app.api.dependencies import require_supervisor
 from app.core.database import get_db
-from app.models.assignment import AssignmentType, SupervisorAssignment
-from app.models.notification import NOTIFICATION_TEMPLATES, Notification
-from app.models.rotation import StudentRotation
+from app.models.notification import Notification
 from app.models.user import User, UserRole, display_name
-from app.schemas.notification import (
-    NotificationResponse,
-    NotificationSend,
-    NotificationTemplateResponse,
-)
-from app.utils.audit import format_template
-from app.utils.email import is_mock_mode, sanitize_for_email, send_email
-
-logger = logging.getLogger(__name__)
+from app.schemas.notification import NotificationResponse
 
 router = APIRouter(prefix="/api/notifications", tags=["notifications"])
-
-
-@router.get("/templates", response_model=list[NotificationTemplateResponse])
-async def list_templates(
-    _user: User = Depends(require_supervisor),
-):
-    """List available notification templates. Supervisor/admin only."""
-    return [
-        NotificationTemplateResponse(key=k, subject=v["subject"], message=v["message"])
-        for k, v in NOTIFICATION_TEMPLATES.items()
-    ]
-
-
-async def _get_student_names(
-    db: AsyncSession, student_ids: list[uuid.UUID]
-) -> dict[uuid.UUID, str]:
-    """Fetch student names for a list of student IDs."""
-    result = await db.execute(
-        select(User.id, User.full_name, User.institutional_id, User.email).where(
-            User.id.in_(student_ids), User.role == UserRole.student
-        )
-    )
-    return {
-        row.id: (row.full_name or row.institutional_id or row.email)
-        for row in result.all()
-    }
-
-
-async def _validate_supervisor_assignments(
-    db: AsyncSession,
-    supervisor_id: uuid.UUID,
-    recipient_ids: list[uuid.UUID],
-) -> None:
-    """Validate that the supervisor is assigned to each recipient student.
-
-    Supervisors can only send notifications to:
-    1. Students they are the primary supervisor of
-    2. Students currently rotating in departments they supervise
-
-    Raises:
-        HTTPException: If supervisor is not assigned to a student.
-    """
-    # 1 & 2. Fetch primary-assigned students and supervised departments in parallel
-    primary_result, dept_result = await asyncio.gather(
-        db.execute(
-            select(SupervisorAssignment.student_id).where(
-                SupervisorAssignment.supervisor_id == supervisor_id,
-                SupervisorAssignment.assignment_type == AssignmentType.primary,
-                SupervisorAssignment.student_id.isnot(None),
-            )
-        ),
-        db.execute(
-            select(SupervisorAssignment.department_id).where(
-                SupervisorAssignment.supervisor_id == supervisor_id,
-                SupervisorAssignment.assignment_type == AssignmentType.department,
-            )
-        ),
-    )
-    primary_ids = {row[0] for row in primary_result.all()}
-    supervised_dept_ids = [row[0] for row in dept_result.all()]
-
-    dept_student_ids: set[uuid.UUID] = set()
-    if supervised_dept_ids:
-        rot_query = select(StudentRotation.student_id).where(
-            StudentRotation.department_id.in_(supervised_dept_ids),
-            StudentRotation.is_current.is_(True),
-        )
-        rot_result = await db.execute(rot_query)
-        dept_student_ids = {row[0] for row in rot_result.all()}
-
-    # 3. Combine allowed student IDs
-    allowed_student_ids = primary_ids | dept_student_ids
-
-    # 4. Validate all recipients are in allowed set
-    for recipient_id in recipient_ids:
-        if recipient_id not in allowed_student_ids:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail=f"You are not assigned to student {recipient_id}",
-            )
-
-
-@router.post("/send", response_model=list[NotificationResponse])
-async def send_notification(
-    payload: NotificationSend,
-    user: User = Depends(require_supervisor),
-    db: AsyncSession = Depends(get_db),
-):
-    """Send a notification to one or more students. Supervisor/admin only.
-
-    Validates that:
-    - All recipients are students
-    - Supervisor is assigned to each recipient (admin bypasses this)
-    - No more than 20 recipients per request
-    """
-    # Admins can send to any student, skip assignment check
-    if user.role != UserRole.admin:
-        await _validate_supervisor_assignments(db, user.id, payload.recipient_ids)
-
-    # Fetch recipient users and validate they are students
-    recipient_result = await db.execute(
-        select(User).where(
-            User.id.in_(payload.recipient_ids),
-            User.role == UserRole.student,
-        )
-    )
-    recipients = recipient_result.scalars().all()
-
-    if len(recipients) != len(payload.recipient_ids):
-        found_ids = {r.id for r in recipients}
-        missing = [str(uid) for uid in payload.recipient_ids if uid not in found_ids]
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Students not found: {', '.join(missing)}",
-        )
-
-    # Resolve template if provided
-    subject = payload.subject
-    message = payload.message
-
-    if payload.template_key and payload.template_key in NOTIFICATION_TEMPLATES:
-        template = NOTIFICATION_TEMPLATES[payload.template_key]
-        if payload.template_vars:
-            subject = format_template(template["subject"], payload.template_vars)
-            message = format_template(template["message"], payload.template_vars)
-        elif not payload.subject:
-            # Using template but no custom subject/message, use template directly
-            subject = template["subject"]
-            message = template["message"]
-
-    # Get sender name
-    sender_name = display_name(user)
-
-    # Create notification records and send emails
-    created_notifications = []
-    recipient_map = {r.id: r for r in recipients}
-
-    for recipient_id in payload.recipient_ids:
-        recipient = recipient_map[recipient_id]
-        recipient_name = display_name(recipient)
-
-        # Personalize message with recipient info if using template vars
-        personalized_subject = subject
-        personalized_message = message
-
-        if payload.template_vars:
-            vars_with_recipient = {
-                **payload.template_vars,
-                "student_name": recipient_name,
-                "supervisor_name": sender_name,
-            }
-            personalized_subject = format_template(
-                personalized_subject, vars_with_recipient
-            )
-            personalized_message = format_template(
-                personalized_message, vars_with_recipient
-            )
-
-        # Create notification record
-        notification = Notification(
-            sender_id=user.id,
-            recipient_id=recipient_id,
-            subject=personalized_subject,
-            message=personalized_message,
-        )
-        db.add(notification)
-
-        # Send email (non-blocking, fire and forget for mock mode)
-        try:
-            await send_email(
-                to=recipient.email,
-                subject=personalized_subject,
-                html=f"<p>{sanitize_for_email(personalized_message).replace(chr(10), '<br>')}</p>",
-            )
-        except Exception:
-            # Log error but don't fail the request
-            # Notification record is still created
-            logger.exception(
-                "Failed to send email notification (recipient_id=%s, notification_id=%s)",
-                recipient_id,
-                notification.id,
-            )
-
-        created_notifications.append(notification)
-
-    # Flush to get IDs without committing yet
-    await db.flush()
-    notification_ids = [n.id for n in created_notifications]
-
-    await db.commit()
-
-    # Single query with eager loading (no N+1 refresh loop needed)
-    result = await db.execute(
-        select(Notification)
-        .options(
-            selectinload(Notification.sender), selectinload(Notification.recipient)
-        )
-        .where(Notification.id.in_(notification_ids))
-    )
-    notifications = result.scalars().all()
-
-    return [
-        NotificationResponse(
-            id=n.id,
-            sender_id=n.sender_id,
-            sender_name=display_name(n.sender),
-            recipient_id=n.recipient_id,
-            recipient_name=display_name(n.recipient),
-            subject=n.subject,
-            message=n.message,
-            sent_at=n.sent_at,
-        )
-        for n in notifications
-    ]
 
 
 @router.get("", response_model=list[NotificationResponse])
@@ -254,25 +28,14 @@ async def list_notifications(
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
 ):
-    """List notification history. Supervisors see their own; admins see all.
-
-    Args:
-        user: Current authenticated user (injected)
-        db: Database session (injected)
-        recipient_id: Optional filter by recipient
-        limit: Max results to return
-        offset: Pagination offset
-    """
+    """List notification history. Supervisors see their own; admins see all."""
     query = select(Notification).options(
         selectinload(Notification.sender), selectinload(Notification.recipient)
     )
 
-    # Supervisors only see their own sent notifications
     if user.role == UserRole.supervisor:
         query = query.where(Notification.sender_id == user.id)
-    # Admins see all notifications (no filter)
 
-    # Optional recipient filter
     if recipient_id:
         query = query.where(Notification.recipient_id == recipient_id)
 
@@ -294,14 +57,3 @@ async def list_notifications(
         )
         for n in notifications
     ]
-
-
-@router.get("/status", response_model=dict)
-async def get_notification_status(
-    _user: User = Depends(get_current_user),
-):
-    """Get the current status of the email service."""
-    return {
-        "email_enabled": not is_mock_mode(),
-        "mode": "mock" if is_mock_mode() else "production",
-    }

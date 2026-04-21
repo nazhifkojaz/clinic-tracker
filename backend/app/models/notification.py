@@ -47,39 +47,3 @@ class Notification(Base):
     # Relationships
     sender = relationship("User", foreign_keys=[sender_id])
     recipient = relationship("User", foreign_keys=[recipient_id])
-
-
-# Pre-built notification templates
-# These are constants, not database records
-NOTIFICATION_TEMPLATES = {
-    "behind_department": {
-        "subject": "Action Required: You are behind on {department} cases",
-        "message": (
-            "Dear {student_name},\n\n"
-            "Our records show that you are behind on your required cases "
-            "in the {department} department. You have completed {completed} "
-            "out of {required} required cases.\n\n"
-            "Please prioritize completing your remaining cases. "
-            "Reach out if you need assistance.\n\n"
-            "Best regards,\n{supervisor_name}"
-        ),
-    },
-    "at_risk_overall": {
-        "subject": "Progress Alert: You are at risk of not meeting requirements",
-        "message": (
-            "Dear {student_name},\n\n"
-            "Your overall clinical progress is currently at {progress}%, "
-            "which places you in the at-risk category. "
-            "Please review your remaining requirements and take action.\n\n"
-            "Best regards,\n{supervisor_name}"
-        ),
-    },
-    "general_reminder": {
-        "subject": "Reminder from your supervisor",
-        "message": (
-            "Dear {student_name},\n\n"
-            "{custom_message}\n\n"
-            "Best regards,\n{supervisor_name}"
-        ),
-    },
-}

@@ -66,6 +66,12 @@ class CaseSubmission(Base):
         nullable=False,
         server_default=text("'pending'"),
     )
+    target_supervisor_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
     reviewed_by: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="SET NULL"),
@@ -90,6 +96,11 @@ class CaseSubmission(Base):
         Index("ix_submissions_student_status", "student_id", "status"),
         Index("ix_submissions_dept_status", "department_id", "status"),
         Index("ix_submissions_category_student", "task_category_id", "student_id"),
+        Index(
+            "ix_submissions_target_supervisor_status",
+            "target_supervisor_id",
+            "status",
+        ),
         # PERF-10: Partial index on deleted_at (only indexes deleted submissions)
         # This reduces index size by ~95% and speeds up inserts
         Index(
@@ -103,4 +114,7 @@ class CaseSubmission(Base):
     student: Mapped["User"] = relationship(foreign_keys=[student_id])
     department: Mapped["Department"] = relationship()
     task_category: Mapped["TaskCategory"] = relationship()
+    target_supervisor: Mapped["User | None"] = relationship(
+        foreign_keys=[target_supervisor_id]
+    )
     reviewer: Mapped["User | None"] = relationship(foreign_keys=[reviewed_by])

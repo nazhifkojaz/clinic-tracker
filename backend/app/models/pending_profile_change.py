@@ -30,6 +30,7 @@ class PendingProfileChange(Base):
     field_name: Mapped[str] = mapped_column(String(50), nullable=False)
     old_value: Mapped[str | None] = mapped_column(Text, nullable=True)
     new_value: Mapped[str | None] = mapped_column(Text, nullable=True)
+    reason: Mapped[str | None] = mapped_column(Text, nullable=True)
     status: Mapped[PendingChangeStatus] = mapped_column(
         Enum(
             PendingChangeStatus,

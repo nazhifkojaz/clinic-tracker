@@ -1,3 +1,5 @@
+from datetime import datetime, timedelta, timezone
+
 from app.models.assignment import AssignmentType, SupervisorAssignment
 from app.models.rotation import StudentRotation
 from app.models.submission import SubmissionStatus
@@ -7,6 +9,7 @@ from tests.factories import (
     _random_suffix,
     create_category,
     create_department,
+    create_rotation,
     create_submission,
 )
 
@@ -178,54 +181,140 @@ async def test_supervisor_dashboard_student_classification(
         None,
     )
     assert student_entry is not None
-    # Verify status field exists and has a valid value
-    assert student_entry["status"] in ["on_track", "at_risk", "behind"]
+    # Student has no rotation → unassigned
+    assert student_entry["status"] == "unassigned"
 
 
 async def test_supervisor_dashboard_classification_thresholds(
     client, supervisor_user, supervisor_token, db_session
 ):
-    """Supervisor dashboard should classify students at correct thresholds using known values."""
-    # Use known values: 100 required, test 10/40/70 cases (10%/40%/70% completion)
+    """Supervisor dashboard classifies students based on rotation time vs case progress.
+
+    Rules:
+    - No rotation → unassigned
+    - rotation_time < 50% → on_track
+    - rotation_time >= 50% AND case_pct < rotation_time_pct → at_risk
+    - rotation_time >= 50% AND case_pct >= rotation_time_pct → on_track
+    """
     required_count = 100
+    duration_days = 30
 
-    # Create 3 students with specific completion levels
-    for cases, expected_status in [
-        (10, "behind"),  # 10% -> behind
-        (40, "at_risk"),  # 40% -> at_risk
-        (70, "on_track"),  # 70% -> on_track
-    ]:
-        student = User(
-            email=f"student_{expected_status}_{_random_suffix()}@test.com",
-            password_hash="$2b$12$dummy",
-            full_name=f"{expected_status.title()} Student",
-            role=UserRole.student,
-            is_active=True,
-        )
-        db_session.add(student)
-        await db_session.commit()
-        await db_session.refresh(student)
+    # Shared department for all students
+    dept = await create_department(db_session, rotation_duration_days=duration_days)
+    cat = await create_category(db_session, dept.id, required_count=required_count)
 
-        # Assign to supervisor
-        assignment = SupervisorAssignment(
-            supervisor_id=supervisor_user.id,
-            student_id=student.id,
-            assignment_type=AssignmentType.primary,
-        )
-        db_session.add(assignment)
-        await db_session.commit()
+    now = datetime.now(timezone.utc)
 
-        dept = await create_department(db_session)
-        cat = await create_category(db_session, dept.id, required_count=required_count)
+    # Student 1: No rotation → unassigned
+    student_unassigned = User(
+        email=f"student_unassigned_{_random_suffix()}@test.com",
+        password_hash="$2b$12$dummy",
+        full_name="Unassigned Student",
+        role=UserRole.student,
+        is_active=True,
+    )
+    db_session.add(student_unassigned)
+    await db_session.commit()
+    await db_session.refresh(student_unassigned)
+    assignment = SupervisorAssignment(
+        supervisor_id=supervisor_user.id,
+        student_id=student_unassigned.id,
+        assignment_type=AssignmentType.primary,
+    )
+    db_session.add(assignment)
+    await db_session.commit()
 
-        await create_submission(
-            db_session,
-            student.id,
-            dept.id,
-            cat.id,
-            case_count=cases,
-            status=SubmissionStatus.approved,
-        )
+    # Student 2: Early rotation (started 5 days ago, < 50% time) → on_track
+    student_early = User(
+        email=f"student_early_{_random_suffix()}@test.com",
+        password_hash="$2b$12$dummy",
+        full_name="Early Student",
+        role=UserRole.student,
+        is_active=True,
+    )
+    db_session.add(student_early)
+    await db_session.commit()
+    await db_session.refresh(student_early)
+    assignment = SupervisorAssignment(
+        supervisor_id=supervisor_user.id,
+        student_id=student_early.id,
+        assignment_type=AssignmentType.primary,
+    )
+    db_session.add(assignment)
+    await db_session.commit()
+    await create_rotation(
+        db_session, student_early.id, dept.id, started_at=now - timedelta(days=5)
+    )
+    # 10 cases out of 100 = 10% completion (doesn't matter since time < 50%)
+    await create_submission(
+        db_session,
+        student_early.id,
+        dept.id,
+        cat.id,
+        case_count=10,
+        status=SubmissionStatus.approved,
+    )
+
+    # Student 3: Late rotation, at risk (60% time, 30% cases → case_pct < time_pct)
+    student_at_risk = User(
+        email=f"student_atrisk_{_random_suffix()}@test.com",
+        password_hash="$2b$12$dummy",
+        full_name="At Risk Student",
+        role=UserRole.student,
+        is_active=True,
+    )
+    db_session.add(student_at_risk)
+    await db_session.commit()
+    await db_session.refresh(student_at_risk)
+    assignment = SupervisorAssignment(
+        supervisor_id=supervisor_user.id,
+        student_id=student_at_risk.id,
+        assignment_type=AssignmentType.primary,
+    )
+    db_session.add(assignment)
+    await db_session.commit()
+    await create_rotation(
+        db_session, student_at_risk.id, dept.id, started_at=now - timedelta(days=18)
+    )
+    # 30 cases out of 100 = 30% completion, rotation time ~60% → at_risk
+    await create_submission(
+        db_session,
+        student_at_risk.id,
+        dept.id,
+        cat.id,
+        case_count=30,
+        status=SubmissionStatus.approved,
+    )
+
+    # Student 4: Late rotation, on track (60% time, 70% cases → case_pct > time_pct)
+    student_on_track = User(
+        email=f"student_ontrack_{_random_suffix()}@test.com",
+        password_hash="$2b$12$dummy",
+        full_name="On Track Student",
+        role=UserRole.student,
+        is_active=True,
+    )
+    db_session.add(student_on_track)
+    await db_session.commit()
+    await db_session.refresh(student_on_track)
+    assignment = SupervisorAssignment(
+        supervisor_id=supervisor_user.id,
+        student_id=student_on_track.id,
+        assignment_type=AssignmentType.primary,
+    )
+    db_session.add(assignment)
+    await db_session.commit()
+    await create_rotation(
+        db_session, student_on_track.id, dept.id, started_at=now - timedelta(days=18)
+    )
+    await create_submission(
+        db_session,
+        student_on_track.id,
+        dept.id,
+        cat.id,
+        case_count=70,
+        status=SubmissionStatus.approved,
+    )
 
     response = await client.get(
         "/api/dashboard/supervisor",
@@ -233,41 +322,20 @@ async def test_supervisor_dashboard_classification_thresholds(
     )
     data = response.json()
 
-    # Verify each student's classification is consistent with the returned percentage.
-    # The total_required_global varies with test data so we verify the threshold
-    # logic (not specific percentages): < 30% → behind, 30–59% → at_risk, ≥ 60% → on_track.
-    status_labels = ["behind", "at_risk", "on_track"]
-    for _, label in [(10, "behind"), (40, "at_risk"), (70, "on_track")]:
+    for label, expected_status in [
+        ("Unassigned Student", "unassigned"),
+        ("Early Student", "on_track"),
+        ("At Risk Student", "at_risk"),
+        ("On Track Student", "on_track"),
+    ]:
         student_entry = next(
-            (
-                s
-                for s in data["students"]["items"]
-                if s["student_name"] == f"{label.title()} Student"
-            ),
+            (s for s in data["students"]["items"] if s["student_name"] == label),
             None,
         )
-        assert student_entry is not None, f"Could not find {label} student"
-        pct = student_entry["overall_completion_percentage"]
-        expected = "on_track" if pct >= 60 else "at_risk" if pct >= 30 else "behind"
-        assert student_entry["status"] == expected, (
-            f"{label.title()} Student: {pct}% should be '{expected}', got '{student_entry['status']}'"
+        assert student_entry is not None, f"Could not find {label}"
+        assert student_entry["status"] == expected_status, (
+            f"{label}: expected '{expected_status}', got '{student_entry['status']}'"
         )
-
-    # Additionally verify relative ordering: more submissions → better or equal status
-    entries = {
-        label: next(
-            s
-            for s in data["students"]["items"]
-            if s["student_name"] == f"{label.title()} Student"
-        )
-        for label in ["behind", "at_risk", "on_track"]
-    }
-    assert status_labels.index(entries["behind"]["status"]) <= status_labels.index(
-        entries["at_risk"]["status"]
-    )
-    assert status_labels.index(entries["at_risk"]["status"]) <= status_labels.index(
-        entries["on_track"]["status"]
-    )
 
 
 async def test_supervisor_dashboard_has_required_fields(
@@ -284,12 +352,12 @@ async def test_supervisor_dashboard_has_required_fields(
     assert "total_students" in data
     assert "on_track_count" in data
     assert "at_risk_count" in data
-    assert "behind_count" in data
+    assert "unassigned_count" in data
     assert "students" in data
     # Counts should add up correctly
     assert (
         data["total_students"]
-        == data["on_track_count"] + data["at_risk_count"] + data["behind_count"]
+        == data["on_track_count"] + data["at_risk_count"] + data["unassigned_count"]
     )
 
 
@@ -368,7 +436,8 @@ async def test_department_dashboard(
     assert student_entry["total_completed"] == 25
     assert student_entry["total_required"] == 50
     assert student_entry["completion_percentage"] == 50.0
-    assert student_entry["status"] == "at_risk"  # 50% is at_risk threshold
+    # Rotation just started → rotation_time_pct ≈ 0% → on_track
+    assert student_entry["status"] == "on_track"
 
 
 async def test_student_dashboard_current_rotation(
@@ -622,7 +691,9 @@ async def test_supervisor_dashboard_pagination_structure(
 
     # Verify status counts are computed from ALL students
     assert data["total_students"] == 60
-    assert data["on_track_count"] + data["at_risk_count"] + data["behind_count"] == 60
+    assert (
+        data["on_track_count"] + data["at_risk_count"] + data["unassigned_count"] == 60
+    )
 
 
 async def test_supervisor_dashboard_status_counts_accuracy(
@@ -632,11 +703,14 @@ async def test_supervisor_dashboard_status_counts_accuracy(
 
     PERF-02: This test verifies that status counts are accurate regardless of pagination.
     """
-    # Create 100 students with known completion percentages
-    dept = await create_department(db_session, name="Count Test Dept")
+    now = datetime.now(timezone.utc)
+    # Department with 30-day rotation, 100 required cases
+    dept = await create_department(
+        db_session, name="Count Test Dept", rotation_duration_days=30
+    )
     cat = await create_category(db_session, dept.id, required_count=100)
 
-    # 30 students with 70% completion (on_track)
+    # 30 students: early rotation (5 days, < 50% time) → on_track regardless of completion
     for i in range(30):
         student = User(
             email=f"on_track_{i}_{_random_suffix()}@test.com",
@@ -657,16 +731,19 @@ async def test_supervisor_dashboard_status_counts_accuracy(
         db_session.add(assignment)
         await db_session.commit()
 
+        await create_rotation(
+            db_session, student.id, dept.id, started_at=now - timedelta(days=5)
+        )
         await create_submission(
             db_session,
             student.id,
             dept.id,
             cat.id,
-            case_count=70,
+            case_count=10,
             status=SubmissionStatus.approved,
         )
 
-    # 40 students with 40% completion (at_risk)
+    # 40 students: late rotation (20 days, ~67% time), 30% cases → at_risk (30% < 67%)
     for i in range(40):
         student = User(
             email=f"at_risk_{i}_{_random_suffix()}@test.com",
@@ -687,21 +764,24 @@ async def test_supervisor_dashboard_status_counts_accuracy(
         db_session.add(assignment)
         await db_session.commit()
 
+        await create_rotation(
+            db_session, student.id, dept.id, started_at=now - timedelta(days=20)
+        )
         await create_submission(
             db_session,
             student.id,
             dept.id,
             cat.id,
-            case_count=40,
+            case_count=30,
             status=SubmissionStatus.approved,
         )
 
-    # 30 students with 20% completion (behind)
+    # 30 students: no rotation → unassigned
     for i in range(30):
         student = User(
-            email=f"behind_{i}_{_random_suffix()}@test.com",
+            email=f"unassigned_{i}_{_random_suffix()}@test.com",
             password_hash="$2b$12$dummy",
-            full_name=f"Behind Student {i}",
+            full_name=f"Unassigned Student {i}",
             role=UserRole.student,
             is_active=True,
         )
@@ -738,7 +818,7 @@ async def test_supervisor_dashboard_status_counts_accuracy(
     assert data["total_students"] == 100
     assert data["on_track_count"] == 30
     assert data["at_risk_count"] == 40
-    assert data["behind_count"] == 30
+    assert data["unassigned_count"] == 30
 
     # Verify only 10 students returned in items
     assert len(data["students"]["items"]) == 10
@@ -878,7 +958,99 @@ async def test_supervisor_dashboard_empty_result_pagination(
     assert data["total_students"] == 0
     assert data["on_track_count"] == 0
     assert data["at_risk_count"] == 0
-    assert data["behind_count"] == 0
+    assert data["unassigned_count"] == 0
     assert data["students"]["total"] == 0
     assert data["students"]["items"] == []
     assert data["students"]["has_more"] is False
+
+
+async def test_supervisor_dashboard_assignment_type_primary(
+    client, supervisor_user, supervisor_token, db_session
+):
+    """Primary supervisees should have assignment_type='primary'."""
+    student = User(
+        email=f"primary_{_random_suffix()}@test.com",
+        password_hash="$2b$12$dummy",
+        full_name="Primary Student",
+        role=UserRole.student,
+        is_active=True,
+    )
+    db_session.add(student)
+    await db_session.commit()
+    await db_session.refresh(student)
+
+    assignment = SupervisorAssignment(
+        supervisor_id=supervisor_user.id,
+        student_id=student.id,
+        assignment_type=AssignmentType.primary,
+    )
+    db_session.add(assignment)
+    await db_session.commit()
+
+    response = await client.get(
+        "/api/dashboard/supervisor",
+        headers=auth_header(supervisor_token),
+    )
+    assert response.status_code == 200
+    entry = next(
+        s
+        for s in response.json()["students"]["items"]
+        if s["student_name"] == "Primary Student"
+    )
+    assert entry["assignment_type"] == "primary"
+
+
+async def test_supervisor_dashboard_assignment_type_department(
+    client, supervisor_user, supervisor_token, db_session
+):
+    """Students rotating in a supervised department should have assignment_type='department'."""
+    dept = await create_department(db_session)
+
+    assignment = SupervisorAssignment(
+        supervisor_id=supervisor_user.id,
+        department_id=dept.id,
+        assignment_type=AssignmentType.department,
+    )
+    db_session.add(assignment)
+
+    student = User(
+        email=f"dept_{_random_suffix()}@test.com",
+        password_hash="$2b$12$dummy",
+        full_name="Dept Student",
+        role=UserRole.student,
+        is_active=True,
+    )
+    db_session.add(student)
+    await db_session.commit()
+    await db_session.refresh(student)
+
+    rotation = StudentRotation(
+        student_id=student.id,
+        department_id=dept.id,
+        is_current=True,
+    )
+    db_session.add(rotation)
+    await db_session.commit()
+
+    response = await client.get(
+        "/api/dashboard/supervisor",
+        headers=auth_header(supervisor_token),
+    )
+    assert response.status_code == 200
+    entry = next(
+        s
+        for s in response.json()["students"]["items"]
+        if s["student_name"] == "Dept Student"
+    )
+    assert entry["assignment_type"] == "department"
+
+
+async def test_admin_dashboard_assignment_type_null(client, admin_token):
+    """Admin sees all students with assignment_type=null."""
+    response = await client.get(
+        "/api/dashboard/supervisor",
+        headers=auth_header(admin_token),
+    )
+    assert response.status_code == 200
+    for item in response.json()["students"]["items"]:
+        assert item["assignment_type"] is None

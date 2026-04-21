@@ -21,9 +21,12 @@ export interface Submission {
 	case_count: number;
 	notes: string | null;
 	status: SubmissionStatus;
+	target_supervisor_id: string | null;
+	target_supervisor: ReviewerInfo | null;
 	reviewed_by: string | null;
 	reviewer?: ReviewerInfo;
 	review_notes: string | null;
+	can_review: boolean;
 	created_at: string;
 	updated_at: string;
 	deleted_at: string | null;
@@ -36,9 +39,16 @@ export interface DeletedSubmission extends Submission {
 
 export interface SubmissionCreate {
 	department_id: string;
+	target_supervisor_id: string;
 	task_category_id: string;
 	case_count: number;
 	proof_key: string;
+	notes?: string | null;
+}
+
+export interface SubmissionUpdate {
+	case_count?: number;
+	proof_key?: string;
 	notes?: string | null;
 }
 
@@ -55,4 +65,8 @@ export interface UploadUrlRequest {
 export interface UploadUrlResponse {
 	upload_url: string;
 	object_key: string;
+}
+
+export interface AcademicSupervisor {
+	supervisor: ReviewerInfo | null;
 }

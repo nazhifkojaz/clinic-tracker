@@ -3,7 +3,7 @@ import uuid
 from sqlalchemy import select
 
 from app.models.assignment import AssignmentType, SupervisorAssignment
-from app.models.submission import SubmissionStatus
+from app.models.submission import CaseSubmission, SubmissionStatus
 from tests.conftest import auth_header
 from tests.factories import (
     _random_suffix,
@@ -13,22 +13,43 @@ from tests.factories import (
 )
 
 
-async def test_create_submission(client, student_user, student_token, db_session):
-    """Student can create a valid case submission."""
-    dept = await create_department(db_session, name="Oral Surgery")
-    cat = await create_category(
-        db_session, dept.id, name="Extraction", required_count=20
+async def _setup_dept_with_supervisor(db_session, supervisor_user, dept_name=None):
+    """Create a department, category, and assign supervisor to the department."""
+    dept = await create_department(db_session, name=dept_name)
+    cat = await create_category(db_session, dept.id)
+    assignment = SupervisorAssignment(
+        supervisor_id=supervisor_user.id,
+        department_id=dept.id,
+        assignment_type=AssignmentType.department,
     )
+    db_session.add(assignment)
+    await db_session.commit()
+    return dept, cat
+
+
+def _submission_payload(dept_id, cat_id, supervisor_id, **overrides):
+    """Build a submission creation payload with required target_supervisor_id."""
+    payload = {
+        "department_id": str(dept_id),
+        "target_supervisor_id": str(supervisor_id),
+        "task_category_id": str(cat_id),
+        "case_count": 3,
+        "proof_key": "submissions/test-proof.jpg",
+        "notes": "Completed 3 extractions",
+    }
+    payload.update(overrides)
+    return payload
+
+
+async def test_create_submission(
+    client, student_user, student_token, supervisor_user, db_session
+):
+    """Student can create a valid case submission with target supervisor."""
+    dept, cat = await _setup_dept_with_supervisor(db_session, supervisor_user)
 
     response = await client.post(
         "/api/submissions",
-        json={
-            "department_id": str(dept.id),
-            "task_category_id": str(cat.id),
-            "case_count": 3,
-            "proof_key": "submissions/test-proof.jpg",
-            "notes": "Completed 3 extractions",
-        },
+        json=_submission_payload(dept.id, cat.id, supervisor_user.id),
         headers=auth_header(student_token),
     )
     assert response.status_code == 201
@@ -36,14 +57,35 @@ async def test_create_submission(client, student_user, student_token, db_session
     assert data["case_count"] == 3
     assert data["status"] == "pending"
     assert data["student_id"] == str(student_user.id)
+    assert data["target_supervisor_id"] == str(supervisor_user.id)
+    assert data["target_supervisor"]["id"] == str(supervisor_user.id)
 
 
-async def test_create_submission_invalid_department(client, student_token):
+async def test_create_submission_invalid_supervisor(
+    client, student_user, student_token, supervisor_user, db_session
+):
+    """Submission with supervisor not assigned to department should return 400."""
+    dept = await create_department(db_session, name="No SV Dept")
+    cat = await create_category(db_session, dept.id)
+
+    response = await client.post(
+        "/api/submissions",
+        json=_submission_payload(dept.id, cat.id, supervisor_user.id),
+        headers=auth_header(student_token),
+    )
+    assert response.status_code == 400
+    assert "not assigned to this department" in response.json()["detail"]
+
+
+async def test_create_submission_invalid_department(
+    client, student_token, supervisor_user
+):
     """Submission with nonexistent department should return 404."""
     response = await client.post(
         "/api/submissions",
         json={
             "department_id": str(uuid.uuid4()),
+            "target_supervisor_id": str(supervisor_user.id),
             "task_category_id": str(uuid.uuid4()),
             "case_count": 1,
             "proof_key": "submissions/test.jpg",
@@ -54,21 +96,18 @@ async def test_create_submission_invalid_department(client, student_token):
 
 
 async def test_create_submission_mismatched_category(
-    client, student_user, student_token, db_session
+    client, student_user, student_token, supervisor_user, db_session
 ):
     """Submission with category from different department should return 404."""
     dept1 = await create_department(db_session, name="Department 1")
-    dept2 = await create_department(db_session, name="Department 2")
+    dept2, cat2 = await _setup_dept_with_supervisor(
+        db_session, supervisor_user, "Department 2"
+    )
     cat1 = await create_category(db_session, dept1.id, name="Category 1")
 
     response = await client.post(
         "/api/submissions",
-        json={
-            "department_id": str(dept2.id),  # Different department
-            "task_category_id": str(cat1.id),  # Category from dept1
-            "case_count": 1,
-            "proof_key": "submissions/test.jpg",
-        },
+        json=_submission_payload(dept2.id, cat1.id, supervisor_user.id),
         headers=auth_header(student_token),
     )
     assert response.status_code == 404
@@ -77,24 +116,16 @@ async def test_create_submission_mismatched_category(
 async def test_supervisor_approve_submission(
     client, student_user, student_token, supervisor_user, supervisor_token, db_session
 ):
-    """Supervisor can approve a pending submission."""
-    dept = await create_department(db_session, name="Periodontics")
-    cat = await create_category(db_session, dept.id, name="Scaling")
+    """Target supervisor can approve a pending submission."""
+    dept, cat = await _setup_dept_with_supervisor(db_session, supervisor_user)
 
-    # Student creates submission
     create_resp = await client.post(
         "/api/submissions",
-        json={
-            "department_id": str(dept.id),
-            "task_category_id": str(cat.id),
-            "case_count": 2,
-            "proof_key": "submissions/proof.jpg",
-        },
+        json=_submission_payload(dept.id, cat.id, supervisor_user.id, case_count=2),
         headers=auth_header(student_token),
     )
     sub_id = create_resp.json()["id"]
 
-    # Supervisor approves
     review_resp = await client.patch(
         f"/api/submissions/{sub_id}/review",
         json={"status": "approved"},
@@ -105,27 +136,69 @@ async def test_supervisor_approve_submission(
     assert review_resp.json()["reviewed_by"] == str(supervisor_user.id)
 
 
-async def test_supervisor_reject_submission(
+async def test_non_target_supervisor_cannot_review(
     client, student_user, student_token, supervisor_user, supervisor_token, db_session
 ):
-    """Supervisor can reject a pending submission."""
-    dept = await create_department(db_session)
-    cat = await create_category(db_session, dept.id)
+    """Supervisor who is NOT the target supervisor cannot review."""
+    from app.core.security import hash_password
+    from app.models.user import User, UserRole
 
-    # Student creates submission
+    # Set up dept with supervisor_user as target
+    dept, cat = await _setup_dept_with_supervisor(db_session, supervisor_user)
+
     create_resp = await client.post(
         "/api/submissions",
-        json={
-            "department_id": str(dept.id),
-            "task_category_id": str(cat.id),
-            "case_count": 1,
-            "proof_key": "submissions/proof.jpg",
-        },
+        json=_submission_payload(dept.id, cat.id, supervisor_user.id),
         headers=auth_header(student_token),
     )
     sub_id = create_resp.json()["id"]
 
-    # Supervisor rejects with notes
+    # Create another supervisor also assigned to the same department
+    other_sv = User(
+        email=f"other_sv_{_random_suffix()}@test.com",
+        password_hash=await hash_password("testpass123"),
+        full_name="Other Department Supervisor",
+        role=UserRole.supervisor,
+        is_active=True,
+    )
+    db_session.add(other_sv)
+    await db_session.commit()
+    await db_session.refresh(other_sv)
+
+    other_dept_assignment = SupervisorAssignment(
+        supervisor_id=other_sv.id,
+        department_id=dept.id,
+        assignment_type=AssignmentType.department,
+    )
+    db_session.add(other_dept_assignment)
+    await db_session.commit()
+
+    from app.core.security import create_access_token
+
+    other_sv_token = create_access_token(subject=str(other_sv.id), role="supervisor")
+
+    review_resp = await client.patch(
+        f"/api/submissions/{sub_id}/review",
+        json={"status": "approved"},
+        headers=auth_header(other_sv_token),
+    )
+    assert review_resp.status_code == 403
+    assert "assigned supervisor" in review_resp.json()["detail"]
+
+
+async def test_supervisor_reject_submission(
+    client, student_user, student_token, supervisor_user, supervisor_token, db_session
+):
+    """Target supervisor can reject a pending submission."""
+    dept, cat = await _setup_dept_with_supervisor(db_session, supervisor_user)
+
+    create_resp = await client.post(
+        "/api/submissions",
+        json=_submission_payload(dept.id, cat.id, supervisor_user.id),
+        headers=auth_header(student_token),
+    )
+    sub_id = create_resp.json()["id"]
+
     review_resp = await client.patch(
         f"/api/submissions/{sub_id}/review",
         json={"status": "rejected", "review_notes": "Proof image unclear"},
@@ -140,18 +213,11 @@ async def test_cannot_re_review_submission(
     client, student_user, student_token, supervisor_user, supervisor_token, db_session
 ):
     """Cannot review an already-reviewed submission."""
-    dept = await create_department(db_session)
-    cat = await create_category(db_session, dept.id)
+    dept, cat = await _setup_dept_with_supervisor(db_session, supervisor_user)
 
-    # Create and approve
     create_resp = await client.post(
         "/api/submissions",
-        json={
-            "department_id": str(dept.id),
-            "task_category_id": str(cat.id),
-            "case_count": 1,
-            "proof_key": "submissions/proof.jpg",
-        },
+        json=_submission_payload(dept.id, cat.id, supervisor_user.id),
         headers=auth_header(student_token),
     )
     sub_id = create_resp.json()["id"]
@@ -162,7 +228,6 @@ async def test_cannot_re_review_submission(
         headers=auth_header(supervisor_token),
     )
 
-    # Try to reject the already-approved submission
     re_review = await client.patch(
         f"/api/submissions/{sub_id}/review",
         json={"status": "rejected"},
@@ -172,86 +237,66 @@ async def test_cannot_re_review_submission(
 
 
 async def test_student_only_sees_own_submissions(
-    client, student_user, student_token, admin_user, admin_token, db_session
+    client,
+    student_user,
+    student_token,
+    admin_user,
+    admin_token,
+    supervisor_user,
+    db_session,
 ):
     """Student listing submissions should only see their own."""
-    dept = await create_department(db_session)
-    cat = await create_category(db_session, dept.id)
+    dept, cat = await _setup_dept_with_supervisor(db_session, supervisor_user)
 
-    # Get initial count
     initial_list = await client.get(
         "/api/submissions", headers=auth_header(student_token)
     )
     initial_count = len(initial_list.json()["items"])
 
-    # Student creates a submission
     await client.post(
         "/api/submissions",
-        json={
-            "department_id": str(dept.id),
-            "task_category_id": str(cat.id),
-            "case_count": 1,
-            "proof_key": "submissions/proof.jpg",
-        },
+        json=_submission_payload(dept.id, cat.id, supervisor_user.id),
         headers=auth_header(student_token),
     )
 
-    # Student lists — should see initial_count + 1
     student_list = await client.get(
         "/api/submissions", headers=auth_header(student_token)
     )
     assert len(student_list.json()["items"]) == initial_count + 1
 
-    # Admin lists — should also see at least as many as student
     admin_list = await client.get("/api/submissions", headers=auth_header(admin_token))
     assert len(admin_list.json()["items"]) >= initial_count + 1
 
 
 async def test_student_cannot_create_for_another_student(
-    client, student_user, student_token, db_session
+    client, student_user, student_token, supervisor_user, db_session
 ):
     """Student cannot create submission for another student (API enforces this via user token)."""
-    dept = await create_department(db_session)
-    cat = await create_category(db_session, dept.id)
+    dept, cat = await _setup_dept_with_supervisor(db_session, supervisor_user)
 
-    # Student tries to create submission - API uses their own ID from token
     response = await client.post(
         "/api/submissions",
-        json={
-            "department_id": str(dept.id),
-            "task_category_id": str(cat.id),
-            "case_count": 1,
-            "proof_key": "submissions/proof.jpg",
-        },
+        json=_submission_payload(dept.id, cat.id, supervisor_user.id),
         headers=auth_header(student_token),
     )
-    # Should succeed - submission is created for the authenticated student
     assert response.status_code == 201
     data = response.json()
     assert data["student_id"] == str(student_user.id)
 
 
 async def test_student_cannot_review_submission(
-    client, student_user, student_token, supervisor_user, supervisor_token, db_session
+    client, student_user, student_token, supervisor_user, db_session
 ):
     """Student cannot review submissions."""
-    dept = await create_department(db_session)
-    cat = await create_category(db_session, dept.id)
+    dept, cat = await _setup_dept_with_supervisor(db_session, supervisor_user)
 
-    # Student creates submission
     create_resp = await client.post(
         "/api/submissions",
-        json={
-            "department_id": str(dept.id),
-            "task_category_id": str(cat.id),
-            "case_count": 1,
-            "proof_key": "submissions/proof.jpg",
-        },
+        json=_submission_payload(dept.id, cat.id, supervisor_user.id),
         headers=auth_header(student_token),
     )
     sub_id = create_resp.json()["id"]
 
-    # Student tries to review - should fail (require_supervisor dependency)
     review_resp = await client.patch(
         f"/api/submissions/{sub_id}/review",
         json={"status": "approved"},
@@ -270,8 +315,7 @@ async def test_supervisor_can_only_see_assigned_students_submissions(
     db_session,
 ):
     """Supervisor should only see submissions from their assigned students or departments."""
-    # Create a separate student for this test to avoid interference
-    from app.core.security import hash_password
+    from app.core.security import hash_password, create_access_token
     from app.models.user import User, UserRole
 
     new_student = User(
@@ -287,77 +331,45 @@ async def test_supervisor_can_only_see_assigned_students_submissions(
     await db_session.commit()
     await db_session.refresh(new_student)
 
-    # Create a token for the new student
-    from app.core.security import create_access_token
-
     new_student_token = create_access_token(subject=str(new_student.id), role="student")
 
-    dept = await create_department(db_session)
-    cat = await create_category(db_session, dept.id)
+    dept, cat = await _setup_dept_with_supervisor(db_session, supervisor_user)
 
-    # Get initial supervisor count
     initial_supervisor_list = await client.get(
         "/api/submissions", headers=auth_header(supervisor_token)
     )
     initial_count = len(initial_supervisor_list.json()["items"])
 
-    # Create a submission from the new student (supervisor not assigned yet)
+    # New student submits (supervisor not assigned to this student)
     await client.post(
         "/api/submissions",
-        json={
-            "department_id": str(dept.id),
-            "task_category_id": str(cat.id),
-            "case_count": 1,
-            "proof_key": "submissions/proof.jpg",
-        },
+        json=_submission_payload(dept.id, cat.id, supervisor_user.id),
         headers=auth_header(new_student_token),
     )
 
-    # Supervisor lists - should still see initial_count because they're not assigned
+    # Supervisor sees it because they supervise the department
     supervisor_list = await client.get(
         "/api/submissions", headers=auth_header(supervisor_token)
     )
-    assert len(supervisor_list.json()["items"]) == initial_count
-
-    # Create assignment
-    assignment = SupervisorAssignment(
-        supervisor_id=supervisor_user.id,
-        student_id=new_student.id,
-        assignment_type=AssignmentType.primary,
-    )
-    db_session.add(assignment)
-    await db_session.commit()
-
-    # Now supervisor should see initial_count + 1 (their assigned student's submission)
-    supervisor_list_after = await client.get(
-        "/api/submissions", headers=auth_header(supervisor_token)
-    )
-    assert len(supervisor_list_after.json()["items"]) == initial_count + 1
+    assert len(supervisor_list.json()["items"]) == initial_count + 1
 
 
 async def test_submission_creates_audit_log(
-    client, student_user, student_token, db_session
+    client, student_user, student_token, supervisor_user, db_session
 ):
     """Creating a submission should create an audit log entry."""
     from app.models.audit_log import AuditLog
 
-    dept = await create_department(db_session)
-    cat = await create_category(db_session, dept.id)
+    dept, cat = await _setup_dept_with_supervisor(db_session, supervisor_user)
 
     response = await client.post(
         "/api/submissions",
-        json={
-            "department_id": str(dept.id),
-            "task_category_id": str(cat.id),
-            "case_count": 1,
-            "proof_key": "submissions/proof.jpg",
-        },
+        json=_submission_payload(dept.id, cat.id, supervisor_user.id),
         headers=auth_header(student_token),
     )
     assert response.status_code == 201
     submission_id = response.json()["id"]
 
-    # Check audit log was created
     result = await db_session.execute(
         select(AuditLog).where(
             AuditLog.table_name == "case_submissions",
@@ -380,15 +392,12 @@ async def test_supervisor_sees_department_submissions_not_primary_supervisor(
     db_session,
 ):
     """
-    Test that a supervisor sees submissions for their assigned department,
-    even when the student is primarily supervised by a different supervisor.
-    This is the bug fix: student-b (supervised by supervisor-B) submits for
-    department A (supervised by supervisor-A) → supervisor-A should see it.
+    Supervisor-A sees submissions for their assigned department,
+    even when the student is primarily supervised by supervisor-B.
     """
     from app.core.security import hash_password, create_access_token
     from app.models.user import User, UserRole
 
-    # Create another supervisor (supervisor-B) who will be student's primary supervisor
     other_supervisor = User(
         email=f"other_sup_{_random_suffix()}@test.com",
         password_hash=await hash_password("testpass123"),
@@ -404,17 +413,9 @@ async def test_supervisor_sees_department_submissions_not_primary_supervisor(
         subject=str(other_supervisor.id), role="supervisor"
     )
 
-    # Create department A that supervisor_user (supervisor-A) will supervise
-    dept_a = await create_department(db_session, name="Department A")
-    cat_a = await create_category(db_session, dept_a.id, name="Category A")
-
-    # Assign supervisor-A to department A
-    dept_assignment = SupervisorAssignment(
-        supervisor_id=supervisor_user.id,
-        department_id=dept_a.id,
-        assignment_type=AssignmentType.department,
+    dept_a, cat_a = await _setup_dept_with_supervisor(
+        db_session, supervisor_user, "Department A"
     )
-    db_session.add(dept_assignment)
 
     # Assign supervisor-B as primary supervisor of the student
     primary_assignment = SupervisorAssignment(
@@ -425,51 +426,49 @@ async def test_supervisor_sees_department_submissions_not_primary_supervisor(
     db_session.add(primary_assignment)
     await db_session.commit()
 
-    # Student submits for department A
+    # Student submits for department A targeting supervisor-A
     submission_response = await client.post(
         "/api/submissions",
-        json={
-            "department_id": str(dept_a.id),
-            "task_category_id": str(cat_a.id),
-            "case_count": 5,
-            "proof_key": "submissions/proof.jpg",
-        },
+        json=_submission_payload(dept_a.id, cat_a.id, supervisor_user.id, case_count=5),
         headers=auth_header(student_token),
     )
     assert submission_response.status_code == 201
     submission_id = submission_response.json()["id"]
 
-    # supervisor-A (department supervisor) should see this submission
+    # supervisor-A (department + target supervisor) should see this
     supervisor_a_list = await client.get(
         "/api/submissions", headers=auth_header(supervisor_token)
     )
-    supervisor_a_submissions = supervisor_a_list.json()["items"]
-    submission_ids_seen_by_a = {s["id"] for s in supervisor_a_submissions}
+    submission_ids_seen_by_a = {s["id"] for s in supervisor_a_list.json()["items"]}
     assert submission_id in submission_ids_seen_by_a
 
-    # supervisor-B (primary supervisor) should also see this submission
-    # (because they're the student's primary supervisor)
+    # supervisor-B (primary/academic supervisor) should also see this
     supervisor_b_list = await client.get(
         "/api/submissions", headers=auth_header(other_supervisor_token)
     )
-    supervisor_b_submissions = supervisor_b_list.json()["items"]
-    submission_ids_seen_by_b = {s["id"] for s in supervisor_b_submissions}
+    submission_ids_seen_by_b = {s["id"] for s in supervisor_b_list.json()["items"]}
     assert submission_id in submission_ids_seen_by_b
 
+    # supervisor-B should NOT be able to review (not the target)
+    sv_b_review = await client.patch(
+        f"/api/submissions/{submission_id}/review",
+        json={"status": "approved"},
+        headers=auth_header(other_supervisor_token),
+    )
+    assert sv_b_review.status_code == 403
 
-async def test_invalid_proof_url_format(client, student_token, db_session):
+
+async def test_invalid_proof_url_format(
+    client, student_token, supervisor_user, db_session
+):
     """Submission with invalid proof_url format should return 422."""
-    dept = await create_department(db_session)
-    cat = await create_category(db_session, dept.id)
+    dept, cat = await _setup_dept_with_supervisor(db_session, supervisor_user)
 
     response = await client.post(
         "/api/submissions",
-        json={
-            "department_id": str(dept.id),
-            "task_category_id": str(cat.id),
-            "case_count": 1,
-            "proof_key": "invalid-path/proof.jpg",  # Missing 'submissions/' prefix
-        },
+        json=_submission_payload(
+            dept.id, cat.id, supervisor_user.id, proof_key="invalid-path/proof.jpg"
+        ),
         headers=auth_header(student_token),
     )
     assert response.status_code == 422
@@ -480,25 +479,21 @@ async def test_empty_proof_url_returns_404(
     client, student_user, student_token, db_session
 ):
     """Empty proof_url on get_proof_url should return 404, not 500."""
-    from app.models.submission import CaseSubmission
-
     dept = await create_department(db_session)
     cat = await create_category(db_session, dept.id)
 
-    # Create submission with empty proof_url (directly in DB to bypass validation)
     submission = CaseSubmission(
         student_id=student_user.id,
         department_id=dept.id,
         task_category_id=cat.id,
         case_count=1,
-        proof_key="",  # Empty string
+        proof_key="",
         status=SubmissionStatus.pending,
     )
     db_session.add(submission)
     await db_session.commit()
     await db_session.refresh(submission)
 
-    # Try to get proof URL - should return 404, not 500
     response = await client.get(
         f"/api/submissions/{submission.id}/proof-url",
         headers=auth_header(student_token),
@@ -508,15 +503,13 @@ async def test_empty_proof_url_returns_404(
 
 
 async def test_get_submission_by_id_student_own_only(
-    client, student_user, student_token, db_session
+    client, student_user, student_token, supervisor_user, db_session
 ):
     """Student can only fetch their own submission by ID."""
-    dept = await create_department(db_session)
-    cat = await create_category(db_session, dept.id)
-
-    # Create another student
     from app.core.security import hash_password, create_access_token
     from app.models.user import User, UserRole
+
+    dept, cat = await _setup_dept_with_supervisor(db_session, supervisor_user)
 
     other_student = User(
         email=f"other_student_{_random_suffix()}@test.com",
@@ -535,20 +528,13 @@ async def test_get_submission_by_id_student_own_only(
         subject=str(other_student.id), role="student"
     )
 
-    # Other student creates a submission
     create_resp = await client.post(
         "/api/submissions",
-        json={
-            "department_id": str(dept.id),
-            "task_category_id": str(cat.id),
-            "case_count": 1,
-            "proof_key": "submissions/proof.jpg",
-        },
+        json=_submission_payload(dept.id, cat.id, supervisor_user.id),
         headers=auth_header(other_student_token),
     )
     sub_id = create_resp.json()["id"]
 
-    # Original student tries to fetch other student's submission - should fail
     response = await client.get(
         f"/api/submissions/{sub_id}",
         headers=auth_header(student_token),
@@ -559,53 +545,38 @@ async def test_get_submission_by_id_student_own_only(
 async def test_get_submission_by_id_supervisor_can_view_assigned(
     client, student_user, student_token, supervisor_user, supervisor_token, db_session
 ):
-    """Supervisor can view submission from their assigned student."""
-    dept = await create_department(db_session)
-    cat = await create_category(db_session, dept.id)
+    """Supervisor can view submission from their assigned department."""
+    dept, cat = await _setup_dept_with_supervisor(db_session, supervisor_user)
 
-    # Student creates submission
     create_resp = await client.post(
         "/api/submissions",
-        json={
-            "department_id": str(dept.id),
-            "task_category_id": str(cat.id),
-            "case_count": 1,
-            "proof_key": "submissions/proof.jpg",
-        },
+        json=_submission_payload(dept.id, cat.id, supervisor_user.id),
         headers=auth_header(student_token),
     )
     sub_id = create_resp.json()["id"]
 
-    # Supervisor should be able to view the submission (assigned via department)
     response = await client.get(
         f"/api/submissions/{sub_id}",
         headers=auth_header(supervisor_token),
     )
     assert response.status_code == 200
     assert response.json()["id"] == sub_id
+    assert response.json()["target_supervisor"]["id"] == str(supervisor_user.id)
 
 
 async def test_get_submission_by_id_admin_can_view_all(
-    client, student_user, student_token, admin_token, db_session
+    client, student_user, student_token, supervisor_user, admin_token, db_session
 ):
     """Admin can view any submission by ID."""
-    dept = await create_department(db_session)
-    cat = await create_category(db_session, dept.id)
+    dept, cat = await _setup_dept_with_supervisor(db_session, supervisor_user)
 
-    # Student creates submission
     create_resp = await client.post(
         "/api/submissions",
-        json={
-            "department_id": str(dept.id),
-            "task_category_id": str(cat.id),
-            "case_count": 1,
-            "proof_key": "submissions/proof.jpg",
-        },
+        json=_submission_payload(dept.id, cat.id, supervisor_user.id),
         headers=auth_header(student_token),
     )
     sub_id = create_resp.json()["id"]
 
-    # Admin should be able to view any submission
     response = await client.get(
         f"/api/submissions/{sub_id}",
         headers=auth_header(admin_token),
@@ -625,26 +596,18 @@ async def test_get_submission_not_found_returns_404(client, student_token):
 
 
 async def test_get_proof_url_student_own_only(
-    client, student_user, student_token, supervisor_token, db_session
+    client, student_user, student_token, supervisor_user, supervisor_token, db_session
 ):
     """Student can only get proof URL for their own submission."""
-    dept = await create_department(db_session)
-    cat = await create_category(db_session, dept.id)
+    dept, cat = await _setup_dept_with_supervisor(db_session, supervisor_user)
 
-    # Student creates submission
     create_resp = await client.post(
         "/api/submissions",
-        json={
-            "department_id": str(dept.id),
-            "task_category_id": str(cat.id),
-            "case_count": 1,
-            "proof_key": "submissions/proof.jpg",
-        },
+        json=_submission_payload(dept.id, cat.id, supervisor_user.id),
         headers=auth_header(student_token),
     )
     sub_id = create_resp.json()["id"]
 
-    # Supervisor should be able to get proof URL (assigned via department)
     response = await client.get(
         f"/api/submissions/{sub_id}/proof-url",
         headers=auth_header(supervisor_token),
@@ -656,12 +619,9 @@ async def test_get_proof_url_empty_returns_404(
     client, student_user, student_token, db_session
 ):
     """Empty proof_url should return 404."""
-    from app.models.submission import CaseSubmission
-
     dept = await create_department(db_session)
     cat = await create_category(db_session, dept.id)
 
-    # Create submission with empty proof_key
     submission = CaseSubmission(
         student_id=student_user.id,
         department_id=dept.id,
@@ -715,7 +675,6 @@ async def test_get_upload_url_includes_unique_key(client, student_token):
     )
     assert response.status_code == 200
     data = response.json()
-    # Key should be a string with some length (UUID-based)
     assert len(data["object_key"]) > 0
 
 
@@ -738,7 +697,6 @@ async def test_student_can_delete_own_pending_submission(
     )
     assert response.status_code == 204
 
-    # Submission is no longer accessible
     get_resp = await client.get(
         f"/api/submissions/{sub.id}",
         headers=auth_header(student_token),
@@ -747,32 +705,24 @@ async def test_student_can_delete_own_pending_submission(
 
 
 async def test_student_cannot_delete_approved_submission(
-    client, student_user, student_token, supervisor_token, db_session
+    client, student_user, student_token, supervisor_user, supervisor_token, db_session
 ):
     """Student cannot delete an already-approved submission."""
-    dept = await create_department(db_session)
-    cat = await create_category(db_session, dept.id)
+    dept, cat = await _setup_dept_with_supervisor(db_session, supervisor_user)
 
     create_resp = await client.post(
         "/api/submissions",
-        json={
-            "department_id": str(dept.id),
-            "task_category_id": str(cat.id),
-            "case_count": 1,
-            "proof_key": "submissions/proof.jpg",
-        },
+        json=_submission_payload(dept.id, cat.id, supervisor_user.id),
         headers=auth_header(student_token),
     )
     sub_id = create_resp.json()["id"]
 
-    # Approve it
     await client.patch(
         f"/api/submissions/{sub_id}/review",
         json={"status": "approved"},
         headers=auth_header(supervisor_token),
     )
 
-    # Student tries to delete approved submission
     response = await client.delete(
         f"/api/submissions/{sub_id}",
         headers=auth_header(student_token),
@@ -781,7 +731,7 @@ async def test_student_cannot_delete_approved_submission(
 
 
 async def test_student_cannot_delete_others_submission(
-    client, student_user, student_token, db_session
+    client, student_user, student_token, supervisor_user, db_session
 ):
     """Student cannot delete another student's submission."""
     from app.core.security import hash_password, create_access_token
@@ -801,22 +751,15 @@ async def test_student_cannot_delete_others_submission(
     await db_session.refresh(other)
     other_token = create_access_token(subject=str(other.id), role="student")
 
-    dept = await create_department(db_session)
-    cat = await create_category(db_session, dept.id)
+    dept, cat = await _setup_dept_with_supervisor(db_session, supervisor_user)
 
     create_resp = await client.post(
         "/api/submissions",
-        json={
-            "department_id": str(dept.id),
-            "task_category_id": str(cat.id),
-            "case_count": 1,
-            "proof_key": "submissions/proof.jpg",
-        },
+        json=_submission_payload(dept.id, cat.id, supervisor_user.id),
         headers=auth_header(other_token),
     )
     sub_id = create_resp.json()["id"]
 
-    # Original student tries to delete other's submission
     response = await client.delete(
         f"/api/submissions/{sub_id}",
         headers=auth_header(student_token),
@@ -825,20 +768,14 @@ async def test_student_cannot_delete_others_submission(
 
 
 async def test_supervisor_can_delete_pending_submission(
-    client, student_user, student_token, supervisor_token, db_session
+    client, student_user, student_token, supervisor_user, supervisor_token, db_session
 ):
     """Supervisor can delete any pending submission."""
-    dept = await create_department(db_session)
-    cat = await create_category(db_session, dept.id)
+    dept, cat = await _setup_dept_with_supervisor(db_session, supervisor_user)
 
     create_resp = await client.post(
         "/api/submissions",
-        json={
-            "department_id": str(dept.id),
-            "task_category_id": str(cat.id),
-            "case_count": 1,
-            "proof_key": "submissions/proof.jpg",
-        },
+        json=_submission_payload(dept.id, cat.id, supervisor_user.id),
         headers=auth_header(student_token),
     )
     sub_id = create_resp.json()["id"]
@@ -851,20 +788,14 @@ async def test_supervisor_can_delete_pending_submission(
 
 
 async def test_admin_can_delete_any_pending_submission(
-    client, student_user, student_token, admin_token, db_session
+    client, student_user, student_token, supervisor_user, admin_token, db_session
 ):
     """Admin can delete any pending submission."""
-    dept = await create_department(db_session)
-    cat = await create_category(db_session, dept.id)
+    dept, cat = await _setup_dept_with_supervisor(db_session, supervisor_user)
 
     create_resp = await client.post(
         "/api/submissions",
-        json={
-            "department_id": str(dept.id),
-            "task_category_id": str(cat.id),
-            "case_count": 1,
-            "proof_key": "submissions/proof.jpg",
-        },
+        json=_submission_payload(dept.id, cat.id, supervisor_user.id),
         headers=auth_header(student_token),
     )
     sub_id = create_resp.json()["id"]
@@ -884,19 +815,16 @@ async def test_deleted_submission_excluded_from_list(
     cat = await create_category(db_session, dept.id)
     sub = await create_submission(db_session, student_user.id, dept.id, cat.id)
 
-    # Confirm it's visible before delete
     list_before = await client.get(
         "/api/submissions", headers=auth_header(student_token)
     )
     ids_before = {s["id"] for s in list_before.json()["items"]}
     assert str(sub.id) in ids_before
 
-    # Delete
     await client.delete(
         f"/api/submissions/{sub.id}", headers=auth_header(student_token)
     )
 
-    # No longer in list
     list_after = await client.get(
         "/api/submissions", headers=auth_header(student_token)
     )
@@ -912,7 +840,6 @@ async def test_admin_can_list_deleted_submissions(
     cat = await create_category(db_session, dept.id)
     sub = await create_submission(db_session, student_user.id, dept.id, cat.id)
 
-    # Delete it as student
     await client.delete(
         f"/api/submissions/{sub.id}", headers=auth_header(student_token)
     )
@@ -924,7 +851,6 @@ async def test_admin_can_list_deleted_submissions(
     ids = {s["id"] for s in response.json()["items"]}
     assert str(sub.id) in ids
 
-    # deleted_at should be populated
     deleted_sub = next(s for s in response.json()["items"] if s["id"] == str(sub.id))
     assert deleted_sub["deleted_at"] is not None
 
@@ -948,24 +874,20 @@ async def test_admin_can_restore_deleted_submission(
     cat = await create_category(db_session, dept.id)
     sub = await create_submission(db_session, student_user.id, dept.id, cat.id)
 
-    # Delete
     await client.delete(
         f"/api/submissions/{sub.id}", headers=auth_header(student_token)
     )
 
-    # Confirm gone from normal list
     list_resp = await client.get("/api/submissions", headers=auth_header(admin_token))
     ids = {s["id"] for s in list_resp.json()["items"]}
     assert str(sub.id) not in ids
 
-    # Restore
     restore_resp = await client.post(
         f"/api/submissions/{sub.id}/restore", headers=auth_header(admin_token)
     )
     assert restore_resp.status_code == 200
     assert restore_resp.json()["deleted_at"] is None
 
-    # Now visible again
     list_after = await client.get("/api/submissions", headers=auth_header(admin_token))
     ids_after = {s["id"] for s in list_after.json()["items"]}
     assert str(sub.id) in ids_after
@@ -1040,6 +962,368 @@ async def test_restore_creates_audit_log(
         )
     )
     entries = result.scalars().all()
-    # At least one update entry from restore (there may also be a review update)
     restore_entries = [e for e in entries if e.user_id == admin_user.id]
     assert len(restore_entries) >= 1
+
+
+# ---------------------------------------------------------------------------
+# Student edit pending submission tests
+# ---------------------------------------------------------------------------
+
+
+async def test_student_can_edit_pending_submission(
+    client, student_user, student_token, supervisor_user, db_session
+):
+    """Student can edit case_count, proof_key, and notes on a pending submission."""
+    dept, cat = await _setup_dept_with_supervisor(db_session, supervisor_user)
+
+    create_resp = await client.post(
+        "/api/submissions",
+        json=_submission_payload(dept.id, cat.id, supervisor_user.id),
+        headers=auth_header(student_token),
+    )
+    sub_id = create_resp.json()["id"]
+
+    update_resp = await client.put(
+        f"/api/submissions/{sub_id}",
+        json={
+            "case_count": 5,
+            "proof_key": "submissions/updated-proof.jpg",
+            "notes": "Updated notes",
+        },
+        headers=auth_header(student_token),
+    )
+    assert update_resp.status_code == 200
+    data = update_resp.json()
+    assert data["case_count"] == 5
+    assert data["proof_key"] == "submissions/updated-proof.jpg"
+    assert data["notes"] == "Updated notes"
+    # Immutable fields unchanged
+    assert data["department_id"] == str(dept.id)
+    assert data["task_category_id"] == str(cat.id)
+    assert data["target_supervisor_id"] == str(supervisor_user.id)
+
+
+async def test_student_cannot_edit_reviewed_submission(
+    client, student_user, student_token, supervisor_user, supervisor_token, db_session
+):
+    """Student cannot edit an already-reviewed submission."""
+    dept, cat = await _setup_dept_with_supervisor(db_session, supervisor_user)
+
+    create_resp = await client.post(
+        "/api/submissions",
+        json=_submission_payload(dept.id, cat.id, supervisor_user.id),
+        headers=auth_header(student_token),
+    )
+    sub_id = create_resp.json()["id"]
+
+    await client.patch(
+        f"/api/submissions/{sub_id}/review",
+        json={"status": "approved"},
+        headers=auth_header(supervisor_token),
+    )
+
+    update_resp = await client.put(
+        f"/api/submissions/{sub_id}",
+        json={"case_count": 10},
+        headers=auth_header(student_token),
+    )
+    assert update_resp.status_code == 400
+
+
+async def test_student_cannot_edit_others_submission(
+    client, student_user, student_token, supervisor_user, db_session
+):
+    """Student cannot edit another student's submission."""
+    from app.core.security import hash_password, create_access_token
+    from app.models.user import User, UserRole
+
+    dept, cat = await _setup_dept_with_supervisor(db_session, supervisor_user)
+
+    other = User(
+        email=f"edit_other_{_random_suffix()}@test.com",
+        password_hash=await hash_password("testpass123"),
+        full_name="Other Student",
+        institutional_id=f"EDITOTH{_random_suffix()}",
+        role=UserRole.student,
+        is_active=True,
+        email_verified=True,
+    )
+    db_session.add(other)
+    await db_session.commit()
+    await db_session.refresh(other)
+    other_token = create_access_token(subject=str(other.id), role="student")
+
+    create_resp = await client.post(
+        "/api/submissions",
+        json=_submission_payload(dept.id, cat.id, supervisor_user.id),
+        headers=auth_header(other_token),
+    )
+    sub_id = create_resp.json()["id"]
+
+    update_resp = await client.put(
+        f"/api/submissions/{sub_id}",
+        json={"case_count": 10},
+        headers=auth_header(student_token),
+    )
+    assert update_resp.status_code == 403
+
+
+# ---------------------------------------------------------------------------
+# can_review flag tests
+# ---------------------------------------------------------------------------
+
+
+async def test_can_review_true_for_target_supervisor(
+    client, student_user, student_token, supervisor_user, supervisor_token, db_session
+):
+    """can_review is true for the target supervisor."""
+    dept, cat = await _setup_dept_with_supervisor(db_session, supervisor_user)
+
+    await client.post(
+        "/api/submissions",
+        json=_submission_payload(dept.id, cat.id, supervisor_user.id),
+        headers=auth_header(student_token),
+    )
+
+    list_resp = await client.get(
+        "/api/submissions", headers=auth_header(supervisor_token)
+    )
+    items = list_resp.json()["items"]
+    sub = next(s for s in items if s["target_supervisor_id"] == str(supervisor_user.id))
+    assert sub["can_review"] is True
+
+
+async def test_can_review_false_for_academic_supervisor(
+    client, student_user, student_token, supervisor_user, supervisor_token, db_session
+):
+    """can_review is false for academic (primary) supervisors who are not the target."""
+    from app.core.security import hash_password, create_access_token
+    from app.models.user import User, UserRole
+
+    academic_sv = User(
+        email=f"academic_sv_{_random_suffix()}@test.com",
+        password_hash=await hash_password("testpass123"),
+        full_name="Academic Supervisor",
+        role=UserRole.supervisor,
+        is_active=True,
+    )
+    db_session.add(academic_sv)
+    await db_session.commit()
+    await db_session.refresh(academic_sv)
+    academic_sv_token = create_access_token(
+        subject=str(academic_sv.id), role="supervisor"
+    )
+
+    dept, cat = await _setup_dept_with_supervisor(db_session, supervisor_user)
+
+    # Assign academic supervisor to student
+    primary = SupervisorAssignment(
+        supervisor_id=academic_sv.id,
+        student_id=student_user.id,
+        assignment_type=AssignmentType.primary,
+    )
+    db_session.add(primary)
+    await db_session.commit()
+
+    await client.post(
+        "/api/submissions",
+        json=_submission_payload(dept.id, cat.id, supervisor_user.id),
+        headers=auth_header(student_token),
+    )
+
+    list_resp = await client.get(
+        "/api/submissions", headers=auth_header(academic_sv_token)
+    )
+    items = list_resp.json()["items"]
+    assert len(items) > 0
+    for item in items:
+        assert item["can_review"] is False
+
+
+# ---------------------------------------------------------------------------
+# Phase 5: Notification tests
+# ---------------------------------------------------------------------------
+
+
+async def test_create_submission_notifies_target_supervisor(
+    client, student_user, student_token, supervisor_user, db_session
+):
+    """Creating a submission persists a Notification record for the target supervisor."""
+    from sqlalchemy import select as sa_select
+    from app.models.notification import Notification
+
+    dept, cat = await _setup_dept_with_supervisor(db_session, supervisor_user)
+    response = await client.post(
+        "/api/submissions",
+        json=_submission_payload(dept.id, cat.id, supervisor_user.id),
+        headers=auth_header(student_token),
+    )
+    assert response.status_code == 201
+
+    result = await db_session.execute(
+        sa_select(Notification).where(
+            Notification.sender_id == student_user.id,
+            Notification.recipient_id == supervisor_user.id,
+        )
+    )
+    notification = result.scalar_one_or_none()
+    assert notification is not None
+    assert "awaiting your review" in notification.subject
+
+
+async def test_create_submission_ccs_academic_supervisor(
+    client, student_user, student_token, supervisor_user, db_session
+):
+    """Creating a submission also sends a CC Notification to the academic supervisor."""
+    from sqlalchemy import select as sa_select
+    from app.core.security import hash_password
+    from app.models.notification import Notification
+    from app.models.user import User, UserRole
+
+    dept, cat = await _setup_dept_with_supervisor(db_session, supervisor_user)
+
+    # Create academic supervisor and assign them
+    acad_sv = User(
+        email=f"acad_{_random_suffix()}@test.com",
+        password_hash=await hash_password("testpass123"),
+        full_name="Academic Supervisor",
+        role=UserRole.supervisor,
+        is_active=True,
+    )
+    db_session.add(acad_sv)
+    await db_session.commit()
+    await db_session.refresh(acad_sv)
+
+    primary = SupervisorAssignment(
+        supervisor_id=acad_sv.id,
+        student_id=student_user.id,
+        assignment_type=AssignmentType.primary,
+    )
+    db_session.add(primary)
+    await db_session.commit()
+
+    response = await client.post(
+        "/api/submissions",
+        json=_submission_payload(dept.id, cat.id, supervisor_user.id),
+        headers=auth_header(student_token),
+    )
+    assert response.status_code == 201
+
+    result = await db_session.execute(
+        sa_select(Notification).where(
+            Notification.sender_id == student_user.id,
+            Notification.recipient_id == acad_sv.id,
+        )
+    )
+    cc_notification = result.scalar_one_or_none()
+    assert cc_notification is not None
+    assert "[CC]" in cc_notification.subject
+
+
+async def test_create_submission_no_cc_without_academic_supervisor(
+    client, student_token, supervisor_user, db_session
+):
+    """No CC Notification is created when the student has no academic supervisor."""
+    from sqlalchemy import select as sa_select
+    from app.models.notification import Notification
+
+    dept, cat = await _setup_dept_with_supervisor(db_session, supervisor_user)
+    await client.post(
+        "/api/submissions",
+        json=_submission_payload(dept.id, cat.id, supervisor_user.id),
+        headers=auth_header(student_token),
+    )
+
+    result = await db_session.execute(
+        sa_select(Notification).where(Notification.subject.contains("[CC]"))
+    )
+    assert result.scalar_one_or_none() is None
+
+
+async def test_review_submission_notifies_student(
+    client, student_user, student_token, supervisor_user, supervisor_token, db_session
+):
+    """Reviewing a submission persists a Notification record for the student."""
+    from sqlalchemy import select as sa_select
+    from app.models.notification import Notification
+
+    dept, cat = await _setup_dept_with_supervisor(db_session, supervisor_user)
+    create_resp = await client.post(
+        "/api/submissions",
+        json=_submission_payload(dept.id, cat.id, supervisor_user.id),
+        headers=auth_header(student_token),
+    )
+    sub_id = create_resp.json()["id"]
+
+    await client.patch(
+        f"/api/submissions/{sub_id}/review",
+        json={"status": "approved", "review_notes": "Well done"},
+        headers=auth_header(supervisor_token),
+    )
+
+    result = await db_session.execute(
+        sa_select(Notification).where(
+            Notification.sender_id == supervisor_user.id,
+            Notification.recipient_id == student_user.id,
+        )
+    )
+    notification = result.scalar_one_or_none()
+    assert notification is not None
+    assert "approved" in notification.subject
+    assert "Well done" in notification.message
+
+
+async def test_review_submission_ccs_academic_supervisor(
+    client, student_user, student_token, supervisor_user, supervisor_token, db_session
+):
+    """Reviewing a submission also sends a CC Notification to the academic supervisor."""
+    from sqlalchemy import select as sa_select
+    from app.core.security import hash_password
+    from app.models.notification import Notification
+    from app.models.user import User, UserRole
+
+    dept, cat = await _setup_dept_with_supervisor(db_session, supervisor_user)
+
+    acad_sv = User(
+        email=f"acad_review_{_random_suffix()}@test.com",
+        password_hash=await hash_password("testpass123"),
+        full_name="Academic Supervisor Review",
+        role=UserRole.supervisor,
+        is_active=True,
+    )
+    db_session.add(acad_sv)
+    await db_session.commit()
+    await db_session.refresh(acad_sv)
+
+    primary = SupervisorAssignment(
+        supervisor_id=acad_sv.id,
+        student_id=student_user.id,
+        assignment_type=AssignmentType.primary,
+    )
+    db_session.add(primary)
+    await db_session.commit()
+
+    create_resp = await client.post(
+        "/api/submissions",
+        json=_submission_payload(dept.id, cat.id, supervisor_user.id),
+        headers=auth_header(student_token),
+    )
+    sub_id = create_resp.json()["id"]
+
+    await client.patch(
+        f"/api/submissions/{sub_id}/review",
+        json={"status": "rejected", "review_notes": "Needs more detail"},
+        headers=auth_header(supervisor_token),
+    )
+
+    result = await db_session.execute(
+        sa_select(Notification).where(
+            Notification.sender_id == supervisor_user.id,
+            Notification.recipient_id == acad_sv.id,
+        )
+    )
+    cc_notification = result.scalar_one_or_none()
+    assert cc_notification is not None
+    assert "[CC]" in cc_notification.subject
+    assert "rejected" in cc_notification.subject

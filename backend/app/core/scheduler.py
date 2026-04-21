@@ -42,7 +42,6 @@ async def run_rotation_reminders() -> None:
             now = datetime.now(timezone.utc)
             seven_days_ago = now - timedelta(days=7)
 
-            # 1. Get all current rotations with department info
             rot_result = await db.execute(
                 select(StudentRotation, Department)
                 .join(Department, StudentRotation.department_id == Department.id)
@@ -57,7 +56,6 @@ async def run_rotation_reminders() -> None:
                 logger.info("No current rotations found, skipping")
                 return
 
-            # 2. Build required counts per department
             cat_result = await db.execute(
                 select(
                     TaskCategory.department_id,
@@ -71,7 +69,6 @@ async def run_rotation_reminders() -> None:
                 for row in cat_result.all()
             }
 
-            # 3. Build approved counts per (student, department)
             student_ids = list({str(rot.student_id) for rot, _ in rows})
             dept_ids = list({str(rot.department_id) for rot, _ in rows})
 
@@ -96,7 +93,6 @@ async def run_rotation_reminders() -> None:
                 for row in sub_result.all()
             }
 
-            # 4. Get student info
             user_result = await db.execute(
                 select(User).where(
                     User.id.in_([UUID(sid) for sid in student_ids]),
@@ -107,7 +103,6 @@ async def run_rotation_reminders() -> None:
                 str(u.id): u for u in user_result.scalars().all()
             }
 
-            # 5. System sender
             sender_id = await _get_system_sender_id(db)
             if not sender_id:
                 logger.warning(
@@ -115,7 +110,6 @@ async def run_rotation_reminders() -> None:
                 )
                 return
 
-            # 6. Evaluate each rotation
             sent_count = 0
 
             for rot, dept in rows:
@@ -183,7 +177,6 @@ async def run_rotation_reminders() -> None:
                         rot.student_id,
                     )
 
-                # Update cooldown timestamp
                 rot.last_reminder_sent = now
                 sent_count += 1
 

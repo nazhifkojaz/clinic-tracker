@@ -16,6 +16,7 @@ from app.api.departments import router as departments_router
 from app.api.invite_codes import router as invite_codes_router
 from app.api.notifications import router as notifications_router
 from app.api.rotations import router as rotations_router
+from app.api.students import router as students_router
 from app.api.submissions import router as submissions_router
 from app.api.users import router as users_router
 from app.core.config import settings
@@ -27,8 +28,6 @@ logger = logging.getLogger(__name__)
 
 # Lazy scheduler import to avoid crash if apscheduler is not installed
 _scheduler = None
-
-logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
@@ -42,10 +41,9 @@ async def lifespan(app: FastAPI):
     Shutdown:
     - Dispose database connections gracefully
     """
-    # Startup
+    global _scheduler
     logger.info("Starting %s...", settings.APP_NAME)
 
-    # Validate database connectivity
     try:
         async with engine.begin() as conn:
             await conn.execute(text("SELECT 1"))
@@ -55,7 +53,6 @@ async def lifespan(app: FastAPI):
             "Database not reachable at startup (will retry on first request): %s", e
         )
 
-    # Start APScheduler for rotation reminders
     try:
         from app.core.scheduler import create_scheduler
 
@@ -67,15 +64,12 @@ async def lifespan(app: FastAPI):
 
     yield
 
-    # Shutdown
     logger.info("Shutting down %s...", settings.APP_NAME)
 
-    # Stop scheduler
     if _scheduler:
         _scheduler.shutdown(wait=False)
         logger.info("APScheduler stopped")
 
-    # Dispose database connections
     await engine.dispose()
     logger.info("Database connections disposed")
 
@@ -121,6 +115,7 @@ app.include_router(invite_codes_router)
 app.include_router(users_router)
 app.include_router(departments_router)
 app.include_router(rotations_router)
+app.include_router(students_router)
 app.include_router(submissions_router)
 app.include_router(assignments_router)
 app.include_router(dashboard_router)

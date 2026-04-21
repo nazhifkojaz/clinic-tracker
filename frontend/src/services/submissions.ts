@@ -4,6 +4,7 @@ import type {
 	Submission,
 	SubmissionCreate,
 	SubmissionReview,
+	SubmissionUpdate,
 	UploadUrlRequest,
 	UploadUrlResponse,
 } from "@/types/submission";
@@ -23,6 +24,11 @@ export const submissionService = {
 		return data;
 	},
 
+	async update(id: string, body: SubmissionUpdate): Promise<Submission> {
+		const { data } = await api.put<Submission>(`/api/submissions/${id}`, body);
+		return data;
+	},
+
 	async list(
 		params?: {
 			department_id?: string;
@@ -36,18 +42,19 @@ export const submissionService = {
 		return data;
 	},
 
-	get(id: string): Promise<Submission> {
-		return api
-			.get<Submission>(`/api/submissions/${id}`)
-			.then((res) => res.data);
-	},
-
 	async review(id: string, body: SubmissionReview): Promise<Submission> {
 		const { data } = await api.patch<Submission>(
 			`/api/submissions/${id}/review`,
 			body,
 		);
 		return data;
+	},
+
+	async getDeletedProofUrl(id: string): Promise<string> {
+		const { data } = await api.get<{ url: string }>(
+			`/api/submissions/${id}/deleted-proof-url`,
+		);
+		return data.url;
 	},
 
 	async getProofUrl(id: string): Promise<string> {

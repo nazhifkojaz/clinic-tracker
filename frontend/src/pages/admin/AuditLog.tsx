@@ -1,5 +1,6 @@
 import { ChevronDown, ChevronUp, Filter, ScrollText } from "lucide-react";
-import React, { useCallback, useEffect, useState } from "react";
+import { Fragment } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { TableSkeleton } from "@/components/skeletons/TableSkeleton";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -370,7 +371,7 @@ export default function AuditLog() {
 								</thead>
 								<tbody>
 									{entries.map((entry) => (
-										<React.Fragment key={entry.id}>
+										<Fragment key={entry.id}>
 											<tr
 												className="border-t cursor-pointer hover:bg-muted/50"
 												onClick={() => handleRowClick(entry)}
@@ -460,7 +461,7 @@ export default function AuditLog() {
 													</td>
 												</tr>
 											)}
-										</React.Fragment>
+										</Fragment>
 									))}
 								</tbody>
 							</table>

@@ -1,4 +1,3 @@
-// frontend/src/components/charts/ProgressTimeline.tsx
 
 import {
 	CartesianGrid,
