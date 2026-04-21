@@ -1,4 +1,3 @@
-// frontend/src/pages/SupervisorDashboard.tsx
 
 import {
 	AlertCircle,

@@ -1,4 +1,3 @@
-// frontend/src/pages/DashboardRouter.tsx
 
 import { lazy, Suspense } from "react";
 import { useAuthStore } from "@/stores/authStore";

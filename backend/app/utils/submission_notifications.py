@@ -12,10 +12,6 @@ from app.utils.email import sanitize_for_email, send_email
 logger = logging.getLogger(__name__)
 
 
-def _e(text: str) -> str:
-    return sanitize_for_email(text)
-
-
 async def notify_submission_created(
     db: AsyncSession,
     submission: CaseSubmission,
@@ -31,7 +27,7 @@ async def notify_submission_created(
     student_name = display_name(student)
     sv_name = display_name(target_supervisor)
     notes_html = (
-        f"<p><strong>Notes:</strong> {_e(submission.notes)}</p>"
+        f"<p><strong>Notes:</strong> {sanitize_for_email(submission.notes)}</p>"
         if submission.notes
         else ""
     )
@@ -51,8 +47,8 @@ async def notify_submission_created(
         )
     )
     sv_html = f"""
-    <p>Hi {_e(sv_name)},</p>
-    <p>{_e(student_name)} has submitted a case record for your review.</p>
+    <p>Hi {sanitize_for_email(sv_name)},</p>
+    <p>{sanitize_for_email(student_name)} has submitted a case record for your review.</p>
     <ul><li><strong>Case count:</strong> {submission.case_count}</li></ul>
     {notes_html}
     <p>Please log in to Smart Clinic Tracker to review this submission.</p>
@@ -83,9 +79,9 @@ async def notify_submission_created(
             )
         )
         acad_html = f"""
-        <p>Hi {_e(acad_name)},</p>
-        <p>This is a courtesy copy. Your student {_e(student_name)} has submitted a
-        case record for review by {_e(sv_name)}.</p>
+        <p>Hi {sanitize_for_email(acad_name)},</p>
+        <p>This is a courtesy copy. Your student {sanitize_for_email(student_name)} has submitted a
+        case record for review by {sanitize_for_email(sv_name)}.</p>
         <ul><li><strong>Case count:</strong> {submission.case_count}</li></ul>
         {notes_html}
         """
@@ -118,7 +114,7 @@ async def notify_submission_reviewed(
     status_label = submission.status.value  # "approved" or "rejected"
     status_color = "green" if status_label == "approved" else "red"
     review_notes_html = (
-        f"<p><strong>Review notes:</strong> {_e(submission.review_notes)}</p>"
+        f"<p><strong>Review notes:</strong> {sanitize_for_email(submission.review_notes)}</p>"
         if submission.review_notes
         else ""
     )
@@ -140,10 +136,10 @@ async def notify_submission_reviewed(
         )
     )
     student_html = f"""
-    <p>Hi {_e(student_name)},</p>
+    <p>Hi {sanitize_for_email(student_name)},</p>
     <p>Your case submission has been
     <strong style="color:{status_color}">{status_label}</strong>
-    by {_e(reviewer_name)}.</p>
+    by {sanitize_for_email(reviewer_name)}.</p>
     <ul><li><strong>Case count:</strong> {submission.case_count}</li></ul>
     {review_notes_html}
     <p>Log in to Smart Clinic Tracker to view the details.</p>
@@ -176,10 +172,10 @@ async def notify_submission_reviewed(
             )
         )
         acad_html = f"""
-        <p>Hi {_e(acad_name)},</p>
-        <p>This is a courtesy copy. Your student {_e(student_name)}'s case submission has been
+        <p>Hi {sanitize_for_email(acad_name)},</p>
+        <p>This is a courtesy copy. Your student {sanitize_for_email(student_name)}'s case submission has been
         <strong style="color:{status_color}">{status_label}</strong>
-        by {_e(reviewer_name)}.</p>
+        by {sanitize_for_email(reviewer_name)}.</p>
         <ul><li><strong>Case count:</strong> {submission.case_count}</li></ul>
         {review_notes_html}
         """

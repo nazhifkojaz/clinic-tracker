@@ -1,4 +1,3 @@
-// frontend/src/components/charts/StudentDistribution.tsx
 
 import { useMemo } from "react";
 import {

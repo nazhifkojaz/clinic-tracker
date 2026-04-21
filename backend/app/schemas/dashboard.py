@@ -1,5 +1,3 @@
-# backend/app/schemas/dashboard.py
-
 import uuid
 from datetime import datetime
 

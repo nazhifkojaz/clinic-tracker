@@ -41,10 +41,9 @@ async def lifespan(app: FastAPI):
     Shutdown:
     - Dispose database connections gracefully
     """
-    # Startup
+    global _scheduler
     logger.info("Starting %s...", settings.APP_NAME)
 
-    # Validate database connectivity
     try:
         async with engine.begin() as conn:
             await conn.execute(text("SELECT 1"))
@@ -54,7 +53,6 @@ async def lifespan(app: FastAPI):
             "Database not reachable at startup (will retry on first request): %s", e
         )
 
-    # Start APScheduler for rotation reminders
     try:
         from app.core.scheduler import create_scheduler
 
@@ -66,15 +64,12 @@ async def lifespan(app: FastAPI):
 
     yield
 
-    # Shutdown
     logger.info("Shutting down %s...", settings.APP_NAME)
 
-    # Stop scheduler
     if _scheduler:
         _scheduler.shutdown(wait=False)
         logger.info("APScheduler stopped")
 
-    # Dispose database connections
     await engine.dispose()
     logger.info("Database connections disposed")
 

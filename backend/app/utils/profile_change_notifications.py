@@ -13,10 +13,6 @@ from app.utils.email import sanitize_for_email, send_email
 logger = logging.getLogger(__name__)
 
 
-def _e(text: str) -> str:
-    return sanitize_for_email(text)
-
-
 FIELD_LABELS: dict[str, str] = {
     "full_name": "Full Name",
     "institutional_id": "Institutional ID",
@@ -63,14 +59,14 @@ async def notify_admins_new_request(
 
     admin_name = display_name(admins[0])
     html = f"""
-    <p>Hi {_e(admin_name)},</p>
-    <p>{_e(user_name)} has submitted a profile change request:</p>
+    <p>Hi {sanitize_for_email(admin_name)},</p>
+    <p>{sanitize_for_email(user_name)} has submitted a profile change request:</p>
     <ul>
-      <li><strong>Field:</strong> {_e(field_label)}</li>
-      <li><strong>Old value:</strong> {_e(change.old_value or "None")}</li>
-      <li><strong>New value:</strong> {_e(change.new_value or "None")}</li>
+      <li><strong>Field:</strong> {sanitize_for_email(field_label)}</li>
+      <li><strong>Old value:</strong> {sanitize_for_email(change.old_value or "None")}</li>
+      <li><strong>New value:</strong> {sanitize_for_email(change.new_value or "None")}</li>
     </ul>
-    {"<p><strong>Reason:</strong> " + _e(change.reason) + "</p>" if change.reason else ""}
+    {"<p><strong>Reason:</strong> " + sanitize_for_email(change.reason) + "</p>" if change.reason else ""}
     <p>Please log in to Smart Clinic Tracker to review this request.</p>
     """
     for admin in admins:
@@ -115,13 +111,13 @@ async def notify_user_of_decision(
     )
 
     html = f"""
-    <p>Hi {_e(user_name)},</p>
-    <p>Your request to change <strong>{_e(field_label)}</strong> has been
+    <p>Hi {sanitize_for_email(user_name)},</p>
+    <p>Your request to change <strong>{sanitize_for_email(field_label)}</strong> has been
     <strong style="color:{status_color}">{status_label}</strong>
-    by {_e(reviewer_name)}.</p>
+    by {sanitize_for_email(reviewer_name)}.</p>
     <ul>
-      <li><strong>Old value:</strong> {_e(change.old_value or "None")}</li>
-      <li><strong>New value:</strong> {_e(change.new_value or "None")}</li>
+      <li><strong>Old value:</strong> {sanitize_for_email(change.old_value or "None")}</li>
+      <li><strong>New value:</strong> {sanitize_for_email(change.new_value or "None")}</li>
     </ul>
     <p>Log in to Smart Clinic Tracker to view the details.</p>
     """

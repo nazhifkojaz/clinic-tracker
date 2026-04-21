@@ -1,4 +1,3 @@
-// frontend/src/components/charts/DepartmentBars.tsx
 
 import { useMemo } from "react";
 import {

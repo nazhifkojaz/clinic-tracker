@@ -1,4 +1,3 @@
-// frontend/src/pages/StudentDashboard.tsx
 
 import { AlertCircle, AlertTriangle, ChevronDown, ChevronRight } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
