@@ -36,7 +36,7 @@ const STATUS_STYLES: Record<
 > = {
 	on_track: { bg: "bg-green-100", text: "text-green-700", label: "On Track" },
 	at_risk: { bg: "bg-yellow-100", text: "text-yellow-700", label: "At Risk" },
-	behind: { bg: "bg-red-100", text: "text-red-700", label: "Behind" },
+	unassigned: { bg: "bg-gray-100", text: "text-gray-700", label: "Unassigned" },
 };
 
 export default function SupervisorDashboard() {
@@ -114,13 +114,13 @@ export default function SupervisorDashboard() {
 	const summaryCounts = useMemo(() => {
 		let onTrack = 0;
 		let atRisk = 0;
-		let behind = 0;
+		let unassigned = 0;
 		for (const s of filteredStudents) {
 			if (s.status === "on_track") onTrack++;
 			else if (s.status === "at_risk") atRisk++;
-			else behind++;
+			else unassigned++;
 		}
-		return { total: filteredStudents.length, onTrack, atRisk, behind };
+		return { total: filteredStudents.length, onTrack, atRisk, unassigned };
 	}, [filteredStudents]);
 
 	if (loading) {
@@ -171,10 +171,10 @@ export default function SupervisorDashboard() {
 				</Card>
 				<Card>
 					<CardContent className="flex items-center gap-3 pt-6">
-						<XCircle className="h-8 w-8 text-red-500" />
+						<XCircle className="h-8 w-8 text-gray-500" />
 						<div>
-							<div className="text-2xl font-bold">{summaryCounts.behind}</div>
-							<p className="text-sm text-muted-foreground">Behind</p>
+							<div className="text-2xl font-bold">{summaryCounts.unassigned}</div>
+							<p className="text-sm text-muted-foreground">Unassigned</p>
 						</div>
 					</CardContent>
 				</Card>
@@ -189,7 +189,7 @@ export default function SupervisorDashboard() {
 					<StudentDistribution
 						onTrack={summaryCounts.onTrack}
 						atRisk={summaryCounts.atRisk}
-						behind={summaryCounts.behind}
+						unassigned={summaryCounts.unassigned}
 					/>
 				</CardContent>
 			</Card>
@@ -216,7 +216,7 @@ export default function SupervisorDashboard() {
 							<option value="all">All Statuses</option>
 							<option value="on_track">On Track</option>
 							<option value="at_risk">At Risk</option>
-							<option value="behind">Behind</option>
+							<option value="unassigned">Unassigned</option>
 						</select>
 						{isSupervisor && (
 							<select
@@ -254,7 +254,7 @@ export default function SupervisorDashboard() {
 								<tbody>
 									{filteredStudents.map((student: StudentSummary) => {
 										const style =
-											STATUS_STYLES[student.status] || STATUS_STYLES.behind;
+											STATUS_STYLES[student.status] || STATUS_STYLES.unassigned;
 										return (
 											<tr
 												key={student.student_id}

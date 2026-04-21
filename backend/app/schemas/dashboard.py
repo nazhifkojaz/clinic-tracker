@@ -85,7 +85,7 @@ class StudentSummary(BaseModel):
     overall_completion_percentage: float
     total_required: int
     total_completed: int
-    status: str  # "on_track", "at_risk", "behind"
+    status: str  # "on_track", "at_risk", "unassigned"
     assignment_type: str | None = None  # "primary" | "department" | null
 
 
@@ -95,7 +95,7 @@ class SupervisorDashboardResponse(BaseModel):
     total_students: int
     on_track_count: int
     at_risk_count: int
-    behind_count: int
+    unassigned_count: int
     students: PaginatedResponse[StudentSummary]
 
 

@@ -23,7 +23,7 @@ vi.mock("@/services/dashboard", () => ({
 				total_students: 1,
 				on_track_count: 1,
 				at_risk_count: 0,
-				behind_count: 0,
+				unassigned_count: 0,
 				students: {
 					items: mockStudents,
 					total: 1,

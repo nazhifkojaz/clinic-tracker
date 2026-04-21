@@ -323,14 +323,26 @@ async def get_student_dashboard_by_id(
     return await _build_student_dashboard(student, db)
 
 
-def _classify_status(completion_percentage: float) -> str:
-    """Classify student status based on overall completion percentage."""
-    if completion_percentage >= 60:
-        return "on_track"
-    elif completion_percentage >= 30:
+def _classify_status(
+    current_dept_case_pct: float | None,
+    rotation_time_pct: float | None,
+) -> str:
+    """Classify student status based on rotation time vs current dept case progress.
+
+    Args:
+        current_dept_case_pct: Case completion % in current dept (None if no rotation).
+        rotation_time_pct: Rotation time elapsed % (None if no rotation).
+
+    Returns:
+        "unassigned" | "at_risk" | "on_track"
+    """
+    if current_dept_case_pct is None or rotation_time_pct is None:
+        return "unassigned"
+
+    if rotation_time_pct >= 50 and current_dept_case_pct < rotation_time_pct:
         return "at_risk"
-    else:
-        return "behind"
+
+    return "on_track"
 
 
 async def _get_supervised_student_ids(
@@ -410,7 +422,7 @@ async def get_supervisor_dashboard(
                 total_students=0,
                 on_track_count=0,
                 at_risk_count=0,
-                behind_count=0,
+                unassigned_count=0,
                 students=PaginatedResponse.create([], 0, limit, offset),
             )
         # Build base query for counting
@@ -471,10 +483,17 @@ async def get_supervisor_dashboard(
     else:
         completed_map = {}
 
-    # Get current rotations for paginated students
+    # Get current rotations for paginated students (with dept metadata for status)
     if student_ids_list:
         rot_query = (
-            select(StudentRotation.student_id, Department.name)
+            select(
+                StudentRotation.student_id,
+                Department.name,
+                Department.id.label("dept_id"),
+                Department.rotation_duration_days,
+                StudentRotation.started_at,
+                StudentRotation.days_offset,
+            )
             .join(Department, StudentRotation.department_id == Department.id)
             .where(
                 StudentRotation.student_id.in_(student_ids_list),
@@ -482,13 +501,63 @@ async def get_supervisor_dashboard(
             )
         )
         rot_result = await db.execute(rot_query)
-        rotation_map = {row.student_id: row.name for row in rot_result.all()}
+        rotation_map: dict[UUID, str] = {}
+        rotation_data: dict[UUID, dict] = {}
+        for row in rot_result.all():
+            rotation_map[row.student_id] = row.name
+            rotation_data[row.student_id] = {
+                "dept_id": row.dept_id,
+                "duration_days": row.rotation_duration_days,
+                "started_at": row.started_at,
+                "days_offset": row.days_offset,
+            }
     else:
         rotation_map = {}
+        rotation_data = {}
+
+    # Get current department case progress for students with rotations
+    current_dept_progress: dict[UUID, dict] = {}
+    if student_ids_list and rotation_data:
+        dept_ids = list({r["dept_id"] for r in rotation_data.values()})
+        # Get category requirements for current departments
+        cat_result = await db.execute(
+            select(TaskCategory).where(
+                TaskCategory.department_id.in_(dept_ids),
+                TaskCategory.is_active.is_(True),
+            )
+        )
+        dept_cats = cat_result.scalars().all()
+        dept_required: dict[UUID, int] = {}
+        for cat in dept_cats:
+            dept_required[cat.department_id] = dept_required.get(cat.department_id, 0) + cat.required_count
+
+        if dept_cats:
+            current_dept_agg = (
+                select(
+                    CaseSubmission.student_id,
+                    func.sum(CaseSubmission.case_count).label("total"),
+                )
+                .where(
+                    CaseSubmission.student_id.in_(student_ids_list),
+                    CaseSubmission.department_id.in_(dept_ids),
+                    CaseSubmission.status == SubmissionStatus.approved,
+                    CaseSubmission.deleted_at.is_(None),
+                )
+                .group_by(CaseSubmission.student_id)
+            )
+            current_dept_result = await db.execute(current_dept_agg)
+            for row in current_dept_result.all():
+                current_dept_progress[row.student_id] = {
+                    "completed": int(row.total),
+                    "required": dept_required.get(
+                        rotation_data.get(row.student_id, {}).get("dept_id"), 0
+                    ),
+                }
 
     # Build student summaries (paginated subset only)
     summaries: list[StudentSummary] = []
 
+    now_utc = datetime.now(timezone.utc)
     for student_id, full_name, email, student_code in students:
         completed = completed_map.get(student_id, 0)
         pct = (
@@ -496,7 +565,28 @@ async def get_supervisor_dashboard(
             if total_required_global > 0
             else 0.0
         )
-        status = _classify_status(pct)
+
+        # Compute rotation-aware status
+        rot_info = rotation_data.get(student_id)
+        if rot_info:
+            elapsed = max(
+                0, int((now_utc - rot_info["started_at"]).total_seconds() // 86400)
+            )
+            rotation_days_active = rot_info["days_offset"] + elapsed
+            rotation_time_pct = (
+                (rotation_days_active / rot_info["duration_days"] * 100)
+                if rot_info["duration_days"] > 0
+                else 0.0
+            )
+            dept_prog = current_dept_progress.get(student_id, {"completed": 0, "required": 0})
+            case_pct = (
+                (dept_prog["completed"] / dept_prog["required"] * 100)
+                if dept_prog["required"] > 0
+                else 0.0
+            )
+            status = _classify_status(case_pct, rotation_time_pct)
+        else:
+            status = _classify_status(None, None)
 
         # Build display name from available fields
         student_name = full_name or student_code or email
@@ -550,26 +640,104 @@ async def get_supervisor_dashboard(
         all_completed_map = {
             row.student_id: int(row.total_completed) for row in all_agg_result.all()
         }
+
+        # Fetch rotation data for ALL students
+        all_rot_query = (
+            select(
+                StudentRotation.student_id,
+                Department.id.label("dept_id"),
+                Department.rotation_duration_days,
+                StudentRotation.started_at,
+                StudentRotation.days_offset,
+            )
+            .join(Department, StudentRotation.department_id == Department.id)
+            .where(
+                StudentRotation.student_id.in_(all_student_ids),
+                StudentRotation.is_current.is_(True),
+            )
+        )
+        all_rot_result = await db.execute(all_rot_query)
+        all_rotation_data: dict[UUID, dict] = {}
+        for row in all_rot_result.all():
+            all_rotation_data[row.student_id] = {
+                "dept_id": row.dept_id,
+                "duration_days": row.rotation_duration_days,
+                "started_at": row.started_at,
+                "days_offset": row.days_offset,
+            }
+
+        # Fetch current dept case progress for ALL rotating students
+        all_current_dept_progress: dict[UUID, dict] = {}
+        if all_rotation_data:
+            all_dept_ids = list({r["dept_id"] for r in all_rotation_data.values()})
+            all_cat_result = await db.execute(
+                select(TaskCategory).where(
+                    TaskCategory.department_id.in_(all_dept_ids),
+                    TaskCategory.is_active.is_(True),
+                )
+            )
+            all_dept_cats = all_cat_result.scalars().all()
+            all_dept_required: dict[UUID, int] = {}
+            for cat in all_dept_cats:
+                all_dept_required[cat.department_id] = all_dept_required.get(cat.department_id, 0) + cat.required_count
+
+            if all_dept_cats:
+                all_current_dept_agg = (
+                    select(
+                        CaseSubmission.student_id,
+                        func.sum(CaseSubmission.case_count).label("total"),
+                    )
+                    .where(
+                        CaseSubmission.student_id.in_(all_student_ids),
+                        CaseSubmission.department_id.in_(all_dept_ids),
+                        CaseSubmission.status == SubmissionStatus.approved,
+                        CaseSubmission.deleted_at.is_(None),
+                    )
+                    .group_by(CaseSubmission.student_id)
+                )
+                all_current_dept_result = await db.execute(all_current_dept_agg)
+                for row in all_current_dept_result.all():
+                    all_current_dept_progress[row.student_id] = {
+                        "completed": int(row.total),
+                        "required": all_dept_required.get(
+                            all_rotation_data.get(row.student_id, {}).get("dept_id"), 0
+                        ),
+                    }
     else:
         all_completed_map = {}
+        all_rotation_data = {}
+        all_current_dept_progress = {}
 
     # Compute status counts from all students
-    on_track = at_risk = behind = 0
+    on_track = at_risk = unassigned = 0
     for student_id in all_student_ids:
-        completed = all_completed_map.get(student_id, 0)
-        pct = (
-            (completed / total_required_global * 100)
-            if total_required_global > 0
-            else 0.0
-        )
-        status = _classify_status(pct)
+        rot_info = all_rotation_data.get(student_id)
+        if rot_info:
+            elapsed = max(
+                0, int((now_utc - rot_info["started_at"]).total_seconds() // 86400)
+            )
+            rotation_days_active = rot_info["days_offset"] + elapsed
+            rotation_time_pct = (
+                (rotation_days_active / rot_info["duration_days"] * 100)
+                if rot_info["duration_days"] > 0
+                else 0.0
+            )
+            dept_prog = all_current_dept_progress.get(student_id, {"completed": 0, "required": 0})
+            case_pct = (
+                (dept_prog["completed"] / dept_prog["required"] * 100)
+                if dept_prog["required"] > 0
+                else 0.0
+            )
+            status = _classify_status(case_pct, rotation_time_pct)
+        else:
+            status = _classify_status(None, None)
 
         if status == "on_track":
             on_track += 1
         elif status == "at_risk":
             at_risk += 1
         else:
-            behind += 1
+            unassigned += 1
 
     # Create paginated response
     paginated_students = PaginatedResponse.create(
@@ -583,7 +751,7 @@ async def get_supervisor_dashboard(
         total_students=paginated_students.total,
         on_track_count=on_track,
         at_risk_count=at_risk,
-        behind_count=behind,
+        unassigned_count=unassigned,
         students=paginated_students,
     )
 
@@ -655,14 +823,15 @@ async def get_department_dashboard(
     students = student_result.all()  # Returns tuples instead of User objects
 
     # Get approved submission totals per student for this department
-    if students:
+    student_ids_in_dept = [s[0] for s in students] if students else []
+    if student_ids_in_dept:
         agg_query = (
             select(
                 CaseSubmission.student_id,
                 func.sum(CaseSubmission.case_count).label("total_completed"),
             )
             .where(
-                CaseSubmission.student_id.in_([s.id for s in students]),
+                CaseSubmission.student_id.in_(student_ids_in_dept),
                 CaseSubmission.department_id == department_id,
                 CaseSubmission.status == SubmissionStatus.approved,
                 CaseSubmission.deleted_at.is_(None),
@@ -673,12 +842,27 @@ async def get_department_dashboard(
         completed_map = {
             row.student_id: int(row.total_completed) for row in agg_result.all()
         }
+
+        # Fetch rotation data for students in this department
+        rot_query = (
+            select(StudentRotation)
+            .where(
+                StudentRotation.student_id.in_(student_ids_in_dept),
+                StudentRotation.is_current.is_(True),
+            )
+        )
+        rot_result = await db.execute(rot_query)
+        dept_rotations: dict[UUID, StudentRotation] = {
+            r.student_id: r for r in rot_result.scalars().all()
+        }
     else:
         completed_map = {}
+        dept_rotations = {}
 
     # Build student progress list
     student_progresses: list[DepartmentStudentProgress] = []
     total_completion_sum = 0.0
+    now_utc = datetime.now(timezone.utc)
 
     # PERF-09: Process student tuples (id, full_name, email, institutional_id)
     for student_id, full_name, email, institutional_id in students:
@@ -686,8 +870,27 @@ async def get_department_dashboard(
         pct = (
             (completed / dept_total_required * 100) if dept_total_required > 0 else 0.0
         )
-        # Build display name from available fields (consistent with display_name())
         student_name = full_name or institutional_id or email
+
+        # Compute rotation-aware status
+        rotation = dept_rotations.get(student_id)
+        if rotation and rotation.department_id == department_id:
+            elapsed = max(
+                0, int((now_utc - rotation.started_at).total_seconds() // 86400)
+            )
+            rotation_days_active = rotation.days_offset + elapsed
+            rotation_time_pct = (
+                (rotation_days_active / department.rotation_duration_days * 100)
+                if department.rotation_duration_days > 0
+                else 0.0
+            )
+            case_pct = (
+                (completed / dept_total_required * 100) if dept_total_required > 0 else 0.0
+            )
+            status = _classify_status(case_pct, rotation_time_pct)
+        else:
+            status = _classify_status(None, None)
+
         student_progresses.append(
             DepartmentStudentProgress(
                 student_id=student_id,
@@ -695,7 +898,7 @@ async def get_department_dashboard(
                 total_required=dept_total_required,
                 total_completed=completed,
                 completion_percentage=round(pct, 1),
-                status=_classify_status(pct),
+                status=status,
             )
         )
         total_completion_sum += pct

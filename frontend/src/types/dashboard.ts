@@ -50,7 +50,7 @@ export interface StudentDashboardData {
 	rotation_time_pct: number;
 }
 
-export type StudentStatus = "on_track" | "at_risk" | "behind";
+export type StudentStatus = "on_track" | "at_risk" | "unassigned";
 
 export interface StudentSummary {
 	student_id: string;
@@ -69,7 +69,7 @@ export interface SupervisorDashboardData {
 	total_students: number;
 	on_track_count: number;
 	at_risk_count: number;
-	behind_count: number;
+	unassigned_count: number;
 	students: PaginatedResponse<StudentSummary>;
 }
 

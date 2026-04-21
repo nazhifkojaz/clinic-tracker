@@ -12,7 +12,7 @@ import {
 	YAxis,
 } from "recharts";
 import {
-	useDestructiveColor,
+	useMutedColor,
 	useSuccessColor,
 	useWarningColor,
 } from "@/hooks/useThemeColor";
@@ -20,34 +20,34 @@ import {
 interface StudentDistributionProps {
 	onTrack: number;
 	atRisk: number;
-	behind: number;
+	unassigned: number;
 }
 
 export default function StudentDistribution({
 	onTrack,
 	atRisk,
-	behind,
+	unassigned,
 }: StudentDistributionProps) {
 	const successColor = useSuccessColor();
 	const warningColor = useWarningColor();
-	const destructiveColor = useDestructiveColor();
+	const mutedColor = useMutedColor();
 
 	const COLORS = useMemo(
 		() => ({
 			"On Track": successColor,
 			"At Risk": warningColor,
-			Behind: destructiveColor,
+			Unassigned: mutedColor,
 		}),
-		[successColor, warningColor, destructiveColor],
+		[successColor, warningColor, mutedColor],
 	);
 
 	const data = useMemo(
 		() => [
 			{ name: "On Track", count: onTrack },
 			{ name: "At Risk", count: atRisk },
-			{ name: "Behind", count: behind },
+			{ name: "Unassigned", count: unassigned },
 		],
-		[onTrack, atRisk, behind],
+		[onTrack, atRisk, unassigned],
 	);
 
 	return (
