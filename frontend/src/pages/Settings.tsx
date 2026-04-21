@@ -92,11 +92,12 @@ export default function Settings() {
 							</div>
 						</div>
 						<Button
-							asChild
+							render={<Link to="/my-requests" />}
+							nativeButton={false}
 							variant="outline"
 							className="border-blue-300 text-blue-700 hover:bg-blue-100 dark:border-blue-800 dark:text-blue-300 dark:hover:bg-blue-900"
 						>
-							<Link to="/my-requests">View Requests</Link>
+							View Requests
 						</Button>
 					</CardContent>
 				</Card>

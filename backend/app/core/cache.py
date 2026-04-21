@@ -93,14 +93,6 @@ class SimpleAsyncCache:
         """Enable caching."""
         self._disabled = False
 
-    def is_disabled(self) -> bool:
-        """Check if caching is disabled."""
-        return self._disabled
-
-    def size(self) -> int:
-        """Get the number of entries in the cache (non-async)."""
-        return len(self._cache)
-
 
 # Global cache instances for different data types
 # These are created at module import time and shared across the application

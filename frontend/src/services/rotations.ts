@@ -1,4 +1,3 @@
-import type { PaginatedResponse, PaginationParams } from "@/types/pagination";
 import type {
 	DepartmentOverrideRequest,
 	Rotation,
@@ -14,16 +13,6 @@ export const rotationService = {
 
 	async set(body: RotationCreate): Promise<Rotation> {
 		const { data } = await api.post<Rotation>("/api/rotations", body);
-		return data;
-	},
-
-	async getHistory(
-		params?: PaginationParams,
-	): Promise<PaginatedResponse<Rotation>> {
-		const { data } = await api.get<PaginatedResponse<Rotation>>(
-			"/api/rotations/history",
-			{ params },
-		);
 		return data;
 	},
 

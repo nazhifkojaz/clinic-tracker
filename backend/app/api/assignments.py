@@ -19,6 +19,8 @@ from app.schemas.pagination import PaginatedResponse
 from app.utils.audit import record_audit
 
 router = APIRouter(prefix="/api/assignments", tags=["assignments"])
+
+
 @router.get("", response_model=PaginatedResponse[AssignmentWithDetailsResponse])
 async def list_assignments(
     user: User = Depends(get_current_user),
@@ -92,6 +94,8 @@ async def list_assignments(
         )
 
     return PaginatedResponse.create(assignments, total, limit, offset)
+
+
 @router.post("", response_model=AssignmentResponse, status_code=status.HTTP_201_CREATED)
 async def create_assignment(
     body: AssignmentCreate,
@@ -168,6 +172,8 @@ async def create_assignment(
         raise HTTPException(status_code=409, detail="This assignment already exists")
 
     return assignment
+
+
 @router.delete("/{assignment_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_assignment(
     assignment_id: UUID,

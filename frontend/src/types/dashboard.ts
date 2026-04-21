@@ -73,23 +73,6 @@ export interface SupervisorDashboardData {
 	students: PaginatedResponse<StudentSummary>;
 }
 
-export interface DepartmentStudentProgress {
-	student_id: string;
-	student_name: string;
-	total_required: number;
-	total_completed: number;
-	completion_percentage: number;
-	status: StudentStatus;
-}
-
-export interface DepartmentDashboardData {
-	department_id: string;
-	department_name: string;
-	total_students: number;
-	average_completion: number;
-	students: DepartmentStudentProgress[];
-}
-
 // --- Rotation Tracker Types ---
 
 export type CaseStatusColor = "red" | "yellow" | "green";

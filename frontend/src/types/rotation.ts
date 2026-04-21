@@ -17,7 +17,3 @@ export interface DepartmentOverrideRequest {
 	department_id: string;
 	days_offset?: number;
 }
-
-export interface DayAdjustmentRequest {
-	total_day: number;
-}

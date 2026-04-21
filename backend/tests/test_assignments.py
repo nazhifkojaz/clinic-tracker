@@ -3,7 +3,6 @@ import uuid
 from sqlalchemy import select
 
 from app.models.assignment import AssignmentType, SupervisorAssignment
-from app.models.rotation import StudentRotation
 from app.models.user import User, UserRole
 from app.core.security import hash_password
 from tests.conftest import auth_header

@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
  * Hook to read CSS custom properties (variables) that change with the theme.
  * Returns the color value as a string (e.g., "oklch(0.65 0.15 145)").
  */
-export function useThemeColor(variableName: string): string {
+function useThemeColor(variableName: string): string {
 	const [color, setColor] = useState(() => {
 		// Initialize with a default value or read from computed style
 		if (typeof window !== "undefined") {
@@ -67,15 +67,3 @@ export function usePrimaryColor(): string {
 	return useThemeColor("--primary");
 }
 
-/**
- * Returns all chart status colors as an object
- */
-export function useChartColors() {
-	return {
-		success: useSuccessColor(),
-		warning: useWarningColor(),
-		destructive: useDestructiveColor(),
-		muted: useMutedColor(),
-		primary: usePrimaryColor(),
-	};
-}

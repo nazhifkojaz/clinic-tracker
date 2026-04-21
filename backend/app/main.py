@@ -29,8 +29,6 @@ logger = logging.getLogger(__name__)
 # Lazy scheduler import to avoid crash if apscheduler is not installed
 _scheduler = None
 
-logger = logging.getLogger(__name__)
-
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):

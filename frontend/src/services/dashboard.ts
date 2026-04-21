@@ -1,7 +1,6 @@
 // frontend/src/services/dashboard.ts
 
 import type {
-	DepartmentDashboardData,
 	DepartmentTrackerData,
 	StudentDashboardData,
 	SupervisorDashboardData,
@@ -28,15 +27,6 @@ export const dashboardService = {
 	async getSupervisorDashboard(): Promise<SupervisorDashboardData> {
 		const { data } = await api.get<SupervisorDashboardData>(
 			"/api/dashboard/supervisor",
-		);
-		return data;
-	},
-
-	async getDepartmentDashboard(
-		departmentId: string,
-	): Promise<DepartmentDashboardData> {
-		const { data } = await api.get<DepartmentDashboardData>(
-			`/api/dashboard/department/${departmentId}`,
 		);
 		return data;
 	},

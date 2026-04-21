@@ -529,7 +529,9 @@ async def get_supervisor_dashboard(
         dept_cats = cat_result.scalars().all()
         dept_required: dict[UUID, int] = {}
         for cat in dept_cats:
-            dept_required[cat.department_id] = dept_required.get(cat.department_id, 0) + cat.required_count
+            dept_required[cat.department_id] = (
+                dept_required.get(cat.department_id, 0) + cat.required_count
+            )
 
         if dept_cats:
             current_dept_agg = (
@@ -578,7 +580,9 @@ async def get_supervisor_dashboard(
                 if rot_info["duration_days"] > 0
                 else 0.0
             )
-            dept_prog = current_dept_progress.get(student_id, {"completed": 0, "required": 0})
+            dept_prog = current_dept_progress.get(
+                student_id, {"completed": 0, "required": 0}
+            )
             case_pct = (
                 (dept_prog["completed"] / dept_prog["required"] * 100)
                 if dept_prog["required"] > 0
@@ -602,7 +606,9 @@ async def get_supervisor_dashboard(
                 total_required=total_required_global,
                 total_completed=completed,
                 status=status,
-                assignment_type=student_types.get(student_id) if user.role == UserRole.supervisor else None,
+                assignment_type=student_types.get(student_id)
+                if user.role == UserRole.supervisor
+                else None,
             )
         )
 
@@ -636,10 +642,7 @@ async def get_supervisor_dashboard(
             )
             .group_by(CaseSubmission.student_id)
         )
-        all_agg_result = await db.execute(all_agg_query)
-        all_completed_map = {
-            row.student_id: int(row.total_completed) for row in all_agg_result.all()
-        }
+        await db.execute(all_agg_query)
 
         # Fetch rotation data for ALL students
         all_rot_query = (
@@ -679,7 +682,9 @@ async def get_supervisor_dashboard(
             all_dept_cats = all_cat_result.scalars().all()
             all_dept_required: dict[UUID, int] = {}
             for cat in all_dept_cats:
-                all_dept_required[cat.department_id] = all_dept_required.get(cat.department_id, 0) + cat.required_count
+                all_dept_required[cat.department_id] = (
+                    all_dept_required.get(cat.department_id, 0) + cat.required_count
+                )
 
             if all_dept_cats:
                 all_current_dept_agg = (
@@ -704,7 +709,6 @@ async def get_supervisor_dashboard(
                         ),
                     }
     else:
-        all_completed_map = {}
         all_rotation_data = {}
         all_current_dept_progress = {}
 
@@ -722,7 +726,9 @@ async def get_supervisor_dashboard(
                 if rot_info["duration_days"] > 0
                 else 0.0
             )
-            dept_prog = all_current_dept_progress.get(student_id, {"completed": 0, "required": 0})
+            dept_prog = all_current_dept_progress.get(
+                student_id, {"completed": 0, "required": 0}
+            )
             case_pct = (
                 (dept_prog["completed"] / dept_prog["required"] * 100)
                 if dept_prog["required"] > 0
@@ -844,12 +850,9 @@ async def get_department_dashboard(
         }
 
         # Fetch rotation data for students in this department
-        rot_query = (
-            select(StudentRotation)
-            .where(
-                StudentRotation.student_id.in_(student_ids_in_dept),
-                StudentRotation.is_current.is_(True),
-            )
+        rot_query = select(StudentRotation).where(
+            StudentRotation.student_id.in_(student_ids_in_dept),
+            StudentRotation.is_current.is_(True),
         )
         rot_result = await db.execute(rot_query)
         dept_rotations: dict[UUID, StudentRotation] = {
@@ -885,7 +888,9 @@ async def get_department_dashboard(
                 else 0.0
             )
             case_pct = (
-                (completed / dept_total_required * 100) if dept_total_required > 0 else 0.0
+                (completed / dept_total_required * 100)
+                if dept_total_required > 0
+                else 0.0
             )
             status = _classify_status(case_pct, rotation_time_pct)
         else:

@@ -1,7 +1,7 @@
 import uuid
 import random
 import string
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 
 from app.models.department import Department, TaskCategory
 from app.models.rotation import StudentRotation

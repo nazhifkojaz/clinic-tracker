@@ -242,9 +242,18 @@ async def test_supervisor_dashboard_classification_thresholds(
     )
     db_session.add(assignment)
     await db_session.commit()
-    await create_rotation(db_session, student_early.id, dept.id, started_at=now - timedelta(days=5))
+    await create_rotation(
+        db_session, student_early.id, dept.id, started_at=now - timedelta(days=5)
+    )
     # 10 cases out of 100 = 10% completion (doesn't matter since time < 50%)
-    await create_submission(db_session, student_early.id, dept.id, cat.id, case_count=10, status=SubmissionStatus.approved)
+    await create_submission(
+        db_session,
+        student_early.id,
+        dept.id,
+        cat.id,
+        case_count=10,
+        status=SubmissionStatus.approved,
+    )
 
     # Student 3: Late rotation, at risk (60% time, 30% cases → case_pct < time_pct)
     student_at_risk = User(
@@ -264,9 +273,18 @@ async def test_supervisor_dashboard_classification_thresholds(
     )
     db_session.add(assignment)
     await db_session.commit()
-    await create_rotation(db_session, student_at_risk.id, dept.id, started_at=now - timedelta(days=18))
+    await create_rotation(
+        db_session, student_at_risk.id, dept.id, started_at=now - timedelta(days=18)
+    )
     # 30 cases out of 100 = 30% completion, rotation time ~60% → at_risk
-    await create_submission(db_session, student_at_risk.id, dept.id, cat.id, case_count=30, status=SubmissionStatus.approved)
+    await create_submission(
+        db_session,
+        student_at_risk.id,
+        dept.id,
+        cat.id,
+        case_count=30,
+        status=SubmissionStatus.approved,
+    )
 
     # Student 4: Late rotation, on track (60% time, 70% cases → case_pct > time_pct)
     student_on_track = User(
@@ -286,8 +304,17 @@ async def test_supervisor_dashboard_classification_thresholds(
     )
     db_session.add(assignment)
     await db_session.commit()
-    await create_rotation(db_session, student_on_track.id, dept.id, started_at=now - timedelta(days=18))
-    await create_submission(db_session, student_on_track.id, dept.id, cat.id, case_count=70, status=SubmissionStatus.approved)
+    await create_rotation(
+        db_session, student_on_track.id, dept.id, started_at=now - timedelta(days=18)
+    )
+    await create_submission(
+        db_session,
+        student_on_track.id,
+        dept.id,
+        cat.id,
+        case_count=70,
+        status=SubmissionStatus.approved,
+    )
 
     response = await client.get(
         "/api/dashboard/supervisor",
@@ -664,7 +691,9 @@ async def test_supervisor_dashboard_pagination_structure(
 
     # Verify status counts are computed from ALL students
     assert data["total_students"] == 60
-    assert data["on_track_count"] + data["at_risk_count"] + data["unassigned_count"] == 60
+    assert (
+        data["on_track_count"] + data["at_risk_count"] + data["unassigned_count"] == 60
+    )
 
 
 async def test_supervisor_dashboard_status_counts_accuracy(
@@ -676,7 +705,9 @@ async def test_supervisor_dashboard_status_counts_accuracy(
     """
     now = datetime.now(timezone.utc)
     # Department with 30-day rotation, 100 required cases
-    dept = await create_department(db_session, name="Count Test Dept", rotation_duration_days=30)
+    dept = await create_department(
+        db_session, name="Count Test Dept", rotation_duration_days=30
+    )
     cat = await create_category(db_session, dept.id, required_count=100)
 
     # 30 students: early rotation (5 days, < 50% time) → on_track regardless of completion
@@ -700,7 +731,9 @@ async def test_supervisor_dashboard_status_counts_accuracy(
         db_session.add(assignment)
         await db_session.commit()
 
-        await create_rotation(db_session, student.id, dept.id, started_at=now - timedelta(days=5))
+        await create_rotation(
+            db_session, student.id, dept.id, started_at=now - timedelta(days=5)
+        )
         await create_submission(
             db_session,
             student.id,
@@ -731,7 +764,9 @@ async def test_supervisor_dashboard_status_counts_accuracy(
         db_session.add(assignment)
         await db_session.commit()
 
-        await create_rotation(db_session, student.id, dept.id, started_at=now - timedelta(days=20))
+        await create_rotation(
+            db_session, student.id, dept.id, started_at=now - timedelta(days=20)
+        )
         await create_submission(
             db_session,
             student.id,
@@ -958,7 +993,9 @@ async def test_supervisor_dashboard_assignment_type_primary(
     )
     assert response.status_code == 200
     entry = next(
-        s for s in response.json()["students"]["items"] if s["student_name"] == "Primary Student"
+        s
+        for s in response.json()["students"]["items"]
+        if s["student_name"] == "Primary Student"
     )
     assert entry["assignment_type"] == "primary"
 
@@ -1001,14 +1038,14 @@ async def test_supervisor_dashboard_assignment_type_department(
     )
     assert response.status_code == 200
     entry = next(
-        s for s in response.json()["students"]["items"] if s["student_name"] == "Dept Student"
+        s
+        for s in response.json()["students"]["items"]
+        if s["student_name"] == "Dept Student"
     )
     assert entry["assignment_type"] == "department"
 
 
-async def test_admin_dashboard_assignment_type_null(
-    client, admin_token
-):
+async def test_admin_dashboard_assignment_type_null(client, admin_token):
     """Admin sees all students with assignment_type=null."""
     response = await client.get(
         "/api/dashboard/supervisor",
