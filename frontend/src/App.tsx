@@ -24,6 +24,7 @@ const DeletedSubmissions = lazy(
 	() => import("@/pages/admin/DeletedSubmissions"),
 );
 const Settings = lazy(() => import("@/pages/Settings"));
+const MyRequests = lazy(() => import("@/pages/MyRequests"));
 const PendingChanges = lazy(() => import("@/pages/admin/PendingChanges"));
 const InviteCodes = lazy(() => import("@/pages/admin/InviteCodes"));
 const NotFound = lazy(() => import("@/pages/NotFound"));
@@ -67,6 +68,13 @@ function App() {
 							<Route path="/submissions" element={<SubmissionHistory />} />
 							<Route path="/notifications" element={<NotificationHistory />} />
 							<Route path="/settings" element={<Settings />} />
+							<Route
+								element={
+									<ProtectedRoute allowedRoles={["student", "supervisor"]} />
+								}
+							>
+								<Route path="/my-requests" element={<MyRequests />} />
+							</Route>
 							<Route element={<ProtectedRoute allowedRoles={["admin"]} />}>
 								<Route path="/admin/users" element={<UserManagement />} />
 								<Route

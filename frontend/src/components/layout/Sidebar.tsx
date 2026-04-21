@@ -3,6 +3,7 @@ import {
 	Building2,
 	ClipboardList,
 	FilePlus,
+	FileText,
 	KeyRound,
 	LayoutDashboard,
 	ScrollText,
@@ -24,12 +25,14 @@ const navItems = {
 		{ to: "/cases/new", label: "Submit Case", icon: FilePlus },
 		{ to: "/rotation-tracker", label: "Rotation Tracker", icon: Timer },
 		{ to: "/submissions", label: "My Submissions", icon: ClipboardList },
+		{ to: "/my-requests", label: "My Requests", icon: FileText },
 		{ to: "/settings", label: "Settings", icon: Settings },
 	],
 	supervisor: [
 		{ to: "/", label: "Dashboard", icon: LayoutDashboard },
 		{ to: "/submissions", label: "Submissions", icon: ClipboardList },
 		{ to: "/notifications", label: "Notification History", icon: Bell },
+		{ to: "/my-requests", label: "My Requests", icon: FileText },
 		{ to: "/settings", label: "Settings", icon: Settings },
 	],
 	admin: [
