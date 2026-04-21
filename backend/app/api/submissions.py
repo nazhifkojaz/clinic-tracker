@@ -692,6 +692,30 @@ async def restore_submission(
     )
 
 
+@router.get("/{submission_id}/deleted-proof-url")
+async def get_deleted_proof_url(
+    submission_id: UUID,
+    user: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Get a presigned URL to view the proof image of a soft-deleted submission. Admin only."""
+    result = await db.execute(
+        select(CaseSubmission).where(
+            CaseSubmission.id == submission_id,
+            CaseSubmission.deleted_at.isnot(None),
+        )
+    )
+    submission = result.scalar_one_or_none()
+    if not submission:
+        raise HTTPException(status_code=404, detail="Deleted submission not found")
+
+    if not submission.proof_key:
+        raise HTTPException(status_code=404, detail="Proof URL not available")
+
+    url = generate_read_url(submission.proof_key)
+    return {"url": url}
+
+
 @router.get("/{submission_id}/proof-url")
 async def get_proof_url(
     submission_id: UUID,

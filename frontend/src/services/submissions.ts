@@ -50,6 +50,13 @@ export const submissionService = {
 		return data;
 	},
 
+	async getDeletedProofUrl(id: string): Promise<string> {
+		const { data } = await api.get<{ url: string }>(
+			`/api/submissions/${id}/deleted-proof-url`,
+		);
+		return data.url;
+	},
+
 	async getProofUrl(id: string): Promise<string> {
 		const { data } = await api.get<{ url: string }>(
 			`/api/submissions/${id}/proof-url`,

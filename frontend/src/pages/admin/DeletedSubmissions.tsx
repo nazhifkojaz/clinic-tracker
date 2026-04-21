@@ -1,17 +1,40 @@
 import {
 	AlertCircle,
+	CheckCircle,
 	ChevronLeft,
 	ChevronRight,
+	Clock,
+	Eye,
+	FileImage,
+	Loader2,
 	RotateCcw,
 	Trash2,
+	X,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { TableSkeleton } from "@/components/skeletons/TableSkeleton";
 import { submissionService } from "@/services/submissions";
 import { departmentService } from "@/services/departments";
-import type { DeletedSubmission } from "@/types/submission";
+import type { DeletedSubmission, SubmissionStatus } from "@/types/submission";
 import type { DepartmentWithCategories, TaskCategory } from "@/types/department";
-import { Loader2 } from "lucide-react";
+
+const statusConfig: Record<
+	SubmissionStatus,
+	{ label: string; className: string }
+> = {
+	pending: {
+		label: "Pending",
+		className: "bg-yellow-500/10 text-yellow-600 dark:text-yellow-400",
+	},
+	approved: {
+		label: "Approved",
+		className: "bg-green-500/10 text-green-600 dark:text-green-400",
+	},
+	rejected: {
+		label: "Rejected",
+		className: "bg-red-500/10 text-red-600 dark:text-red-400",
+	},
+};
 
 const PAGE_SIZE = 20;
 
@@ -24,6 +47,12 @@ export default function DeletedSubmissions() {
 	const [isDeptsLoading, setIsDeptsLoading] = useState(true);
 	const [error, setError] = useState("");
 	const [restoringId, setRestoringId] = useState<string | null>(null);
+
+	// View modal state
+	const [selectedSubmission, setSelectedSubmission] =
+		useState<DeletedSubmission | null>(null);
+	const [proofUrl, setProofUrl] = useState("");
+	const [isProofLoading, setIsProofLoading] = useState(false);
 
 	const [departments, setDepartments] = useState<DepartmentWithCategories[]>([]);
 
@@ -40,7 +69,7 @@ export default function DeletedSubmissions() {
 				setDepartments(withCats);
 			})
 			.catch(() => {})
-				.finally(() => setIsDeptsLoading(false));
+			.finally(() => setIsDeptsLoading(false));
 	}, []);
 
 	const categoriesMap = useMemo(() => {
@@ -93,6 +122,40 @@ export default function DeletedSubmissions() {
 		} finally {
 			setRestoringId(null);
 		}
+	};
+
+	const handleViewDetail = async (submission: DeletedSubmission) => {
+		setSelectedSubmission(submission);
+		setProofUrl("");
+		setIsProofLoading(true);
+
+		try {
+			const url = await submissionService.getDeletedProofUrl(submission.id);
+			setProofUrl(url);
+		} catch {
+			setProofUrl("");
+		} finally {
+			setIsProofLoading(false);
+		}
+	};
+
+	const handleCloseDetail = () => {
+		setSelectedSubmission(null);
+		setProofUrl("");
+	};
+
+	const getStatusBadge = (status: SubmissionStatus) => {
+		const config = statusConfig[status];
+		return (
+			<span
+				className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs font-medium ${config.className}`}
+			>
+				{status === "pending" && <Clock className="h-3 w-3" />}
+				{status === "approved" && <CheckCircle className="h-3 w-3" />}
+				{status === "rejected" && <X className="h-3 w-3" />}
+				{config.label}
+			</span>
+		);
 	};
 
 	return (
@@ -177,18 +240,27 @@ export default function DeletedSubmissions() {
 										{sub.deleted_by_name || "—"}
 									</td>
 									<td className="px-4 py-3">
-										<button
-											onClick={() => handleRestore(sub.id)}
-											disabled={restoringId === sub.id}
-											className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-primary hover:bg-primary/10 disabled:cursor-not-allowed disabled:opacity-50"
-										>
-											{restoringId === sub.id ? (
-												<Loader2 className="h-3 w-3 animate-spin" />
-											) : (
-												<RotateCcw className="h-3 w-3" />
-											)}
-											Restore
-										</button>
+										<div className="flex items-center gap-1">
+											<button
+												onClick={() => handleViewDetail(sub)}
+												className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium hover:bg-accent"
+											>
+												<Eye className="h-3 w-3" />
+												View
+											</button>
+											<button
+												onClick={() => handleRestore(sub.id)}
+												disabled={restoringId === sub.id}
+												className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-primary hover:bg-primary/10 disabled:cursor-not-allowed disabled:opacity-50"
+											>
+												{restoringId === sub.id ? (
+													<Loader2 className="h-3 w-3 animate-spin" />
+												) : (
+													<RotateCcw className="h-3 w-3" />
+												)}
+												Restore
+											</button>
+										</div>
 									</td>
 								</tr>
 							))}
@@ -226,6 +298,124 @@ export default function DeletedSubmissions() {
 							</div>
 						</div>
 					)}
+				</div>
+			)}
+
+			{/* View Detail Modal */}
+			{selectedSubmission && (
+				<div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+					<div className="max-h-[90vh] w-full max-w-2xl overflow-auto rounded-lg bg-card p-6 shadow-lg">
+						<div className="flex items-start justify-between">
+							<h2 className="text-lg font-semibold">Deleted Submission Details</h2>
+							<button
+								onClick={handleCloseDetail}
+								className="rounded-full p-1 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+							>
+								<X className="h-5 w-5" />
+							</button>
+						</div>
+
+						<div className="mt-4 space-y-4">
+							{/* Status */}
+							<div className="flex items-center justify-between">
+								<span className="text-sm text-muted-foreground">Status</span>
+								{getStatusBadge(selectedSubmission.status)}
+							</div>
+
+							{/* Details */}
+							<div className="grid grid-cols-2 gap-4 text-sm">
+								<div>
+									<span className="text-muted-foreground">Department: </span>
+									<span className="font-medium">
+										{departmentsMap[selectedSubmission.department_id] ||
+											selectedSubmission.department_id}
+									</span>
+								</div>
+								<div>
+									<span className="text-muted-foreground">Task Category: </span>
+									<span className="font-medium">
+										{categoriesMap[selectedSubmission.task_category_id]?.name ||
+											selectedSubmission.task_category_id}
+									</span>
+								</div>
+								<div>
+									<span className="text-muted-foreground">Case Count: </span>
+									<span className="font-medium">
+										{selectedSubmission.case_count}
+									</span>
+								</div>
+								<div>
+									<span className="text-muted-foreground">Submitted: </span>
+									<span className="font-medium">
+										{new Date(selectedSubmission.created_at).toLocaleString()}
+									</span>
+								</div>
+							</div>
+
+							{/* Notes */}
+							{selectedSubmission.notes && (
+								<div>
+									<span className="text-sm text-muted-foreground">Notes: </span>
+									<p className="mt-1 rounded-md bg-muted/50 p-2 text-sm">
+										{selectedSubmission.notes}
+									</p>
+								</div>
+							)}
+
+							{/* Deletion details */}
+							<div className="rounded-md bg-destructive/5 p-3">
+								<p className="text-sm font-medium text-destructive">
+									Deletion Information
+								</p>
+								<p className="text-xs text-muted-foreground">
+									Deleted by: {selectedSubmission.deleted_by_name || "Unknown"}
+								</p>
+								<p className="text-xs text-muted-foreground">
+									Deleted at:{" "}
+									{selectedSubmission.deleted_at
+										? new Date(selectedSubmission.deleted_at).toLocaleString()
+										: "—"}
+								</p>
+							</div>
+
+							{/* Proof Image */}
+							<div>
+								<span className="text-sm font-medium">Proof Image</span>
+								<div className="mt-2 rounded-lg border bg-muted/20 p-4">
+									{isProofLoading ? (
+										<div className="flex h-48 items-center justify-center">
+											<Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+										</div>
+									) : proofUrl ? (
+										proofUrl.startsWith("mock://") ? (
+											<div className="flex h-48 items-center justify-center text-center">
+												<div>
+													<FileImage className="mx-auto mb-2 h-10 w-10 text-muted-foreground" />
+													<p className="text-sm text-muted-foreground">
+														Mock mode - R2 not configured
+													</p>
+												</div>
+											</div>
+										) : (
+											<img
+												src={proofUrl}
+												alt="Proof"
+												loading="lazy"
+												decoding="async"
+												className="mx-auto max-h-96 rounded-md object-contain"
+											/>
+										)
+									) : (
+										<div className="flex h-48 items-center justify-center text-center">
+											<p className="text-sm text-muted-foreground">
+												Failed to load proof image
+											</p>
+										</div>
+									)}
+								</div>
+							</div>
+						</div>
+					</div>
 				</div>
 			)}
 		</div>
