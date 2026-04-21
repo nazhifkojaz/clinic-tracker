@@ -214,9 +214,12 @@ async def perform_department_override(
     )
     current = current_result.scalar_one_or_none()
 
+    if current and current.department_id == new_department_id:
+        return current
+
     if current:
         current.is_current = False
-        current.ended_at = func.now()
+        current.ended_at = datetime.now(timezone.utc)
         await db.flush()
 
         await record_audit(
@@ -272,7 +275,7 @@ async def perform_department_override(
             "student_id": str(student_id),
             "department_id": str(new_department_id),
             "is_current": True,
-            "days_offset": days_offset,
+            "days_offset": rotation.days_offset,
         },
     )
 

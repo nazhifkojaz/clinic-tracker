@@ -14,15 +14,16 @@ logger = logging.getLogger(__name__)
 
 def _validate_email_config() -> None:
     """Validate email configuration on module load."""
-    if (
-        not settings.EMAIL_MOCK_MODE
-        and settings.SMTP_REQUIRE_AUTH
-        and (not settings.GMAIL_USER or not settings.GMAIL_APP_PASSWORD)
-    ):
-        raise RuntimeError(
-            "GMAIL_USER and GMAIL_APP_PASSWORD are required when SMTP_REQUIRE_AUTH=True. "
-            "For local dev with Mailpit set SMTP_REQUIRE_AUTH=False and point SMTP_HOST at localhost."
-        )
+    if not settings.EMAIL_MOCK_MODE and settings.SMTP_REQUIRE_AUTH:
+        if not settings.SMTP_USE_TLS:
+            raise RuntimeError(
+                "SMTP_REQUIRE_AUTH=True requires SMTP_USE_TLS=True to prevent sending credentials over plaintext."
+            )
+        if not settings.GMAIL_USER or not settings.GMAIL_APP_PASSWORD:
+            raise RuntimeError(
+                "GMAIL_USER and GMAIL_APP_PASSWORD are required when SMTP_REQUIRE_AUTH=True. "
+                "For local dev with Mailpit set SMTP_REQUIRE_AUTH=False and point SMTP_HOST at localhost."
+            )
 
 
 _validate_email_config()
@@ -51,7 +52,7 @@ def _send_smtp(to: list[str], subject: str, html_body: str) -> None:
     msg = MIMEMultipart("alternative")
     msg["From"] = _EMAIL_FROM
     msg["To"] = ", ".join(to)
-    msg["Subject"] = subject
+    msg["Subject"] = subject.replace("\r", "").replace("\n", "")
     msg.attach(MIMEText(html_body, "html", "utf-8"))
 
     with smtplib.SMTP(settings.SMTP_HOST, settings.SMTP_PORT, timeout=30) as server:

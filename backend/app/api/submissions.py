@@ -339,9 +339,12 @@ async def list_submissions(
                 full_name=display_name(target_sv_user),
             )
 
-        can_review = is_admin or (
-            user.role == UserRole.supervisor
-            and submission.target_supervisor_id == user.id
+        can_review = submission.status == SubmissionStatus.pending and (
+            is_admin
+            or (
+                user.role == UserRole.supervisor
+                and submission.target_supervisor_id == user.id
+            )
         )
 
         submissions.append(

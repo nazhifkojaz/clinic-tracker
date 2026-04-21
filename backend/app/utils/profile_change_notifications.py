@@ -56,9 +56,11 @@ async def notify_admins_new_request(
                 message=message,
             )
         )
+    await db.commit()
 
-    admin_name = display_name(admins[0])
-    html = f"""
+    for admin in admins:
+        admin_name = display_name(admin)
+        html = f"""
     <p>Hi {sanitize_for_email(admin_name)},</p>
     <p>{sanitize_for_email(user_name)} has submitted a profile change request:</p>
     <ul>
@@ -69,7 +71,6 @@ async def notify_admins_new_request(
     {"<p><strong>Reason:</strong> " + sanitize_for_email(change.reason) + "</p>" if change.reason else ""}
     <p>Please log in to Smart Clinic Tracker to review this request.</p>
     """
-    for admin in admins:
         try:
             await send_email(to=admin.email, subject=subject, html=html)
         except Exception:
@@ -109,6 +110,7 @@ async def notify_user_of_decision(
             message=message,
         )
     )
+    await db.commit()
 
     html = f"""
     <p>Hi {sanitize_for_email(user_name)},</p>

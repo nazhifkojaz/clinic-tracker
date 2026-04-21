@@ -598,20 +598,6 @@ async def get_supervisor_dashboard(
     all_student_ids = [row[0] for row in all_ids_result.all()]
 
     if all_student_ids:
-        all_agg_query = (
-            select(
-                CaseSubmission.student_id,
-                func.sum(CaseSubmission.case_count).label("total_completed"),
-            )
-            .where(
-                CaseSubmission.student_id.in_(all_student_ids),
-                CaseSubmission.status == SubmissionStatus.approved,
-                CaseSubmission.deleted_at.is_(None),
-            )
-            .group_by(CaseSubmission.student_id)
-        )
-        await db.execute(all_agg_query)
-
         all_rot_query = (
             select(
                 StudentRotation.student_id,
