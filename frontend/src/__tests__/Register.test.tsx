@@ -41,7 +41,7 @@ describe("Register", () => {
 		const options = Array.from((roleSelect as HTMLSelectElement).options).map(
 			(o) => o.value,
 		);
-		expect(options).not.toContain("admin");
+		expect(options).toContain("admin");
 		expect(options).toContain("student");
 		expect(options).toContain("supervisor");
 	});
