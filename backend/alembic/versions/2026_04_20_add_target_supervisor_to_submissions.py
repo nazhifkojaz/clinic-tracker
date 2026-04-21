@@ -29,11 +29,6 @@ def upgrade() -> None:
         ondelete="SET NULL",
     )
     op.create_index(
-        "ix_case_submissions_target_supervisor_id",
-        "case_submissions",
-        ["target_supervisor_id"],
-    )
-    op.create_index(
         "ix_submissions_target_supervisor_status",
         "case_submissions",
         ["target_supervisor_id", "status"],
@@ -43,10 +38,6 @@ def upgrade() -> None:
 def downgrade() -> None:
     op.drop_index(
         "ix_submissions_target_supervisor_status",
-        table_name="case_submissions",
-    )
-    op.drop_index(
-        "ix_case_submissions_target_supervisor_id",
         table_name="case_submissions",
     )
     op.drop_constraint(
